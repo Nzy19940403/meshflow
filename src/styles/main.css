@@ -1,0 +1,22 @@
+@config "../../tailwind.config.js";
+
+ 
+
+ 
+
+@layer tailwind-base, vuetify, primevue;
+
+/* 2. 进入特定层进行导入，不要在 @import 行内写 layer() */
+@layer tailwind-base {
+  @import "tailwindcss";
+}
+
+@layer vuetify {
+  @import "vuetify/styles";
+  @import '@mdi/font/css/materialdesignicons.css'
+}
+
+@layer primevue {
+  @import "primeicons/primeicons.css";
+  /* 留空给 PrimeVue JS 注入 */
+}

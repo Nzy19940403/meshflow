@@ -1,0 +1,12 @@
+
+ 
+
+      // 自动生成，请勿手动修改
+        import { FormResultType } from '@/utils/schema'; // 假设你的基础类型在这里
+        import {clonedschema} from './test.form.Schema.data';
+        import { GetAllPath } from '@/utils/util';
+
+        export type FormDataModel = FormResultType<typeof clonedschema>
+        export type AllPath = GetAllPath<FormDataModel>;
+     
+      
