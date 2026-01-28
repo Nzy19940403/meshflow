@@ -10,12 +10,12 @@
 <script setup lang="ts">
 import { provide } from "vue";
 // import { Schema } from "@/devSchemaConfig/dev.form.Schema";
-import { Schema } from "@/devSchemaConfig/test.form.Schema";
+// import { Schema } from "@/devSchemaConfig/test.form.Schema";
 import { useEngineManager, useEngine } from "@/utils/hooks/useEngineManager";
 import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
 
-const maxCount = 3
+const maxCount = 100
 const generateHugeMesh = () => {
   const regions = ['a', 'b', 'c',  ]; // 5 个区域
   const nodesPerRegion = maxCount; // 每个区域 100 个节点
@@ -61,40 +61,39 @@ const generateHugeMesh = () => {
   return { type: 'group', name: 'mesh', children };
 };
 
-// const TransformSchema = (data:any)=>{
+const TransformSchema = (data:any)=>{
    
-//   let children = data.children[3].children;
+  let children = data.children[3].children;
  
-//   for(let i = 0;i<500;i++){
-//     let obj =  {
-//       type: 'checkbox', // UI 对应 Vuetify 的 v-checkbox 或 v-switch
-//       name: 'autoRenew'+i,
-//       label: '开启自动续费'+i,
-//       defaultValue: false, // 默认不开启
-//       disabled: i==0?false:true, 
-//       description: '暂不支持自动续费'
-//     }
-//     children.push(obj)
-//   }
-//   return data
-// }
+  for(let i = 0;i<500;i++){
+    let obj =  {
+      type: 'checkbox', // UI 对应 Vuetify 的 v-checkbox 或 v-switch
+      name: 'autoRenew'+i,
+      label: '开启自动续费'+i,
+      defaultValue: false, // 默认不开启
+      disabled: i==0?false:true, 
+      description: '暂不支持自动续费'
+    }
+    children.push(obj)
+  }
+  return data
+}
 
 let newdata = generateHugeMesh()
 // let newdata = TransformSchema(Schema);
-console.log(newdata)
-useEngineManager('main-engine',newdata, {
+// console.log(newdata)
+const engine = useEngineManager('main-engine',newdata, {
   signalCreateor: () => ref(0),
   signalTrigger(signal) {
     signal.value++;
   },
 });
-const engine = useEngine('main-engine');
+// const engine = useEngine('main-engine');
 
 console.log(engine.data.schema)
 
-
-
-for (let i = 1; i < maxCount; i++) {
+const setupfactoryformrule = ()=>{
+  for (let i = 1; i < maxCount; i++) {
   let triggerPath = `mesh.a${i}_val` as any;
   let targetPath =  `mesh.a${i+1}_val` as any;
   engine.config.SetRule(triggerPath, targetPath, 'defaultValue', {
@@ -111,9 +110,11 @@ for (let i = 2; i <= maxCount; i++) {
   engine.config.SetRules(parents, targetPath, 'defaultValue', {
     logic: ({slot}) => {
       const [trigger1, trigger2] = slot.triggerTargets
+     
+        // trigger1 是上一个 b 的值，trigger2 是对应 a 的值
+        return Number(trigger1) + (Number(trigger2) || 0);
    
-      // trigger1 是上一个 b 的值，trigger2 是对应 a 的值
-      return Number(trigger1) + (Number(trigger2) || 0);
+      
     }
   });
 }
@@ -129,7 +130,7 @@ for (let i = 1; i <= maxCount; i++) {
     logic:({slot}) => {
      
       const [bVal, aMirrorVal] = slot.triggerTargets;
-      if(target==='mesh.c3_val'){
+      if(target===`mesh.c${maxCount}_val`){
         console.log([bVal, aMirrorVal])
       }
        
@@ -141,6 +142,9 @@ for (let i = 1; i <= maxCount; i++) {
   });
 }
 engine.config.notifyAll();
+}
+setupfactoryformrule();
+
 //设置rule连线
 // setupBusinessRules(
 //   engine.config.SetRule,

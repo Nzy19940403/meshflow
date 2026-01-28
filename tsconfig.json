@@ -116,7 +116,8 @@
   },
   "include": [
     "src/**/*.ts", "src/**/*.vue","utils/**/*.ts","./shims-vue.d.ts","utils/**/*.ts",
-    "devSchemaConfig/**/*.ts"
+    "devSchemaConfig/**/*.ts","test/**/*.ts"
+    
  ],
   "exclude": ["node_modules"]
 }

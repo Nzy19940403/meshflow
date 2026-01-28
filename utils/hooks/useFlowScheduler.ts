@@ -25,7 +25,7 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
  
     let dependencyOrder:AllPath[][] = []
 
-    const {GetNextDependency,GetAllPrevDependency,GetAllNextDependency,rebuildDirectDependencyMaps} = useDependency(
+    const {GetNextDependency,GetPrevDependency,GetAllPrevDependency,GetAllNextDependency,rebuildDirectDependencyMaps} = useDependency(
         ()=>dependencyGraph,
         ()=>predecessorGraph,
         ()=>directParentDependencyGraph, //传入直接父路径map集合
@@ -50,6 +50,7 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
             GetDependencyOrder: ()=>dependencyOrder,
             GetAllNextDependency,
             GetNextDependency,
+            GetPrevDependency,
             GetAllPrevDependency
         },
         {

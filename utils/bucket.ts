@@ -16,13 +16,16 @@ type validatorItem = {
 
 export class StrategyStore {
 
+    private computedRules:any[] = [];
+
     private store: Record<DefaultStarategy, any> = {
         'OR': async (api: any, version: number) => {
             let res = undefined;
-            const list: any[] = this.getRules();
-            const allRules: any[] = Array.from(list.values()).map(item => Array.from(item)).flat();
+ 
 
             let baseValue: any = undefined;
+
+            const allRules = this.computedRules
 
             for (let rule of allRules) {
 
@@ -49,15 +52,13 @@ export class StrategyStore {
 
             return { res, version }
         },
-        'PRIORITY': (api: any, version: number) => {
+        'PRIORITY': async (api: any, version: number) => {
             let res = null;
-            const list: any[] = this.getRules();
- 
-            const allRules: any[] = Array.from(list.values()).map(item => Array.from(item)).flat<any>().sort((a, b) => b.priority - a.priority);
-              
+            const allRules = this.computedRules
+            
             for (const rule of allRules) {
 
-                const val = rule.logic(api);
+                const val = await rule.logic(api);
 
                 // 💡 核心：如果当前规则返回 undefined，表示它“弃权”，看下一个
                 if (val !== undefined) {
@@ -71,6 +72,8 @@ export class StrategyStore {
 
     private CurrentStrategy: Function = () => { }
 
+    private CurrentStrategyType:'PRIORITY'|'OR' = 'PRIORITY';
+
     private getRules: Function = () => { }
 
     // private getBaseRules: Function = () => { }
@@ -78,10 +81,22 @@ export class StrategyStore {
     constructor(getRule: Function) {
         this.getRules = getRule;
         this.CurrentStrategy = this.store.PRIORITY;
+        this.updateComputedRules()
+    }
+
+    updateComputedRules(){
+        const list: any[] = this.getRules();
+         
+        if(this.CurrentStrategyType==='PRIORITY'){
+            this.computedRules = Array.from(list.values()).map(item => Array.from(item)).flat<any>().sort((a, b) => b.priority - a.priority);
+        }else{
+            this.computedRules = Array.from(list.values()).map(item => Array.from(item)).flat();
+        }
     }
 
     setStrategy(type: DefaultStarategy) {
         this.CurrentStrategy = this.store[type];
+        this.updateComputedRules()
     }
 
     evaluate(api:any, currentVersion:number) {
@@ -177,6 +192,7 @@ export class SchemaBucket {
             this.rules.get(path)!.add(ruleEntity);
         };
 
+        this.strategy.updateComputedRules();
 
         //返回删除对应rule的方法
         return () => {
@@ -190,9 +206,11 @@ export class SchemaBucket {
                     // 极致优化：如果 Set 空了，释放内存
                     if (set.size === 0) {
                         this.rules.delete(path);
+                        this.deps.delete(path);
                     };
                 };
             };
+            this.strategy.updateComputedRules()
         };
     };
 
@@ -235,7 +253,7 @@ export class SchemaBucket {
             }
             this.rules.get(path)!.add(ruleEntity)
         };
-
+        this.strategy.updateComputedRules();
         //返回删除对应rule的方法
         return () => {
 
@@ -248,17 +266,26 @@ export class SchemaBucket {
                     // 极致优化：如果 Set 空了，释放内存
                     if (set.size === 0) {
                         this.rules.delete(path);
+                        this.deps.delete(path);
                     };
                 };
             };
+            this.strategy.updateComputedRules()
         };
 
     };
-    deleteRule(witnessId: string) {
-        this.rules.delete(witnessId);
-    };
+    // deleteRule(witnessId: string) {
+    //     this.rules.delete(witnessId);
+    //     this.strategy.updateComputedRules();
+    // };
 
     async evaluate(api: any) {
+         
+        let isSameToken = api.isSameToken();
+     
+        if (this.pendingPromise && isSameToken) {
+            return this.pendingPromise;
+        }
        
         this.pendingPromise = (async () => {
             try {
@@ -267,9 +294,7 @@ export class SchemaBucket {
                 const currentVersion = ++this.version;
 
                 let shouldSkipCalculate = false;
-                // if(api.triggerPath=='cloudConsole.billing.autoRenew1'){
-                //     debugger
-                // }
+   
                 //当不是从notifyAll触发的时候
                 if(typeof api.triggerPath === 'string'){
                     shouldSkipCalculate = true;
@@ -291,13 +316,11 @@ export class SchemaBucket {
                     }
                   
                 } 
-                shouldSkipCalculate = false;
+           
                 if(shouldSkipCalculate){
                     return this.cache
                 }
-                // if(api.triggerPath='mesh.a1_val'){
-                //     debugger
-                // }
+         
                 
                 //命中自己订阅的key值，它变更的时候需要重新计算
                 let { res, version } = await this.strategy.evaluate(api, currentVersion);

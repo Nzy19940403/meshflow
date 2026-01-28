@@ -118,11 +118,12 @@ export type FormResultType<T> = T extends any
 /*----------------------------------------------------------------------------------------------------*/
 export function useForm<T>(
   schema: FormFieldSchema,
-  dependency:{
-    GetDependencyOrder: () => AllPath[][],
-    GetAllNextDependency: (path: AllPath) => AllPath[],
-    GetNextDependency: (path: AllPath) => AllPath[],
-    GetAllPrevDependency: (path: AllPath) => AllPath[]
+  dependency: {
+    GetDependencyOrder: () => AllPath[][];
+    GetAllNextDependency: (path: AllPath) => AllPath[];
+    GetNextDependency: (path: AllPath) => AllPath[];
+    GetPrevDependency: (path: AllPath) => AllPath[];
+    GetAllPrevDependency: (path: AllPath) => AllPath[];
   },
   // getDependencyOrder: () => AllPath[][],
   // GetNextDependency: (path: AllPath[]) => AllPath[],
@@ -152,7 +153,7 @@ export function useForm<T>(
   let isPending = false;
   const flushPathSet = new Set<string>();
 
-  const currentExecutionToken:Map<string,symbol> = new Map();
+  const currentExecutionToken: Map<string, symbol> = new Map();
 
   const GetRenderSchemaByPath = (path: string) => {
     const uid = PathToUid.get(path) as number;
@@ -309,6 +310,7 @@ export function useForm<T>(
             GetRenderSchemaByPath,
             GetValueByPath: (p: string) =>
               GetRenderSchemaByPath(p).defaultValue,
+            isSameToken: () => false,
           });
 
           if (bucketName === "options") {
@@ -371,98 +373,189 @@ export function useForm<T>(
 
     trace.popExecution([path], true);
   };
+  function isReachable(
+    trigger: AllPath,
+    target: AllPath,
+    knownAffected: Set<AllPath>
+  ): boolean {
+    if (trigger === target || knownAffected.has(target)) return true;
 
+    const visited = new Set<AllPath>();
+    const stack = [target]; // 向上溯源用栈(DFS)或队列(BFS)都可以
+
+    while (stack.length > 0) {
+      const curr = stack.pop()!;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+
+      const parents = dependency.GetPrevDependency(curr);
+
+      for (const p of parents) {
+        // 核心优化点：剪枝
+        // 只要任何一个父节点在已知战区，或者就是触发点，直接断定
+        if (p === trigger || knownAffected.has(p)) {
+          return true;
+        }
+
+        if (!visited.has(p)) {
+          stack.push(p);
+        }
+      }
+    }
+
+    return false;
+  }
   async function runNotifyTask(initialNodes: AllPath[], triggerPath: AllPath) {
     const curToken = Symbol("token");
-    currentExecutionToken.set(triggerPath,curToken)
- 
-
+    currentExecutionToken.set(triggerPath, curToken);
 
     const processed = new Set<AllPath>();
     const processingSet = new Set<AllPath>();
-    const AllAffectedPaths = new Set<AllPath>(dependency.GetAllNextDependency(triggerPath));
-
+    const AllAffectedPaths = new Set<AllPath>(
+      dependency.GetAllNextDependency(triggerPath)
+    );
+    processed.add(triggerPath);
     //账本，记录一下在queue排队等待的path,优化一下查询速度
     const queueCountMap = new Map<AllPath, number>();
 
-    const stagingArea = new Map<AllPath,number>();
+    //悲观队列，如果一个path的直接上游并没有被纳入计算但是这个path本身已经被影响，之前是乐观的直接计算，但是由于镜像依赖问题，
+    //导致计算会拿到过期的数据，新数据更新之后没法继续更新了，所以加入悲观队列先挂起，最后再入队
+    const stagingArea = new Map<AllPath, number>();
 
     let lastYieldTime = performance.now();
- 
-    const queue: Array<{ target: AllPath; trigger: AllPath }> = Array.from(AllAffectedPaths).map((p) => {
+
+    const queue: Array<{
+      target: AllPath;
+      trigger: AllPath;
+      isReleased: boolean;
+    }> = Array.from(initialNodes).map((p) => {
       queueCountMap.set(p, (queueCountMap.get(p) || 0) + 1); // 记账
       return {
         target: p,
         trigger: triggerPath,
-      }
+        isReleased: false,
+      };
     });
-    trace.pushExecution([...Array.from(AllAffectedPaths),triggerPath],true);
-   
+    trace.pushExecution([...Array.from(initialNodes), triggerPath], true);
+
     // 打印任务启动
-    console.log(`%c 🚀 任务启动 | Trigger: ${triggerPath} | Token: ${curToken.description}`, "color: #67c23a; font-weight: bold;");
-    while (queue.length) {
+    console.log(
+      `%c 🚀 任务启动 | Trigger: ${triggerPath} | Token: ${curToken.description}`,
+      "color: #67c23a; font-weight: bold;"
+    );
+    while (queue.length || stagingArea.size > 0) {
       if (currentExecutionToken.get(triggerPath) !== curToken) return;
 
-      if(queue.length===0){
-        await new Promise(r => requestAnimationFrame(r));
+      if (queue.length === 0 && stagingArea.size > 0) {
+        console.log(
+          `%c 🔓 [全量释放] 暂存区节点已无更新动力，强制回填执行`,
+          "color: #9c27b0;"
+        );
+        for (const [path] of stagingArea) {
+          // 标记这个任务是“赦免”归来的
+          queue.push({
+            target: path,
+            trigger: triggerPath,
+            isReleased: true,
+          } as any);
+          queueCountMap.set(path, 1);
+        }
+        stagingArea.clear(); // 彻底清空，防止死循环
         continue;
       }
+
       const task = queue.shift()!;
       const { target: targetPath, trigger: currentTriggerPath } = task;
       const currentCount = queueCountMap.get(targetPath) || 0;
       if (currentCount <= 1) {
         queueCountMap.delete(targetPath);
-      }else{
+      } else {
         queueCountMap.set(targetPath, currentCount - 1);
       }
-      
+
       const parents = dependency.GetAllPrevDependency(targetPath);
       // 打印当前出队节点
-      console.log(`%c 📦 出队检查: ${targetPath} (来自: ${currentTriggerPath})`, "color: #409eff;");
+      console.log(
+        `%c 📦 出队检查: ${targetPath} (来自: ${currentTriggerPath})`,
+        "color: #409eff;"
+      );
 
-      
-      const isAnyParentNotReady = parents.some(p => {
+      const directParents = dependency.GetPrevDependency(targetPath);
+      // 【第一步：移交判定】
+      // 如果我发现我有父节点在“视界之外”（在名单里但没进队列），我立刻移交悲观区
+      const isUncertain = directParents.some((p) => {
+ 
+        if (processed.has(p)) return false; // 已完成，安全
+        if (queueCountMap.has(p) || processingSet.has(p)) return false; // 正在动，不属于不确定
+
+        if (task.isReleased) {
+          return false;
+        }
+
+        // 关键：如果父节点 p 在本次触发的影响范围内，但现在还没进队列
+        // 说明信号还没传导到 p，那么我现在 (targetPath) 就是抢跑！
+        if (
+          AllAffectedPaths.has(p) ||
+          isReachable(triggerPath, p, AllAffectedPaths)
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      if (isUncertain) {
+        console.log(
+          `%c 📥 [移交暂存] ${targetPath} 依赖的 ${directParents
+            .filter((p) => !processed.has(p))
+            .join(",")} 尚未入队，移交悲观区`,
+          "color: #e91e63;"
+        );
+        stagingArea.set(targetPath, 1);
+        // 注意：这里不需要 push 回 queue，直接 continue，它就在 queue 中消失了，只存在于 stagingArea
+        continue;
+      }
+
+      const isAnyParentNotReady = parents.some((p) => {
         // 如果父节点已处理，Ready
         if (processed.has(p)) return false;
 
         const isPending = queueCountMap.has(p) || processingSet.has(p);
         if (isPending) return true;
 
-        if (AllAffectedPaths.has(p)) return true;
-
         return false;
       });
-  
-        if (isAnyParentNotReady) {
-          queue.push(task);
-          queueCountMap.set(targetPath, (queueCountMap.get(targetPath) || 0) + 1);
-          console.log(
-            `%c ⏳ [拓扑挂起] ${targetPath} 还不能执行。`, 
-            "color: #e6a23c; background: #fffbe6;"
-          );
-          // 这里的切片是为了给那些正在 processing 的父节点腾出 Promise resolve 的机会
-          await new Promise(r => setTimeout(r, 0)); 
-          continue;
-        }
- 
-          if (processed.has(targetPath)) {
-          console.log(`%c ⏭️ 跳过已处理: ${targetPath}`, "color: #909399; font-style: italic;");
-          // 因为这个节点在被 push 进队列时，trace 已经认为它要执行了
-          // 如果跳过它，必须在这里手动把它 pop 掉，否则计数永远不会归零
-          trace.popExecution([targetPath]);
-          continue;
-        }
 
-      
+      if (isAnyParentNotReady) {
+        queue.push(task);
+        queueCountMap.set(targetPath, (queueCountMap.get(targetPath) || 0) + 1);
+        console.log(
+          `%c ⏳ [拓扑挂起] ${targetPath} 还不能执行。`,
+          "color: #e6a23c; background: #fffbe6;"
+        );
+        // 这里的切片是为了给那些正在 processing 的父节点腾出 Promise resolve 的机会
+        await new Promise((r) => setTimeout(r, 0));
+        continue;
+      }
+
+      if (processed.has(targetPath)) {
+        console.log(
+          `%c ⏭️ 跳过已处理: ${targetPath}`,
+          "color: #909399; font-style: italic;"
+        );
+        // 因为这个节点在被 push 进队列时，trace 已经认为它要执行了
+        // 如果跳过它，必须在这里手动把它 pop 掉，否则计数永远不会归零
+        trace.popExecution([targetPath]);
+        continue;
+      }
+
       processingSet.add(targetPath);
       const targetSchema = GetRenderSchemaByPath(targetPath) as any;
 
       let hasValueChanged = false;
       let notifyNext = false;
       try {
-     
         console.log(`%c ✅ 计算完成: ${targetPath}`, "color: #67c23a;");
-       
+
         for (let bucketName in targetSchema.nodeBucket) {
           const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket;
 
@@ -473,6 +566,8 @@ export function useForm<T>(
             GetRenderSchemaByPath,
             GetValueByPath: (p: string) =>
               GetRenderSchemaByPath(p).defaultValue,
+            isSameToken: () =>
+              currentExecutionToken.get(triggerPath) === curToken,
           });
           processed.add(targetPath);
           processingSet.delete(targetPath);
@@ -493,10 +588,9 @@ export function useForm<T>(
             hasValueChanged = true;
           }
 
-          if(bucket.isForceNotify()){
+          if (bucket.isForceNotify()) {
             notifyNext = true;
           }
-
         }
         // --- 原 notifyChild 核心逻辑结束 ---
       } catch (err) {
@@ -504,44 +598,58 @@ export function useForm<T>(
       } finally {
         trace.popExecution([targetPath]);
       }
-      
- 
+
       // 如果值变了，标记需要刷新 UI
       if (hasValueChanged) {
         flushPathSet.add(targetPath);
       }
-      //这里看value有没有被change，如果没有被change又没有强制notify就步把nextorder推入依赖
 
-      if(hasValueChanged||notifyNext){
-        const nextOrder = dependency.GetNextDependency(targetPath);
+      const directChildren = dependency.GetNextDependency(targetPath);
+      // 1. 如果值变了，扩充疆域（这是为了让更深层的节点能正确进入暂存区）
+      if (hasValueChanged || notifyNext) {
         const allNextOrder = dependency.GetAllNextDependency(targetPath);
+        allNextOrder.forEach((p) => AllAffectedPaths.add(p));
+      }
 
-        allNextOrder.forEach((path)=>{
-          AllAffectedPaths.add(path); // 扩充总疆域
-        })
+      for (const childPath of directChildren) {
+        // 1. 如果已经【真正】处理完了（即在父节点之后处理的），跳过
+        if (processed.has(childPath)) continue;
 
-        // 将下一层推入队列
-        if (nextOrder.length > 0) {
-          // const filteredNextOrder = nextOrder.filter(path=>!processed.has(path));
-          // 只有确定有下游要处理时，才 push 追踪
-          // trace.pushExecution(nextOrder);
-        
-      
-          for (let nextPath of nextOrder) {
-            if (!processed.has(nextPath) && !queueCountMap.has(nextPath)) {
-              queue.push({ target: nextPath, trigger: targetPath });
-              
-              // 更新账本和追踪
-              queueCountMap.set(nextPath, (queueCountMap.get(nextPath) || 0) + 1);
-              trace.pushExecution([nextPath]);
-            }
-             
+        const isInStaging = stagingArea.has(childPath);
+        const isInQueue =
+          queueCountMap.has(childPath) || processingSet.has(childPath);
+
+        // --- 核心修正逻辑 ---
+        // 只要它在受影响名单里 (AllAffectedPaths.has) 且目前它是“失踪”状态 (!isInQueue)
+        // 无论我值变没变，我都要把它捞回来，给它一次重新判定的机会。
+
+        const needToRescue =
+          (AllAffectedPaths.has(childPath) || isInStaging) && !isInQueue;
+
+        if (hasValueChanged || notifyNext || needToRescue) {
+          // 从暂存区捞出来
+          if (isInStaging) stagingArea.delete(childPath);
+
+          // 入队保底
+          if (!isInQueue) {
+            queue.push({
+              target: childPath,
+              trigger: targetPath,
+              isReleased: false,
+            });
+            queueCountMap.set(
+              childPath,
+              (queueCountMap.get(childPath) || 0) + 1
+            );
+            trace.pushExecution([childPath]);
+
+            console.log(
+              `%c ♻️ 信号找回: ${targetPath} 算完了，把失踪的下游 ${childPath} 抓回队列`,
+              "color: #9c27b0;"
+            );
           }
         }
       }
-
-      
-
       // --- 核心优化：时间片切片 ---
       // 每 16ms 让出主线程，防止阻塞渲染
       if (performance.now() - lastYieldTime > 16) {
@@ -555,7 +663,7 @@ export function useForm<T>(
       }
     }
   }
-/*============================================================================================================*/ 
+  /*============================================================================================================*/
   const updateInputValueRuleManually = (path: string) => {
     if (!path) {
       throw Error("没有路径");
@@ -632,8 +740,8 @@ export function useForm<T>(
       ...data,
       disabled: !!data.disabled,
       hidden: "hidden" in data ? data.hidden : false,
-      readonly:'readonly' in data?data.readonly:false,
-      required:'required' in data?data.required:false,
+      readonly: "readonly" in data ? data.readonly : false,
+      required: "required" in data ? data.required : false,
       path: currentPath,
       dirtySignal,
       uid: _uid,

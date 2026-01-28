@@ -30,39 +30,22 @@ type Engine<T> = {
 
 const engineMap = new Map<string|symbol,Engine<SchedulerInstance>>()
 
-const useEngineManager = async <T>(id:string|symbol,Schema:any, UITrigger:{
+const useEngineManager = <T>(id:string|symbol,Schema:any, UITrigger:{
   signalCreateor:()=>T,
   signalTrigger:(signal:T)=>void
 }) => {
-  if(typeof UITrigger.signalCreateor !== 'function' || typeof UITrigger.signalTrigger !== 'function'){
-    throw Error('需要定义signal来通知ui')
-  }
-
-  if(engineMap.has(id)){
-    throw Error('engineID重复，修改id或者使用symbol');
-  }
-
-  const {
-    schema,
-    GetFormData,
-    SetRule,
-    SetRules,
-    SetStrategy,
-    SetValidators,
+  try{
+    if(typeof UITrigger.signalCreateor !== 'function' || typeof UITrigger.signalTrigger !== 'function'){
+      throw Error('需要定义signal来通知ui')
+    }
   
-    notifyAll,
-    SetTrace,
-    GetAllDependency,
-    GetDependencyOrder,
-    AddNewSchema,
-    Undo,
-    Redo,
-    initCanUndo,
-    initCanRedo,
-  } = useFlowScheduler<T>(Schema,UITrigger);
-
-  let engine:Engine<SchedulerInstance> = {
-    config: {
+    if(engineMap.has(id)){
+      throw Error('engineID重复，修改id或者使用symbol');
+    }
+  
+    const {
+      schema,
+      GetFormData,
       SetRule,
       SetRules,
       SetStrategy,
@@ -70,25 +53,48 @@ const useEngineManager = async <T>(id:string|symbol,Schema:any, UITrigger:{
     
       notifyAll,
       SetTrace,
-    },
-    data: {
-      schema,
-      GetFormData,
+      GetAllDependency,
+      GetDependencyOrder,
       AddNewSchema,
-    },
-    history: {
       Undo,
       Redo,
       initCanUndo,
       initCanRedo,
-    },
-    dependency:{
-        GetAllDependency,
-        GetDependencyOrder
-    }
-  };
-
-  engineMap.set(id,engine);
+    } = useFlowScheduler<T>(Schema,UITrigger);
+  
+    let engine:Engine<SchedulerInstance> = {
+      config: {
+        SetRule,
+        SetRules,
+        SetStrategy,
+        SetValidators,
+      
+        notifyAll,
+        SetTrace,
+      },
+      data: {
+        schema,
+        GetFormData,
+        AddNewSchema,
+      },
+      history: {
+        Undo,
+        Redo,
+        initCanUndo,
+        initCanRedo,
+      },
+      dependency:{
+          GetAllDependency,
+          GetDependencyOrder
+      }
+    };
+  
+    engineMap.set(id,engine);
+    return engine;
+  }catch(error:any){
+    throw Error(error)
+  }
+  
 };
 
 const useEngine = (id:string|symbol) => {
