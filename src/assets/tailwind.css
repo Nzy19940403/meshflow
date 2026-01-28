@@ -1,0 +1,7 @@
+/* @layer tailwind, primevue, vuetify;  */
+
+@config "../../tailwind.config.js";
+@import "tailwindcss";
+
+
+ 

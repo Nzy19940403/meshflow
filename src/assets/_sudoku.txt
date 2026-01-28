@@ -1,0 +1,1231 @@
+<template>
+  <div class="dashboard-wrapper">
+    <div class="control-panel">
+      <div class="mode-selector">
+        <div class="selector-label">解题策略：</div>
+        <div class="radio-group">
+          <label :class="['radio-item', { active: layoutMode === 'oscillation' }]">
+            <input type="radio" v-model="layoutMode" value="oscillation" />
+            <span class="radio-dot"></span>
+            <span class="text">约束坍缩 (Constraint Collapse)</span>
+          </label>
+        </div>
+      </div>
+      <div class="controls">
+
+        <button class="reset-btn" @click="reset">
+          <span class="icon">↻</span> 清空棋盘
+        </button>
+      </div>
+    </div>
+
+    <div class="playground" @click="selectedCell = null">
+      <div class="playground-canvas" style="display: flex; justify-content: center; padding-top: 60px">
+        <div class="sudoku-board">
+          <div
+            v-for="cell in CellArray"
+            :key="cell.path"
+            class="cell"
+            @click.stop="handleCellClick(cell)"
+            :class="{
+              'has-value': cell.value !== null,
+              'border-r': cell.col % 3 === 2 && cell.col !== 8,
+              'border-b': cell.row % 3 === 2 && cell.row !== 8,
+              'is-selected': selectedCell?.path === cell.path
+            }"
+            :style="{
+              '--trigger': cell.dirtySignal.value,
+              position: 'absolute',
+              top: '0px',
+              left: '0px',
+              width: '56px',
+              height: '56px',
+              transform: `translate(${cell.col * 58}px, ${cell.row * 58}px)`,
+              transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            }"
+          >
+            <div v-if="cell.value !== null" class="final-value">
+              {{ cell.value }}
+            </div>
+            <div v-else class="candidates-grid" :style="{ opacity: cell.candidates.length < 9 ? 1 : 0.1 }">
+              <span v-for="n in 9" :key="n" :class="['c-num', { hidden: !cell.candidates.includes(n) }]">
+                {{ n }}
+              </span>
+            </div>
+          </div>
+
+          <div
+            v-if="selectedCell"
+            class="editor-popover"
+            @click.stop
+            :style="{
+              left: selectedCell.col > 4 ? (selectedCell.col * 58 - 140) + 'px' : (selectedCell.col * 58 + 65) + 'px',
+              top: (selectedCell.row * 58 - 10) + 'px'
+            }"
+          >
+            <div class="popover-title">干预 [行{{selectedCell.row + 1}}列{{selectedCell.col + 1}}]</div>
+            <div class="popover-input-group">
+              <input
+                ref="inputRef"
+                type="number"
+                min="0" max="9"
+                v-model.number="editInputValue"
+                @keyup.enter="applyEdit"
+                placeholder="0-9"
+              />
+              <button class="btn-confirm" @click="applyEdit">注入</button>
+            </div>
+            <div class="popover-hint">输入 1-9 修改，输入 0 清空</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, ref, onUnmounted, nextTick } from "vue";
+import { useMeshFlow, deleteEngine } from "@/utils/core/engine/useEngineManager";
+import { useSudokuLayout } from "../formRules/useSudokuLayout";
+import { useLogger } from "@meshflow/logger";
+
+
+const layoutMode = ref("oscillation");
+
+const selectedCell = ref<any>(null);
+const editInputValue = ref<number | "">("");
+const inputRef = ref<HTMLInputElement | null>(null);
+
+const handleCellClick = async (cell: any) => {
+  selectedCell.value = cell;
+  editInputValue.value = cell.value !== null ? cell.value : "";
+  await nextTick();
+  if (inputRef.value) inputRef.value.focus();
+};
+
+const applyEdit = () => {
+  if (!selectedCell.value) return;
+  const path = selectedCell.value.path;
+  const val = editInputValue.value;
+
+  if (val === 0 || val === "") {
+    engine.data.SetValues([
+      { path, key: "value", value: null },
+      { path, key: "isGiven", value: false }
+    ]);
+  } else if (typeof val === "number" && val >= 1 && val <= 9) {
+    engine.data.SetValues([
+      { path, key: "value", value: val },
+      { path, key: "isGiven", value: true } // 🌟 用户填的值保护起来
+    ]);
+  }
+
+  selectedCell.value = null;
+};
+
+const { data, useSudokuModule } = useSudokuLayout();
+const engine = useMeshFlow("sudoku_engine", data, {
+  UITrigger: {
+    signalCreator: () => ref(0),
+    signalTrigger: (signal) => signal.value++,
+  },
+  config: { useGreedy: true },
+  modules: {   useSudokuModule  },
+});
+
+const cancel = useLogger();
+//   engine.config.usePlugin(cancel);
+
+const { CellArray, judgementNode } = engine.modules.sudokuModule;
+
+// const setupSudokuEntangle = () => {
+//   CellArray.forEach((cell) => {
+//     const myNeighbors = CellArray.filter(
+//       (c) => c.path !== cell.path && (c.row === cell.row || c.col === cell.col || c.box === cell.box)
+//     );
+
+//     // =================================================================
+//     // 🌟 法则 1：邻居填值时通知我更新forbidden
+//     // =================================================================
+//     myNeighbors.forEach((neighbor) => {
+//       engine.config.useEntangle({
+//         observer: neighbor.path,
+//         target: cell.path,
+//         triggerKeys: ["value"],
+//         filter: (obs, tgt) => tgt.value === null,
+//         emit: async (obs, tgt) => {
+//           await new Promise<void>((resolve) => setTimeout(resolve, 200));
+//           if (obs.value !== null) {
+//             return {
+//               key: "forbidden",
+//               patch: (old: Record<number, number>) => ({
+//                 ...old,
+//                 [obs.value]: (old[obs.value] || 0) + 1
+//               })
+//             };
+//           }
+//           // 邻居清空了，让法官来重算forbidden
+//         }
+//       });
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 2：根据forbidden更新candidates
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: cell.path,
+//       target: cell.path,
+//       triggerKeys: ["forbidden"],
+//       filter: (obs, tgt) => tgt.value === null,
+//       emit: (obs, tgt) => {
+//         if (!obs.forbidden) return;
+//         const validCands = [1,2,3,4,5,6,7,8,9].filter(
+//           v => !obs.forbidden[v] || obs.forbidden[v] === 0
+//         );
+//         if (tgt.candidates.join() !== validCands.join()) {
+//           return { key: "candidates", value: validCands };
+//         }
+//       }
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 3：冲突检测
+//     // forbidden里有我自己的值，说明邻居已有此值，撤回
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: cell.path,
+//       target: cell.path,
+//       triggerKeys: ["forbidden"],
+//       filter: (obs, tgt) => {
+//         if (tgt.value === null) return false;
+//         if (!obs.forbidden) return false;
+//         return (obs.forbidden[tgt.value] || 0) > 0;
+//       },
+//       emit: async (obs, tgt) => {
+//         await new Promise<void>((resolve) => setTimeout(resolve, 200));
+//         console.log(`⚖️ 冲突撤回: ${tgt.path} value:${tgt.value}`);
+//         return { key: "value", value: null };
+//       }
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 4：格子发现forbidden异常，向法官求援
+//     // 计数>1说明多个邻居占用同一个值（异常）
+//     // 计数变化说明需要法官重新裁决
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: cell.path,
+//       target: judgementNode.path,
+//       triggerKeys: ["forbidden"],
+//       filter: (obs, tgt) => {
+//         if (!obs.forbidden) return false;
+//         // 有任何计数>1，说明有冲突需要法官介入
+//         const hasConflict = Object.values(obs.forbidden).some(
+//           (count: any) => count > 1
+//         );
+//         // candidates为空，说明所有数都被封锁了，需要法官帮忙
+//         const validCands = [1,2,3,4,5,6,7,8,9].filter(
+//           v => !obs.forbidden[v] || obs.forbidden[v] === 0
+//         );
+//         const isBlocked = validCands.length === 0 && obs.value === null;
+//         return hasConflict || isBlocked;
+//       },
+//       emit: (obs, tgt) => {
+//         // 向法官上报自己的异常状态
+//         return {
+//           key: "cellMap",
+//           op: "merge",
+//           delta: {
+//             [obs.path]: {
+//               path: obs.path,
+//               row: obs.row,
+//               col: obs.col,
+//               box: obs.box,
+//               value: obs.value,
+//               forbidden: { ...obs.forbidden },
+//               needsHelp: true  // 标记需要法官介入
+//             }
+//           }
+//         };
+//       }
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 5：正常上报法官（forbidden或value变化时）
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: cell.path,
+//       target: judgementNode.path,
+//       triggerKeys: ["forbidden", "value"],
+//       emit: (obs, tgt) => {
+//         return {
+//           key: "cellMap",
+//           op: "merge",
+//           delta: {
+//             [obs.path]: {
+//               path: obs.path,
+//               row: obs.row,
+//               col: obs.col,
+//               box: obs.box,
+//               value: obs.value,
+//               forbidden: { ...obs.forbidden },
+//               needsHelp: false
+//             }
+//           }
+//         };
+//       }
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 6：必然坍缩 (Naked Single)
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: cell.path,
+//       target: cell.path,
+//       triggerKeys: ["candidates"],
+//       filter: (obs, tgt) => tgt.value === null && obs.candidates.length === 1,
+//       emit: async (obs, tgt) => {
+//         await new Promise<void>((resolve) => setTimeout(resolve, 200));
+//         return { key: "value", value: obs.candidates[0] };
+//       },
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 7：法官校准forbidden
+//     // 邻居清空时格子不知道旧值，法官重算确保正确
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: judgementNode.path,
+//       target: cell.path,
+//       triggerKeys: ["cellMap"],
+//       filter: (obs, tgt) => tgt.value === null,
+//       emit: (obs, tgt) => {
+//         if (!obs.cellMap) return;
+
+//         const counts: Record<number, number> = {};
+//         Object.values(obs.cellMap).forEach((c: any) => {
+//           if (c.path === tgt.path) return;
+//           const isNeighbor = (
+//             c.row === tgt.row ||
+//             c.col === tgt.col ||
+//             c.box === tgt.box
+//           );
+//           if (isNeighbor && c.value !== null) {
+//             counts[c.value] = (counts[c.value] || 0) + 1;
+//           }
+//         });
+
+//         if (JSON.stringify(tgt.forbidden) !== JSON.stringify(counts)) {
+//           return { key: "forbidden", value: counts };
+//         }
+//       }
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 8：法官计算globalDistribution
+//     // 从forbidden反推candidates，比从cellMap读candidates更及时
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: judgementNode.path,
+//       target: judgementNode.path,
+//       triggerKeys: ["cellMap"],
+//       emit: (obs) => {
+//         const dist: Record<string, any[]> = {};
+//         const uniqueDist: Record<string, string> = {};
+//         const pointingPairs: any[] = [];
+
+//         Object.values(obs.cellMap).forEach((c: any) => {
+//           if (c.value !== null) return;
+//           // 从forbidden反推candidates
+//           const forbidden = c.forbidden || {};
+//           const candidates = [1,2,3,4,5,6,7,8,9].filter(
+//             num => !forbidden[num] || forbidden[num] === 0
+//           );
+
+//           candidates.forEach((num: number) => {
+//             [`row_${c.row}_num_${num}`, `col_${c.col}_num_${num}`, `box_${c.box}_num_${num}`].forEach(k => {
+//               if (!dist[k]) dist[k] = [];
+//               dist[k].push(c);
+//             });
+//           });
+//         });
+
+//         Object.entries(dist).forEach(([k, cells]) => {
+//           if (cells.length === 1) uniqueDist[k] = cells[0].path;
+//         });
+
+//         for (let b = 0; b < 9; b++) {
+//           for (let num = 1; num <= 9; num++) {
+//             const cells = dist[`box_${b}_num_${num}`];
+//             if (cells && cells.length > 1 && cells.length <= 3) {
+//               const rows = new Set(cells.map((c: any) => c.row));
+//               if (rows.size === 1) pointingPairs.push({ type: "row", index: Array.from(rows)[0], num, excludeBox: b });
+//               const cols = new Set(cells.map((c: any) => c.col));
+//               if (cols.size === 1) pointingPairs.push({ type: "col", index: Array.from(cols)[0], num, excludeBox: b });
+//             }
+//           }
+//         }
+
+//         return {
+//           key: "globalDistribution",
+//           value: { unique: uniqueDist, pointing: pointingPairs, cellMap: obs.cellMap }
+//         };
+//       }
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 9：法官初级裁决 (Hidden Single)
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: judgementNode.path,
+//       target: cell.path,
+//       triggerKeys: ["globalDistribution"],
+//       filter: (obs, tgt) => tgt.value === null,
+//       emit: (obs, tgt) => {
+//         const { unique, cellMap } = obs.globalDistribution;
+//         if (!unique || !cellMap) return;
+
+//         for (let num = 1; num <= 9; num++) {
+//           if (
+//             unique[`row_${tgt.row}_num_${num}`] === tgt.path ||
+//             unique[`col_${tgt.col}_num_${num}`] === tgt.path ||
+//             unique[`box_${tgt.box}_num_${num}`] === tgt.path
+//           ) {
+//             if (!tgt.candidates.includes(num)) continue;
+
+//             // forbidden实时校验
+//             if (tgt.forbidden && (tgt.forbidden[num] || 0) > 0) {
+//               console.warn(`⚠️ [拦截误判] ${tgt.path} 填 ${num} forbidden里已有`);
+//               continue;
+//             }
+
+//             const isPhysicallyValid = Object.values(cellMap).every((otherCell: any) => {
+//               if (otherCell.path === tgt.path) return true;
+//               const isNeighbor = (
+//                 otherCell.row === tgt.row ||
+//                 otherCell.col === tgt.col ||
+//                 otherCell.box === tgt.box
+//               );
+//               if (isNeighbor && otherCell.value === num) return false;
+//               return true;
+//             });
+
+//             if (isPhysicallyValid) {
+//               console.log(`👨‍⚖️ [合规裁决] ${tgt.path} -> ${num}`);
+//               return { key: "value", value: num };
+//             } else {
+//               console.warn(`⚠️ [拦截误判] ${tgt.path} 填 ${num} 被否决`);
+//             }
+//           }
+//         }
+//       },
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 10：法官高级裁决 (Pointing Pairs)
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: judgementNode.path,
+//       target: cell.path,
+//       triggerKeys: ["globalDistribution"],
+//       filter: (obs, tgt) => tgt.value === null,
+//       emit: (obs, tgt) => {
+//         const { pointing } = obs.globalDistribution;
+//         if (!pointing) return;
+
+//         let newCands = [...tgt.candidates];
+//         let changed = false;
+
+//         pointing.forEach((rule: any) => {
+//           if (
+//             ((rule.type === "row" && tgt.row === rule.index) ||
+//               (rule.type === "col" && tgt.col === rule.index)) &&
+//             tgt.box !== rule.excludeBox &&
+//             newCands.includes(rule.num)
+//           ) {
+//             newCands = newCands.filter((c) => c !== rule.num);
+//             changed = true;
+//           }
+//         });
+
+//         if (changed) {
+//           return { key: "candidates", value: newCands };
+//         }
+//       },
+//     });
+//   });
+// };
+
+
+
+
+// const setupSudokuEntangle = () => {
+//   CellArray.forEach((cell) => {
+//     const myNeighbors = CellArray.filter(
+//       (c) => c.path !== cell.path && (c.row === cell.row || c.col === cell.col || c.box === cell.box)
+//     );
+
+ 
+ 
+// myNeighbors.forEach((neighbor) => {
+//   engine.config.useEntangle({
+//     observer: neighbor.path,
+//     target: cell.path,
+//     triggerKeys: ["value"],
+//     // 💡 只有当目标格子是“活的”（没被填色）或者“正要打架”时才处理
+//     filter: (obs, tgt) => tgt.value === null || obs.value === tgt.value,
+//     emit: async(obs, tgt) => {
+//       await new Promise<void>((resolve) => setTimeout(resolve, 200));
+//       // --- 逻辑 A：处理物理冲突 (原 Law 2) ---
+//       if (tgt.value !== null && obs.value === tgt.value) {
+//         const myIdx = parseInt(tgt.path.split('_')[1]);
+//         const obsIdx = parseInt(obs.path.split('_')[1]);
+//         if (obsIdx < myIdx) {
+//           console.log(`⚖️ 冲突撤回: ${tgt.path}`);
+//           return { key: "value", value: null, };
+//         }
+//       }
+
+//       // --- 逻辑 B：更新候选数 (原 Law 1) ---
+//       if (tgt.value === null) {
+//         // 关键：不看 obs.value，直接扫描全场 neighbors 的物理内存
+//         // 这就是 Hack 做法稳的原因：它永远读到的是当前最真实的实相
+//         const forbidden = myNeighbors.map(n => n.value).filter(v => v !== null);
+//         const validCands = [1,2,3,4,5,6,7,8,9].filter(v => !forbidden.includes(v));
+
+//         // 幂等检查：只有真理变了才同步
+//         if (tgt.candidates.join() !== validCands.join()) {
+//           return { key: "candidates", value: validCands };
+//         }
+//       }
+//     }
+//   });
+// });
+ 
+ 
+//     // =================================================================
+//     // 🌟 法则 3：必然坍缩 (Naked Single)
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: cell.path,
+//       target: cell.path,
+//       triggerKeys: ["candidates"],
+//       filter: (obs, tgt) => tgt.value === null && obs.candidates.length === 1,
+//       emit: async(obs, tgt) => {
+//         await new Promise<void>((resolve) => setTimeout(resolve, 200));
+//         return { key: "value", value: obs.candidates[0] };
+//       },
+//     });
+
+//     // =================================================================
+//     // 🌟 法则 4：法官的全局视野 (Fan-In)
+//     // =================================================================
+ 
+
+//     engine.config.useEntangle({
+//   observer: cell.path,
+//   target: judgementNode.path,
+//   triggerKeys: ["candidates", "value"],
+//   emit: (obs, tgt) => {
+    
+//     // 💡 格子直接向法官发送一个 patch 预言
+//     // 无论值是 [1,2,3] 还是 null，这一秒的 obs 就是法官那一秒的实相
+//     return {
+//       key: "cellMap", 
+//       op: "merge", // 👈 使用你刚刚在 resolveGhosts 里写的 patch 逻辑
+//       delta: {
+//         [obs.path]: {
+//           row: obs.row,
+//           col: obs.col,
+//           box: obs.box,
+//           value: obs.value,
+//           candidates: [...obs.candidates]
+//         }
+//       }
+//     };
+//   }
+// });
+// const performHiddenSingleAudit = (cellMap: Record<string, any>) => {
+//   const dist: Record<string, any[]> = {};
+//   const uniqueDist: Record<string, string> = {};
+
+//   // 1. 统计分布：看 1-9 在每个行、列、宫里分别出现在哪些格子
+//   Object.values(cellMap).forEach((c) => {
+//     // 如果格子已经填了值，它就不再参与候选数逻辑
+//     if (c.value !== null) return;
+
+//     c.candidates.forEach((num: number) => {
+//       // 构造唯一的区域标识键
+//       const keys = [
+//         `row_${c.row}_num_${num}`, 
+//         `col_${c.col}_num_${num}`, 
+//         `box_${c.box}_num_${num}`
+//       ];
+
+//       keys.forEach((k) => {
+//         if (!dist[k]) dist[k] = [];
+//         dist[k].push(c);
+//       });
+//     });
+//   });
+
+//   // 2. 筛选唯一性：如果在某个区域内，某个数字只出现在一个格子里
+//   Object.entries(dist).forEach(([key, cells]) => {
+//     if (cells.length === 1) {
+//       // 命中！记录这个数字和它所属格子的路径
+//       // 例如：uniqueDist["row_0_num_5"] = "cell_4"
+//       uniqueDist[key] = cells[0].path;
+//     }
+//   });
+
+//   return uniqueDist;
+// };
+// engine.config.useEntangle({
+//   observer: judgementNode.path,
+//   target: judgementNode.path,
+//   triggerKeys: ["cellMap"], 
+//   emit: (obs) => {
+//     // 💡 这里的逻辑只处理 obs.cellMap 这个内部字典
+//     const uniqueDist = performHiddenSingleAudit(obs.cellMap);
+//     return { key: "unique", value: uniqueDist };
+//   }
+// });
+ 
+//  // =================================================================
+// // 🌟 修正后的阶段 5：去全局化的合规裁决
+// // =================================================================
+// engine.config.useEntangle({
+//   observer: judgementNode.path,
+//   target: cell.path,
+//   triggerKeys: ["globalDistribution"],
+//   filter: (obs, tgt) => tgt.value === null,
+//   emit: (obs, tgt) => {
+//     const { unique, cellMap } = obs.globalDistribution;
+//     if (!unique || !cellMap) return;
+
+//     for (let num = 1; num <= 9; num++) {
+//       // 检查法官是否认为该格子是唯一的候选者
+//       if (
+//         unique[`row_${tgt.row}_num_${num}`] === tgt.path ||
+//         unique[`col_${tgt.col}_num_${num}`] === tgt.path ||
+//         unique[`box_${tgt.box}_num_${num}`] === tgt.path
+//       ) {
+//         // 🔒 第一道防线：基于格子自身的候选数检查
+//         if (!tgt.candidates.includes(num)) return;
+
+//         // 🔒 第二道防线：利用法官的 cellMap 进行物理冲突校验
+//         // 💡 改进点：这里直接在法官的卷宗里找我的邻居，不读全局！
+//         const isPhysicallyValid = Object.values(cellMap).every((otherCell: any) => {
+//           // 如果不是我的邻居，或者是自己，跳过
+//           if (otherCell.path === tgt.path) return true;
+          
+//           const isNeighbor = (
+//             otherCell.row === tgt.row || 
+//             otherCell.col === tgt.col || 
+//             otherCell.box === tgt.box
+//           );
+
+//           // 如果是邻居且已经填了我想填的数，判定为冲突
+//           if (isNeighbor && otherCell.value === num) return false;
+//           return true;
+//         });
+
+//         if (isPhysicallyValid) {
+//           console.log(`👨‍⚖️ [合规裁决] ${tgt.path} -> ${num} (基于法官卷宗)`);
+//           return { key: "value", value: num };
+//         } else {
+//           console.warn(`⚠️ [拦截误判] 邻居已有该值，法官建议已被否决`);
+//         }
+//       }
+//     }
+//   },
+// });
+//     // =================================================================
+//     // 🌟 法则 6：法官高级裁决 (Pointing Pairs)
+//     // =================================================================
+//     engine.config.useEntangle({
+//       observer: judgementNode.path,
+//       target: cell.path,
+//       triggerKeys: ["globalDistribution"],
+//       filter: (obs, tgt) => tgt.value === null,
+//       emit: (obs, tgt) => {
+//         let newCands = [...tgt.candidates];
+//         let changed = false;
+
+//         obs.globalDistribution.pointing.forEach((rule: any) => {
+//           if (
+//             ((rule.type === "row" && tgt.row === rule.index) ||
+//               (rule.type === "col" && tgt.col === rule.index)) &&
+//             tgt.box !== rule.excludeBox &&
+//             newCands.includes(rule.num)
+//           ) {
+//             newCands = newCands.filter((c) => c !== rule.num);
+//             changed = true;
+//           }
+//         });
+
+//         if (changed) {
+//           return { key: "candidates", value: newCands };
+//         }
+//       },
+//     });
+//   });
+// };
+
+const startSolving = () => {
+  const puzzle = [
+    { r: 0, c: 0, v: 5 }, { r: 0, c: 1, v: 3 }, { r: 0, c: 4, v: 7 },
+    { r: 1, c: 0, v: 6 }, { r: 1, c: 3, v: 1 }, { r: 1, c: 4, v: 9 }, { r: 1, c: 5, v: 5 },
+    { r: 2, c: 1, v: 9 }, { r: 2, c: 2, v: 8 }, { r: 2, c: 7, v: 6 },
+    { r: 3, c: 0, v: 8 }, { r: 3, c: 4, v: 6 }, { r: 3, c: 8, v: 3 },
+    { r: 4, c: 0, v: 4 }, { r: 4, c: 3, v: 8 }, { r: 4, c: 5, v: 3 }, { r: 4, c: 8, v: 1 },
+    { r: 5, c: 0, v: 7 }, { r: 5, c: 4, v: 2 }, { r: 5, c: 8, v: 6 },
+    { r: 6, c: 1, v: 6 }, { r: 6, c: 6, v: 2 }, { r: 6, c: 7, v: 8 },
+    { r: 7, c: 3, v: 4 }, { r: 7, c: 4, v: 1 }, { r: 7, c: 5, v: 9 }, { r: 7, c: 8, v: 5 },
+    { r: 8, c: 4, v: 8 }, { r: 8, c: 7, v: 7 }, { r: 8, c: 8, v: 9 },
+  ];
+  let res: any[] = [];
+  puzzle.forEach((p) => {
+    res.push({ path: `cell_${p.r * 9 + p.c}`, key: "value", value: p.v });
+  });
+  engine.data.SetValues(res);
+};
+
+
+const setupSudokuEntangle = () => {
+  CellArray.forEach((cell) => {
+    const myNeighbors = CellArray.filter(
+      (c) => c.path !== cell.path && (c.row === cell.row || c.col === cell.col || c.box === cell.box)
+    );
+
+    // =================================================================
+    // 🌟 法则 1：双账本实相投影
+    // =================================================================
+    myNeighbors.forEach((neighbor) => {
+      engine.config.useEntangle({
+        observer: neighbor.path,
+        target: cell.path,
+        triggerKeys: ["value"],
+        emit: async (obs, tgt) => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 200));
+          return {
+            key: "forbidden",
+            patch: (oldForbidden: Record<number, number>) => {
+              const next = { ...oldForbidden };
+              const prevValue = tgt.neighbors[obs.path];
+              if (prevValue !== null && prevValue !== undefined) {
+                next[prevValue] = Math.max(0, (next[prevValue] || 0) - 1);
+                if (next[prevValue] === 0) delete next[prevValue];
+              }
+              if (obs.value !== null) {
+                next[obs.value] = (next[obs.value] || 0) + 1;
+              }
+              return next;
+            }
+          };
+        }
+      });
+    });
+
+    // =================================================================
+    // 🌟 法则 1b：同步更新neighbors登记簿
+    // =================================================================
+    myNeighbors.forEach((neighbor) => {
+      engine.config.useEntangle({
+        observer: neighbor.path,
+        target: cell.path,
+        triggerKeys: ["value"],
+        emit: async (obs, tgt) => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 200));
+          return {
+            key: "neighbors",
+            patch: (oldNeighbors: Record<string, number | null>) => ({
+              ...oldNeighbors,
+              [obs.path]: obs.value
+            })
+          };
+        }
+      });
+    });
+
+    // =================================================================
+    // 🌟 法则 2：根据forbidden和banned更新candidates
+    // =================================================================
+    engine.config.useEntangle({
+      observer: cell.path,
+      target: cell.path,
+      triggerKeys: ["forbidden", "banned"],
+      filter: (obs, tgt) => tgt.value === null,
+      emit: (obs, tgt) => {
+        if (!obs.forbidden) return;
+        const banned = obs.banned || [];
+        const validCands = [1,2,3,4,5,6,7,8,9].filter(v =>
+          (!obs.forbidden[v] || obs.forbidden[v] === 0) &&
+          !banned.includes(v)  // 🌟 排除banned
+        );
+        if (tgt.candidates.join() !== validCands.join()) {
+          return { key: "candidates", value: validCands };
+        }
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 3：冲突检测 + UID权威博弈
+    // =================================================================
+    engine.config.useEntangle({
+      observer: cell.path,
+      target: cell.path,
+      triggerKeys: ["forbidden"],
+      filter: (obs, tgt) => {
+        if (tgt.value === null) return false;
+        if (tgt.isGiven) return false; 
+        if (!obs.forbidden) return false;
+        return (obs.forbidden[tgt.value] || 0) > 0;
+      },
+      emit: async (obs, tgt) => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+        const competitor = Object.entries(tgt.neighbors)
+          .filter(([path, val]) => val === tgt.value)
+          .map(([path]) => path)
+          .sort((a, b) => {
+            const uidA = parseInt(a.split('_')[1]) || 0;
+            const uidB = parseInt(b.split('_')[1]) || 0;
+            return uidA - uidB;
+          })[0];
+
+        if (!competitor) return;
+
+        const myIdx = parseInt((tgt.path as string).split('_')[1]) || 0;
+        const competitorIdx = parseInt(competitor.split('_')[1]) || 0;
+
+        if (myIdx > competitorIdx) {
+          console.log(`⚖️ UID让位撤回: ${tgt.path}(${myIdx}) 让给 ${competitor}(${competitorIdx})`);
+          return { key: "value", value: null };
+        }
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 4：必然坍缩 (Naked Single)
+    // banned的值不能坍缩
+    // =================================================================
+    engine.config.useEntangle({
+      observer: cell.path,
+      target: cell.path,
+      triggerKeys: ["candidates"],
+      filter: (obs, tgt) => {
+        if (tgt.value !== null) return false;
+        if (obs.candidates.length !== 1) return false;
+        return !(tgt.banned || []).includes(obs.candidates[0]); // 🌟 banned的值不坍缩
+      },
+      emit: async (obs, tgt) => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+        return { key: "value", value: obs.candidates[0] };
+      },
+    });
+
+    // =================================================================
+    // 🌟 法则 5：candidates为空，向法官求援
+    // =================================================================
+    engine.config.useEntangle({
+      observer: cell.path,
+      target: judgementNode.path,
+      triggerKeys: ["candidates"],
+      filter: (obs, tgt) => obs.value === null && obs.candidates.length === 0,
+      emit: (obs, tgt) => {
+        console.log(`💀 ${obs.path} 死局，向法官求援`);
+        return {
+          key: "rescue",
+          patch: (old: any) => ({
+            ...old,
+            target: old.target,
+            deadCells: [...(old.deadCells || []), obs.path]
+          })
+        };
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 6：上报法官
+    // =================================================================
+    engine.config.useEntangle({
+      observer: cell.path,
+      target: judgementNode.path,
+      triggerKeys: ["forbidden", "value"],
+      emit: (obs, tgt) => {
+        return {
+          key: "cellMap",
+          op: "merge",
+          delta: {
+            [obs.path]: {
+              path: obs.path,
+              row: obs.row,
+              col: obs.col,
+              box: obs.box,
+              value: obs.value,
+              forbidden: { ...obs.forbidden },
+              banned: [...(obs.banned || [])],  // 🌟 上报banned
+              isGiven: obs.isGiven || false,
+              timestamp: obs.value !== null ? Date.now() : null
+            }
+          }
+        };
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 7：法官计算globalDistribution
+    // =================================================================
+    engine.config.useEntangle({
+      observer: judgementNode.path,
+      target: judgementNode.path,
+      triggerKeys: ["cellMap"],
+      emit: (obs) => {
+        const dist: Record<string, any[]> = {};
+        const uniqueDist: Record<string, string> = {};
+        const pointingPairs: any[] = [];
+
+        Object.values(obs.cellMap).forEach((c: any) => {
+          if (c.value !== null) return;
+          const forbidden = c.forbidden || {};
+          const banned = c.banned || [];
+          // 🌟 从forbidden和banned共同反推candidates
+          const candidates = [1,2,3,4,5,6,7,8,9].filter(
+            num => (!forbidden[num] || forbidden[num] === 0) && !banned.includes(num)
+          );
+          candidates.forEach((num: number) => {
+            [`row_${c.row}_num_${num}`, `col_${c.col}_num_${num}`, `box_${c.box}_num_${num}`].forEach(k => {
+              if (!dist[k]) dist[k] = [];
+              dist[k].push(c);
+            });
+          });
+        });
+
+        Object.entries(dist).forEach(([k, cells]) => {
+          if (cells.length === 1) uniqueDist[k] = cells[0].path;
+        });
+
+        for (let b = 0; b < 9; b++) {
+          for (let num = 1; num <= 9; num++) {
+            const cells = dist[`box_${b}_num_${num}`];
+            if (cells && cells.length > 1 && cells.length <= 3) {
+              const rows = new Set(cells.map((c: any) => c.row));
+              if (rows.size === 1) pointingPairs.push({ type: "row", index: Array.from(rows)[0], num, excludeBox: b });
+              const cols = new Set(cells.map((c: any) => c.col));
+              if (cols.size === 1) pointingPairs.push({ type: "col", index: Array.from(cols)[0], num, excludeBox: b });
+            }
+          }
+        }
+
+        return {
+          key: "globalDistribution",
+          value: { unique: uniqueDist, pointing: pointingPairs, cellMap: obs.cellMap }
+        };
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 8：法官收到rescue信号，找出罪魁祸首
+    // =================================================================
+    engine.config.useEntangle({
+  observer: judgementNode.path,
+  target: judgementNode.path,
+  triggerKeys: ["rescue"],
+  filter: (obs) => {
+    return obs.rescue &&
+      obs.rescue.deadCells &&
+      obs.rescue.deadCells.length > 0 &&
+      obs.rescue.target === null;
+  },
+  emit: (obs) => {
+    const deadPath = obs.rescue.deadCells[obs.rescue.deadCells.length - 1];
+    const deadCell = obs.cellMap[deadPath];
+    if (!deadCell) return;
+
+    // 🌟 找所有非给定已填格子，按timestamp倒序，不限于直接邻居
+    const culprits = Object.values(obs.cellMap)
+      .filter((c: any) => {
+        if (c.value === null) return false;
+        if (c.isGiven) return false;
+        return true;
+      })
+      .sort((a: any, b: any) => {
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      });
+
+    if (culprits.length === 0) {
+      console.error(`❌ 所有格子都试过了，真的无解`);
+      return {
+        key: "rescue",
+        value: { target: null, deadCells: [] }
+      };
+    }
+
+    const target = culprits[0] as any;
+    console.log(`🔄 法官撤回 ${target.path}(值${target.value}) 破解死局 ${deadPath}`);
+
+    return {
+      key: "rescue",
+      patch: (old: any) => ({
+        ...old,
+        target: target.path
+      })
+    };
+  }
+});
+
+    // =================================================================
+    // 🌟 法则 9a：法官发出rescue指令，格子先记录banned值
+    // =================================================================
+    engine.config.useEntangle({
+      observer: judgementNode.path,
+      target: cell.path,
+      triggerKeys: ["rescue"],
+      filter: (obs, tgt) => {
+        return obs.rescue?.target === tgt.path && tgt.value !== null;
+      },
+      emit: (obs, tgt) => {
+        console.log(`📝 ${tgt.path} 记录banned值 ${tgt.value}`);
+        return {
+          key: "banned",
+          value: [...(tgt.banned || []), tgt.value]  // 🌟 把当前值加入banned
+        };
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 9b：banned更新后，触发撤回value
+    // =================================================================
+    engine.config.useEntangle({
+      observer: cell.path,
+      target: cell.path,
+      triggerKeys: ["banned"],
+      filter: (obs, tgt) => {
+        return tgt.value !== null && (obs.banned || []).includes(tgt.value);
+      },
+      emit: async (obs, tgt) => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 150));
+        console.log(`🔄 ${tgt.path} banned触发撤回值 ${tgt.value}`);
+        return { key: "value", value: null };
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 10：格子撤回完成，通知法官重置rescue
+    // =================================================================
+    engine.config.useEntangle({
+      observer: cell.path,
+      target: judgementNode.path,
+      triggerKeys: ["value"],
+      filter: (obs, tgt) => {
+        return obs.value === null &&
+          tgt.rescue &&
+          tgt.rescue.target === obs.path;
+      },
+      emit: (obs, tgt) => {
+        console.log(`✅ ${obs.path} 撤回完成，重置rescue`);
+        return {
+          key: "rescue",
+          value: { target: null, deadCells: [] }  // triedCells不再需要
+        };
+      }
+    });
+
+    // =================================================================
+    // 🌟 法则 11：法官初级裁决 (Hidden Single)
+    // 检查banned列表
+    // =================================================================
+    engine.config.useEntangle({
+      observer: judgementNode.path,
+      target: cell.path,
+      triggerKeys: ["globalDistribution"],
+      filter: (obs, tgt) => tgt.value === null,
+      emit: (obs, tgt) => {
+        const { unique, cellMap } = obs.globalDistribution;
+        if (!unique || !cellMap) return;
+
+        for (let num = 1; num <= 9; num++) {
+          if (
+            unique[`row_${tgt.row}_num_${num}`] === tgt.path ||
+            unique[`col_${tgt.col}_num_${num}`] === tgt.path ||
+            unique[`box_${tgt.box}_num_${num}`] === tgt.path
+          ) {
+            if (!tgt.candidates.includes(num)) continue;
+
+            // 🌟 banned检查
+            if ((tgt.banned || []).includes(num)) {
+              console.warn(`🚫 [禁止裁决] ${tgt.path} 填 ${num} 在banned列表`);
+              continue;
+            }
+
+            if (tgt.forbidden && (tgt.forbidden[num] || 0) > 0) {
+              console.warn(`⚠️ [拦截误判] ${tgt.path} 填 ${num} forbidden里已有`);
+              continue;
+            }
+
+            const isPhysicallyValid = Object.values(cellMap).every((otherCell: any) => {
+              if (otherCell.path === tgt.path) return true;
+              const isNeighbor = (
+                otherCell.row === tgt.row ||
+                otherCell.col === tgt.col ||
+                otherCell.box === tgt.box
+              );
+              if (isNeighbor && otherCell.value === num) return false;
+              return true;
+            });
+
+            if (isPhysicallyValid) {
+              console.log(`👨‍⚖️ [合规裁决] ${tgt.path} -> ${num}`);
+              return { key: "value", value: num };
+            } else {
+              console.warn(`⚠️ [拦截误判] ${tgt.path} 填 ${num} 被否决`);
+            }
+          }
+        }
+      },
+    });
+
+    // =================================================================
+    // 🌟 法则 12：法官高级裁决 (Pointing Pairs)
+    // =================================================================
+    engine.config.useEntangle({
+      observer: judgementNode.path,
+      target: cell.path,
+      triggerKeys: ["globalDistribution"],
+      filter: (obs, tgt) => tgt.value === null,
+      emit: (obs, tgt) => {
+        const { pointing } = obs.globalDistribution;
+        if (!pointing) return;
+
+        let newCands = [...tgt.candidates];
+        let changed = false;
+
+        pointing.forEach((rule: any) => {
+          if (
+            ((rule.type === "row" && tgt.row === rule.index) ||
+              (rule.type === "col" && tgt.col === rule.index)) &&
+            tgt.box !== rule.excludeBox &&
+            newCands.includes(rule.num)
+          ) {
+            newCands = newCands.filter((c) => c !== rule.num);
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          return { key: "candidates", value: newCands };
+        }
+      },
+    });
+  });
+};
+
+const reset = () => {
+  selectedCell.value = null; 
+  let res: any[] = [];
+  CellArray.forEach((c) => {
+    res.push({ path: c.path, key: "value", value: null });
+    res.push({ path: c.path, key: "candidates", value: [1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    res.push({ path: c.path, key: "forbidden", value: {} });
+    res.push({ path: c.path, key: "neighbors", value: {} });
+    res.push({ path: c.path, key: "banned", value: [] });
+    res.push({ path: c.path, key: "isGiven", value: false });
+  });
+  res.push({ 
+  path: judgementNode.path, 
+  key: "rescue", 
+  value: { target: null, deadCells: [],  } 
+});
+  engine.data.SetValues(res);
+};
+
+setupSudokuEntangle();
+engine.config.notifyAll();
+
+
+
+
+
+engine.hooks.onSuccess(async () => {
+  const emptyCells = CellArray.filter((c) => c.value === null);
+  
+  // 完成
+  if (emptyCells.length === 0) {
+    console.log("🎉 全盘坍缩完成！");
+    console.log(CellArray.map(item => item.value));
+
+    return;
+  }
+
+  // rescue还在处理中，等它
+  if (judgementNode.rescue?.target !== null || judgementNode.rescue?.deadCells?.length > 0) {
+    return;
+  }
+
+  emptyCells.sort((a, b) => a.candidates.length - b.candidates.length);
+  const targetCell = emptyCells[0];
+
+  // 死局——rescue已清空但还有candidates为空的格子
+  if (!targetCell || targetCell.candidates.length === 0) {
+    console.warn("💥 推演失败，当前路径无解，无法继续回溯");
+
+    return;
+  }
+
+  // 继续猜测
+  const randomIndex = Math.floor(Math.random() * targetCell.candidates.length);
+  const guessValue = targetCell.candidates[randomIndex];
+  console.log(`👉 猜测 ${targetCell.path} -> ${guessValue}`);
+  engine.data.SetValue(targetCell.path, "value", guessValue);
+});
+
+onMounted(() => {
+ 
+  startSolving();
+   
+});
+
+onUnmounted(() => {
+  deleteEngine("sudoku_engine");
+});
+</script>
+
+<style scoped>
+/* 你的所有完美样式原封不动 */
+.dashboard-wrapper { background: #0d1117; border: 1px solid var(--vp-c-divider, rgba(255, 255, 255, 0.1)); border-radius: 12px; overflow: hidden; margin: 24px 0; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); font-family: sans-serif; }
+.control-panel { padding: 16px 24px; background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between; }
+.controls { display: flex; gap: 12px; }
+.reset-btn { background: rgba(255, 255, 255, 0.1); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2); padding: 6px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+.reset-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.mode-selector { display: flex; align-items: center; gap: 15px; }
+.selector-label { color: #888; font-size: 13px; }
+.radio-group { display: flex; gap: 10px; background: rgba(0, 0, 0, 0.3); padding: 4px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); }
+.radio-item { cursor: pointer; padding: 6px 16px; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.3s; }
+.radio-item input { display: none; }
+.radio-dot { width: 8px; height: 8px; border-radius: 50%; background: #444; transition: all 0.3s;}
+.radio-item .text { font-size: 12px; transition: all 0.3s;}
+.radio-item.active { background: rgba(24, 144, 255, 0.15); }
+.radio-item.active:first-child .radio-dot { background: #1890ff; box-shadow: 0 0 8px #1890ff; }
+.radio-item.active:first-child .text { color: #fff; font-weight: bold; }
+.playground { width: 100%; height: 640px; overflow: hidden; position: relative; }
+.sudoku-board { position: relative; width: 520px; height: 520px; background: #1a1e24; border: 2px solid #40a9ff; border-radius: 8px; box-shadow: 0 0 20px rgba(24, 144, 255, 0.15); }
+.cell { background: linear-gradient(135deg, #2b323b 0%, #1a1e24 100%); border: 1px solid rgba(255, 255, 255, 0.05); z-index: 20; display: flex; align-items: center; justify-content: center; color: white; border-radius: 4px; box-sizing: border-box; cursor: pointer; }
+.cell:hover { box-shadow: inset 0 0 10px rgba(24, 144, 255, 0.3); }
+.cell.is-selected { box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.6); border-color: #ffaa00; z-index: 30;}
+.cell.border-r { border-right: 2px solid #40a9ff; }
+.cell.border-b { border-bottom: 2px solid #40a9ff; }
+.cell.has-value { background: rgba(24, 144, 255, 0.1); border-color: rgba(24, 144, 255, 0.3); }
+.final-value { font-size: 28px; font-weight: 800; color: #00e5ff; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5); }
+.candidates-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); width: 100%; height: 100%; padding: 4px; box-sizing: border-box; }
+.c-num { font-size: 11px; line-height: 1; color: #ffaa00; font-family: monospace; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s; }
+.c-num.hidden { opacity: 0; }
+.editor-popover { position: absolute; z-index: 100; background: #1a1e24; border: 1px solid #40a9ff; border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 12px rgba(24, 144, 255, 0.3); width: 140px; transform: translateY(-50%); }
+.popover-title { color: #888; font-size: 12px; margin-bottom: 8px; text-align: center; }
+.popover-input-group { display: flex; gap: 6px; }
+.popover-input-group input { flex: 1; width: 0; background: rgba(0,0,0,0.4); border: 1px solid #444; border-radius: 4px; color: #00e5ff; text-align: center; font-size: 16px; font-weight: bold; outline: none; padding: 4px 0; }
+.popover-input-group input:focus { border-color: #00e5ff; }
+.popover-input-group input::-webkit-outer-spin-button, .popover-input-group input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.btn-confirm { background: rgba(24, 144, 255, 0.2); color: #40a9ff; border: 1px solid #40a9ff; border-radius: 4px; padding: 0 10px; cursor: pointer; transition: 0.2s;}
+.btn-confirm:hover { background: #40a9ff; color: #fff;}
+.popover-hint { font-size: 10px; color: #555; text-align: center; margin-top: 6px; }
+</style>

@@ -1,0 +1,17 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+
+package.json
+package-lock.json
+
+tsup.config.ts
+
+lib-dist/
+lib-plugins/
+lib-form/
+
+utils/test.ts
