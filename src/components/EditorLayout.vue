@@ -15,7 +15,7 @@ import { useEngineManager, useEngine } from "@/utils/hooks/useEngineManager";
 import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
 
-const maxCount = 100
+const maxCount = 10
 const generateHugeMesh = () => {
   const regions = ['a', 'b', 'c',  ]; // 5 个区域
   const nodesPerRegion = maxCount; // 每个区域 100 个节点
@@ -110,14 +110,31 @@ for (let i = 2; i <= maxCount; i++) {
   engine.config.SetRules(parents, targetPath, 'defaultValue', {
     logic: ({slot}) => {
       const [trigger1, trigger2] = slot.triggerTargets
-     
+
+      if(targetPath==='mesh.b2_val'){
+        return new Promise((resolve)=>{
+          setTimeout(() => {
+            resolve(Number(trigger1) + (Number(trigger2) || 0));
+            console.log('等待5s再返回逻辑：'+targetPath)
+          }, 4000);
+        })
+      }else{
         // trigger1 是上一个 b 的值，trigger2 是对应 a 的值
         return Number(trigger1) + (Number(trigger2) || 0);
+      }
+        
    
       
     }
   });
 }
+const parents=  `mesh.a3_val` as any;
+const target = 'mesh.c2_val' as any
+engine.config.SetRule(parents,target,'defaultValue',{
+  logic:(api)=>{
+    return undefined
+  }
+})
 
 for (let i = 1; i <= maxCount; i++) {
   const target:any = `mesh.c${i}_val`;
