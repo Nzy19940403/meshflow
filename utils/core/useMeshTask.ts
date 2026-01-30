@@ -61,7 +61,10 @@ function useMeshTask<T extends string>(
     ) => {
         //最大并发数
         const MAX_CONCURRENT_TASKS = 20;
+        const GRACE_THRESHOLD = 5; // 允许“抢跑”的阻力余量
+
         const curToken = Symbol("token");
+         
         currentExecutionToken.set(triggerPath, curToken);
 
         let isLooping = false; // 状态锁：标志 while 循环是否在运行
@@ -69,12 +72,15 @@ function useMeshTask<T extends string>(
         const processed = new Set<T>();
         const processingSet = new Set<T>();
         const AllAffectedPaths = new Set<T>(
+           
             dependency.GetAllNextDependency(triggerPath)
         );
+        AllAffectedPaths.add(triggerPath)
         processed.add(triggerPath);
         const queueCountMap = new Map<T, number>();
         //悲观队列，如果一个path的直接上游并没有被纳入计算但是这个path本身已经被影响，之前是乐观的直接计算，但是由于镜像依赖问题，
         //导致计算会拿到过期的数据，新数据更新之后没法继续更新了，所以加入悲观队列先挂起，最后再入队
+        // 💡打算改造 悲观区：存储 path -> 剩余阻力值 (pendingParentsCount)
         const stagingArea = new Map<T, number>();
 
         let lastYieldTime = performance.now();
@@ -99,38 +105,37 @@ function useMeshTask<T extends string>(
         );
 
         const executorNodeCalculate = async (task: { target: T; trigger: T; isReleased: boolean; }) => {
-            // let hasValueChanged = false;
-            // let notifyNext = false;
-            // const { target: targetPath, trigger: currentTriggerPath } = task;
-            // const targetSchema = data.GetRenderSchemaByPath(targetPath);
-            // console.log(`%c ✅ 计算完成: ${targetPath}`+"当前值:", targetSchema.defaultValue, "color: #67c23a;");
+
             const { target: targetPath, trigger: currentTriggerPath } = task;
+
             try {
-               
+                if (currentExecutionToken.get(triggerPath) !== curToken) return;
                 let hasValueChanged = false;
                 let notifyNext = false;
-              
                 const targetSchema = data.GetRenderSchemaByPath(targetPath);
-                console.log(`%c ✅ 计算完成: ${targetPath}`+"当前值:", targetSchema.defaultValue, "color: #67c23a;");
+                console.log(`%c ✅ 计算完成: ${targetPath}` + "当前值:", targetSchema.defaultValue, "color: #67c23a;");
 
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket;
-
+                  
                     // 桶内部会根据自己的 version 进行判断是否真正执行
                     const result = await bucket.evaluate({
                         affectKey: bucketName,
                         triggerPath: currentTriggerPath,
+                        targetPath:targetPath,
                         GetRenderSchemaByPath: data.GetRenderSchemaByPath,
                         GetValueByPath: (p: T) =>
-                            data.GetRenderSchemaByPath(p).defaultValue,
-                        isSameToken: () =>
-                            currentExecutionToken.get(triggerPath) === curToken,
+                        data.GetRenderSchemaByPath(p).defaultValue,
+                        GetToken:()=>curToken
+                        // isSameToken: () =>
+                        //     currentExecutionToken.get(triggerPath) === curToken,
                     });
+                   
                     if (currentExecutionToken.get(triggerPath) !== curToken) {
-                        console.log("🚫 令牌过期，丢弃旧任务计算结果");
+                   
+                        console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
                         return; // 不要执行 processed.add，不要触发 hasValueChanged
                     }
-                    processed.add(targetPath);
                     // processingSet.delete(targetPath);
                     // Options 合法性检查
                     if (bucketName === "options") {
@@ -148,58 +153,66 @@ function useMeshTask<T extends string>(
                         targetSchema[bucketName] = result;
                         hasValueChanged = true;
                     }
-
+                    // if (currentExecutionToken.get(triggerPath) !== curToken) {
+                   
+                    //     console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
+                    //     return; // 不要执行 processed.add，不要触发 hasValueChanged
+                    // }
                     if (bucket.isForceNotify()) {
                         notifyNext = true;
                     }
                     if (hasValueChanged) {
                         trigger.flushPathSet.add(targetPath as any);
                     }
-        
+
                     const directChildren = dependency.GetNextDependency(targetPath);
                     // 1. 如果值变了，扩充疆域（这是为了让更深层的节点能正确进入暂存区）
                     if (hasValueChanged || notifyNext) {
                         const allNextOrder = dependency.GetAllNextDependency(targetPath);
                         allNextOrder.forEach((p: any) => AllAffectedPaths.add(p));
                     }
-        
+
                     for (const childPath of directChildren) {
                         const isProcessed = processed.has(childPath);
                         const isInQueue = queueCountMap.has(childPath) || processingSet.has(childPath);
                         const isInStaging = stagingArea.has(childPath);
-                    
+
                         // --- 核心判定逻辑 ---
                         // 1. 如果值变了/强制通知：只要下游还没处理完，就必须接力
                         const shouldPropagate = (hasValueChanged || notifyNext) && !isProcessed;
-                        
+
                         // 2. 救赎逻辑：如果它在暂存区（说明之前依赖没好），现在上游算完了，必须给它一次机会
                         const shouldRescue = isInStaging && !isInQueue;
-                    
+
                         // 3. 兜底逻辑：如果它在受影响名单里，但目前既没算完也没入队，说明它掉队了
                         const shouldRefill = AllAffectedPaths.has(childPath) && !isProcessed && !isInQueue;
-                    
+
                         if (shouldPropagate || shouldRescue || shouldRefill) {
                             // 关键：只有当前不在队列/不在执行中，才执行 push
                             if (!isInQueue) {
                                 if (isInStaging) stagingArea.delete(childPath);
-                    
+
                                 queue.push({
                                     target: childPath,
                                     trigger: targetPath,
                                     isReleased: false,
                                 });
-                    
+
                                 queueCountMap.set(childPath, (queueCountMap.get(childPath) || 0) + 1);
-                                
+
                                 // 必须调用 trace 才能让 UI 看到“转圈”状态
                                 trace.pushExecution([childPath]);
-                    
+
                                 console.log(`%c 🛰️ 信号接力: ${targetPath} -> ${childPath}`, "color: #00bcd4;");
                             }
                         }
                     }
                 }
-
+                // if (currentExecutionToken.get(triggerPath) !== curToken) {
+                //     console.log("🚫 令牌过期，物理切断信号扩散");
+                //     return; // 必须在这里 return，后面所有的 processed.add 和信号接力都不准跑！
+                // }
+                processed.add(targetPath);
                 if (performance.now() - lastYieldTime > 16) {
                     await new Promise((resolve) => requestAnimationFrame(resolve));
                     lastYieldTime = performance.now();
@@ -211,36 +224,36 @@ function useMeshTask<T extends string>(
                 }
             } catch (err) {
                 console.error(`计算路径 ${targetPath} 时出错:`, err);
-                
+
             } finally {
                 if (currentExecutionToken.get(triggerPath) === curToken) {
                     processingSet.delete(targetPath);
                     trace.popExecution([targetPath]);
-                  
+
                     // 关键点 2：点火！
                     // 当 A2 算完，它尝试去叫醒可能正在“休眠”的 flushQueue
                     // 由于你有 isLooping 锁，如果 while 还在转，这一句会被 return，不产生副作用
                     // 如果 while 已经退出了，这一句会重新激活循环，去处理 A3, B2 等下游
-                    if(!isLooping){
+                    if (!isLooping) {
                         flushQueue();
                     }
-                   
+
                 }
-        
+
             }
 
-            
+
 
         }
 
         const flushQueue = async () => {
             if (currentExecutionToken.get(triggerPath) !== curToken) {
-                isLooping = false; 
+                isLooping = false;
                 return;
             }
-        
+
             isLooping = true;
-            try{
+            try {
                 while (queue.length || stagingArea.size > 0) {
                     //如果不是最新的对于本次起源路径的计算就可以停止扩散了
                     if (currentExecutionToken.get(triggerPath) !== curToken) {
@@ -262,11 +275,10 @@ function useMeshTask<T extends string>(
                             console.log(`🧊 还有 ${processingSet.size} 个任务在飞，保持拉闸状态...`);
                             console.log("在飞的任务是:", Array.from(processingSet))
                             isLooping = false;
-                            return; 
+                            return;
                         }
-                        // await Promise.resolve();
-                        //  if (currentExecutionToken.get(triggerPath) !== curToken) return;
-                        // if (queue.length > 0 || processingSet.size > 0) continue;
+
+
                         console.log(
                             `%c 🔓 [全量释放] 暂存区节点已无更新动力，强制回填执行`,
                             "color: #9c27b0;"
@@ -283,7 +295,7 @@ function useMeshTask<T extends string>(
                         stagingArea.clear(); // 彻底清空，防止死循环
                         continue;
                     }
-    
+
                     const task = queue.shift()!;
                     const { target: targetPath, trigger: currentTriggerPath } = task;
                     const currentCount = queueCountMap.get(targetPath) || 0;
@@ -292,15 +304,15 @@ function useMeshTask<T extends string>(
                     } else {
                         queueCountMap.set(targetPath, currentCount - 1);
                     }
-    
+
                     const parents = dependency.GetAllPrevDependency(targetPath);
-    
+
                     // 打印当前出队节点
                     console.log(
                         `%c 📦 出队检查: ${targetPath} (来自: ${currentTriggerPath})`,
                         "color: #409eff;"
                     );
-    
+
                     const directParents = dependency.GetPrevDependency(targetPath);
                     // 【第一步：移交判定】
                     // 如果我发现我有父节点在“视界之外”（在名单里但没进队列），我立刻移交悲观区
@@ -309,11 +321,11 @@ function useMeshTask<T extends string>(
                         // console.log(`检查${targetPath}是否悲观时的正在执行列表:` + `${Array.from(processingSet).join(',')}`)
                         if (processed.has(p)) return false; // 已完成，安全
                         if (queueCountMap.has(p) || processingSet.has(p)) return false; // 正在动，不属于不确定
-    
+
                         if (task.isReleased) {
                             return false;
                         }
-    
+
                         // 关键：如果父节点 p 在本次触发的影响范围内，但现在还没进队列
                         // 说明信号还没传导到 p，那么我现在 (targetPath) 就是抢跑！
                         if (
@@ -326,7 +338,7 @@ function useMeshTask<T extends string>(
                     });
                     //检查上游是否完成，没有的话就是悲观，移入悲观区
                     if (isUncertain) {
-    
+
                         console.log(
                             `%c 📥 [移交暂存] ${targetPath} 依赖的 ${directParents
                                 .filter((p) => !processed.has(p))
@@ -339,7 +351,7 @@ function useMeshTask<T extends string>(
                     }
                     //不是悲观的话就要去检查一下是否又父元素正在执行，如果是在正在处理的队列中，还是需要等待，
                     //但是这里也要后期改成直接剔除后重新点火启动while逻辑
-                  
+
                     const isAnyParentNotReady = parents.some((p) => {
                         // 1. 如果父节点正在“飞行中”（正在 await ），绝对不能跑下游
                         if (processingSet.has(p)) return true;
@@ -354,22 +366,22 @@ function useMeshTask<T extends string>(
                         // 其他情况（比如父节点不在受影响范围，或者已经算完且不在处理中），视为 Ready
                         return false;
                     });
-    
+
                     if (isAnyParentNotReady) {
-                    
-    
+
+
                         // 无论 queue 是否为空，都要移入暂存区，不能直接 return
                         console.log(`⏳ [拓扑挂起] ${targetPath} 依赖未就绪，移入暂存等待唤醒`);
                         stagingArea.set(targetPath, 1);
-                        
+
                         // 如果队列空了，确实要熄火，等待正在跑的任务来点火
                         if (queue.length === 0) {
                             console.log('🛑 队列已空，停止当前循环，等待异步任务点火');
                             isLooping = false;
-                            return; 
+                            return;
                         }
                         continue;
-     
+
                     }
                     //到这里如果已经处理过的节点就不予计算了，因为拓扑序和悲观等待还有不存在环的原因，节点就应该被计算一次，所以处理过的
                     //节点就肯定是安全的节点，可以不用再重复处理了
@@ -385,28 +397,28 @@ function useMeshTask<T extends string>(
                     }
                     //此时到这里的肯定是可以被处理但是还没被处理的路径，加入正在处理列表
                     processingSet.add(targetPath);
-    
+
                     if ((targetPath as string).includes('c14')) {
-                        
+
                         const deps = dependency.GetAllPrevDependency(targetPath);
                         console.log(`c14 依赖状态:`, deps.map(d => ({ path: d, done: processed.has(d) })));
                     }
                     executorNodeCalculate(task);
-    
+
                 }
-            }finally{
+            } finally {
                 isLooping = false;
-                
+
             }
-            
+
         }
 
-         flushQueue();
+        flushQueue();
 
     }
 
-    return  TaskRunner ;
+    return TaskRunner;
 }
 
 
-export {useMeshTask}
+export { useMeshTask }

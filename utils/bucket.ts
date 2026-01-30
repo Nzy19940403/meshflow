@@ -127,6 +127,8 @@ export class SchemaBucket {
     //强制通知下游，优化的策略
     private _forceNotify:boolean = false;
 
+    promiseToken:any = null;
+
     constructor(baseValue: any,key:string) {
         const getRule = () => this.rules
         this.strategy = new StrategyStore(getRule)
@@ -280,18 +282,33 @@ export class SchemaBucket {
     // };
 
     async evaluate(api: any) {
-         
-        let isSameToken = api.isSameToken();
-     
-        if (this.pendingPromise && isSameToken) {
+        
+        let curToken  = null;
+
+        if(api.GetToken){
+            curToken = api.GetToken();
+        }
+        
+        if (this.pendingPromise && this.promiseToken !== curToken) {
+            console.log(`[桶身份失效] 票号变了，抛弃旧 Promise`);
+            this.pendingPromise = null; 
+            this.promiseToken = null;
+        }
+
+        if (this.pendingPromise) {
+            console.log("✅ 命中性能优化：复用相同 Token 的 Promise");
             return this.pendingPromise;
         }
-       
+        
+        this.promiseToken = curToken;
+
         this.pendingPromise = (async () => {
             try {
+                
                 await Promise.resolve();
-               
                 const currentVersion = ++this.version;
+
+
 
                 let shouldSkipCalculate = false;
    
@@ -316,15 +333,20 @@ export class SchemaBucket {
                     }
                   
                 } 
+            
            
                 if(shouldSkipCalculate){
                     return this.cache
                 }
-         
+               
                 
                 //命中自己订阅的key值，它变更的时候需要重新计算
                 let { res, version } = await this.strategy.evaluate(api, currentVersion);
 
+                if ( typeof api.triggerPath==='string' &&(api.GetToken() !== this.promiseToken)) {
+                    return this.cache; 
+                }
+           
                 if (version < this.version) {
                     console.log('过期任务');
                     return this.cache;
@@ -352,7 +374,10 @@ export class SchemaBucket {
                 
                 return res;
             } finally {
-                this.pendingPromise = null;
+                if (this.promiseToken === curToken) {
+                    this.pendingPromise = null;
+                    this.promiseToken = null;
+                }
             }
         })();
 
