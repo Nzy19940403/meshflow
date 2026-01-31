@@ -25,7 +25,15 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
  
     let dependencyOrder:AllPath[][] = []
 
-    const {GetNextDependency,GetPrevDependency,GetAllPrevDependency,GetAllNextDependency,rebuildDirectDependencyMaps} = useDependency(
+    let pathToLevelMap:Map<AllPath,number> = new Map()
+
+    const {
+        GetNextDependency,
+        GetPrevDependency,
+        GetAllPrevDependency,
+        GetAllNextDependency,
+        rebuildDirectDependencyMaps
+    } = useDependency(
         ()=>dependencyGraph,
         ()=>predecessorGraph,
         ()=>directParentDependencyGraph, //传入直接父路径map集合
@@ -51,7 +59,8 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
             GetAllNextDependency,
             GetNextDependency,
             GetPrevDependency,
-            GetAllPrevDependency
+            GetAllPrevDependency,
+            GetPathToLevelMap:()=>pathToLevelMap
         },
         {
             pushExecution,
@@ -90,7 +99,9 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
      const CheckCycleInGraph = ()=>{
         //计算是否有环的时候顺便让当前顺序被存储
         //这里对dependencyOrder重新赋值
-        dependencyOrder = check();
+        const res = check();
+        dependencyOrder = res.steps;
+        pathToLevelMap = res.levelMap;
       
         
 
