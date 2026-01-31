@@ -1,31 +1,31 @@
  
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
-import { FormFieldSchema, GroupField, RenderSchema, RenderSchemaFn, initFormData, useForm } from "../schema";
-import { useSetRule, useSetStrategy } from "../schema-rule";
-import { useSchemaValidators } from "../schema-validators";
-import {useExecutionTrace} from './useExecutionTrace';
-import { useDependency,useCheckCycleInGraph } from "./useDepenency";
-import { useHistory } from "./useHistory";
+import { FormFieldSchema, GroupField, RenderSchema, RenderSchemaFn, initFormData, useForm } from "../schema/schema";
+import { useSetRule, useSetStrategy } from "../schema/schema-rule";
+import { useSchemaValidators } from "../schema/schema-validators";
+import {useExecutionTrace} from '../plugins/useExecutionTrace';
+import { useDependency,useCheckCycleInGraph } from "../schema/useDepenency";
+import { useHistory } from "../plugins/useHistory";
 
 //入口函数,传入符合格式的json
-export function useFlowScheduler<T>(data:any,UITrigger:{
+export function useFlowScheduler<T,P>(data:any,UITrigger:{
     signalCreateor:()=>T,
     signalTrigger:(signal:T)=>void
   }){
     let isRulesChanged:boolean = false;
     let isCircleChecking:boolean = false;
 
-    const dependencyGraph = new Map<AllPath, Set<AllPath>>();
+    const dependencyGraph = new Map<P, Set<P>>();
 
-    const predecessorGraph = new Map<AllPath, Set<AllPath>>();
+    const predecessorGraph = new Map<P, Set<P>>();
 
-    let directChildDependencyGraph = new Map<AllPath,Set<AllPath>>();
+    let directChildDependencyGraph = new Map<P,Set<P>>();
 
-    let directParentDependencyGraph = new Map<AllPath,Set<AllPath>>();
+    let directParentDependencyGraph = new Map<P,Set<P>>();
  
-    let dependencyOrder:AllPath[][] = []
+    let dependencyOrder:P[][] = []
 
-    let pathToLevelMap:Map<AllPath,number> = new Map()
+    let pathToLevelMap:Map<P,number> = new Map()
 
     const {
         GetNextDependency,
@@ -33,14 +33,14 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
         GetAllPrevDependency,
         GetAllNextDependency,
         rebuildDirectDependencyMaps
-    } = useDependency(
+    } = useDependency<P>(
         ()=>dependencyGraph,
         ()=>predecessorGraph,
         ()=>directParentDependencyGraph, //传入直接父路径map集合
         ()=>directChildDependencyGraph,//传入直接子路径map集合
     );
 
-    const {SetTrace,pushExecution, popExecution} = useExecutionTrace( GetNextDependency );
+    const {SetTrace,pushExecution, popExecution} = useExecutionTrace<P>( GetNextDependency );
     
     const {
         Undo,
@@ -52,7 +52,7 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
     } = useHistory()
     
 
-    const {schema,GetFormData,GetRenderSchemaByPath,GetGroupByPath,notifyAll,convertToRenderSchema} = useForm(
+    const {schema,GetFormData,GetRenderSchemaByPath,GetGroupByPath,notifyAll,convertToRenderSchema} = useForm<T,P>(
         data,
         {
             GetDependencyOrder: ()=>dependencyOrder,
@@ -83,7 +83,7 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
         return newNode;
     }
 
-    const { SetRule,SetRules } = useSetRule(
+    const { SetRule,SetRules } = useSetRule<P>(
         GetRenderSchemaByPath,
         dependencyGraph,
         predecessorGraph
@@ -93,8 +93,8 @@ export function useFlowScheduler<T>(data:any,UITrigger:{
 
     const { SetValidators } = useSchemaValidators(GetRenderSchemaByPath)
      
-    const check = useCheckCycleInGraph(dependencyGraph);
-
+    const check = useCheckCycleInGraph<P>(dependencyGraph);
+    
      //必须被调用，否则denpenencyorder没法更新
      const CheckCycleInGraph = ()=>{
         //计算是否有环的时候顺便让当前顺序被存储

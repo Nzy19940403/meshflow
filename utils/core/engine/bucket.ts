@@ -104,7 +104,7 @@ export class StrategyStore {
     }
 }
 
-export class SchemaBucket {
+export class SchemaBucket<P>{
 
     private strategy: StrategyStore;
 
@@ -123,7 +123,7 @@ export class SchemaBucket {
 
     private version: number = 0;
 
-    private deps:Map<string,any> = new Map();
+    private deps:Map<P,any> = new Map();
     //强制通知下游，优化的策略
     private _forceNotify:boolean = false;
 
@@ -175,7 +175,7 @@ export class SchemaBucket {
         this.rules.set(value.id, rules);
     }
 
-    setRules(value: any,DepsArray?:Array<[AllPath,any]>) {
+    setRules(value: any,DepsArray?:Array<[P,any]>) {
         if(DepsArray){
             this.updateDeps(DepsArray)
         }
@@ -216,14 +216,14 @@ export class SchemaBucket {
         };
     };
 
-    updateDeps( DepsArray:Array<[AllPath,any]> ){
+    updateDeps( DepsArray:Array<[P,any]> ){
        
         for(let [triggerPath,value] of DepsArray){
             this.deps.set(triggerPath,value)
         }
     }
 
-    setRule(value: any,DepsArray?:Array<[AllPath,any]>) {
+    setRule(value: any,DepsArray?:Array<[P,any]>) {
         
         //如果是内部调用，DepsArray是没有值的，那就按照默认的逻辑执行。如果传入DepsArray，就是外界注册setRule的时候传入的，需要记录一下
         //当前的桶关联了哪些path，这些path的defaultValue会被记录下来当作依赖，变化了之后会执行计算，没有变化就返回cache

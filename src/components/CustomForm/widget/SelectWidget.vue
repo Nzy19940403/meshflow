@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { VSelect } from 'vuetify/components';
 import {toRefs,shallowRef,inject,watch,Ref} from 'vue';
-import type {  RenderSchemaFn,SelectField} from '@/utils/schema';
+import type {  RenderSchemaFn,SelectField} from '@/utils/core/schema/schema';
  
 const props = withDefaults(
     defineProps<{

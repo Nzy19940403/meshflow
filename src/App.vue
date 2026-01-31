@@ -54,7 +54,7 @@ import { VTabsWindow } from 'vuetify/lib/components';
 import { VTabsWindowItem } from 'vuetify/lib/components';
 import { onMounted } from 'vue';
 import { onUnmounted } from 'vue';
-import { useStats } from '@/utils/hooks/useStats';
+ 
 
 const tab = ref('/')
 
@@ -65,7 +65,7 @@ let updateTimeId = null;
 let lastSecond = -1;
 const currentTime = ref('');
 
-const stats = useStats();
+ 
 
 const confirmSW = (confirmFn) => {
   confirm.require({

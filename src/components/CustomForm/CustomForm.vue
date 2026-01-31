@@ -29,7 +29,7 @@
 import { ref, onMounted, shallowRef, inject } from "vue";
 
 import CustomFormNode from "./CustomFormNode.vue";
-import { RenderSchema } from "@/utils/schema";
+import { RenderSchema } from "@/utils/core/schema/schema";
 
 import { FormDataModel } from "@/devSchemaConfig/dev.form.Schema.check";
 

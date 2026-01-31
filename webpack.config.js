@@ -59,7 +59,7 @@ module.exports = (env, argv) => {
                     './RemoteButtonNavigation': './src/components/CustomButtonNavigation.vue',
                     './CustomForm': './src/components/CustomForm/CustomForm.vue',
                     './schema': './devSchemaConfig/dev.form.Schema.js',
-                    './symbols': './utils/symbols.ts'
+            
                 },
                 shared: {
                     vue: {

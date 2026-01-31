@@ -1,20 +1,20 @@
 //表单计算流程的动画
 
-import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
+ 
 
-export function useExecutionTrace(
-  GetNextDependency: (path: AllPath) => AllPath[]
+export function useExecutionTrace<T>(
+  GetNextDependency: (path: T) => T[]
 ) {
-  const activeSet = new Set<AllPath>();
+  const activeSet = new Set<T>();
   const callbackMap = new Map<
-    AllPath,
-    (batch: AllPath[], finishedArray: AllPath[]) => void
+    T,
+    (batch: T[], finishedArray: T[]) => void
   >();
 
   // 核心：记录当前这波联动的全量版图
-  let currentSessionAffected = new Set<AllPath>();
+  let currentSessionAffected = new Set<T>();
 
-  let finishedSet = new Set<AllPath>();
+  let finishedSet = new Set<T>();
 
   const dispatch = () => {
     const snapshot = Array.from(activeSet);
@@ -22,7 +22,7 @@ export function useExecutionTrace(
     callbackMap.forEach((cb) => cb(snapshot, Array.from(finishedSet)));
   };
 
-  const pushExecution = (paths: AllPath[], clean?: boolean) => {
+  const pushExecution = (paths: T[], clean?: boolean) => {
     // console.log('本次联动的全量版图:', currentSessionAffected);
     // console.log("本次新增paths:" + paths);
     if (clean) {
@@ -32,7 +32,7 @@ export function useExecutionTrace(
     }
 
     if (paths.length == 0) return;
-    const allDescendants =  new Set<AllPath>();
+    const allDescendants =  new Set<T>();
 
     paths.forEach((p)=>{
        let list = GetNextDependency(p);
@@ -59,7 +59,7 @@ export function useExecutionTrace(
     dispatch();
   };
 
-  const popExecution = (paths: AllPath[], clean?: boolean) => {
+  const popExecution = (paths: T[], clean?: boolean) => {
     // console.log(paths);
     // if(paths.includes('cloudConsole.specs.storage.capacity')){
     //     debugger
@@ -76,12 +76,12 @@ export function useExecutionTrace(
   };
 
   const SetTrace = (
-    myPath: AllPath,
+    myPath: T,
     onUpdate: (newStatus: any) => void,
     context: any
   ) => {
-    const internalCallback = (batch: AllPath[], finishedArray: AllPath[]) => {
-      const newStatus = calculateStatus(
+    const internalCallback = (batch: T[], finishedArray: T[]) => {
+      const newStatus = calculateStatus<T>(
         myPath,
         batch,
         Array.from(currentSessionAffected),
@@ -100,11 +100,11 @@ export function useExecutionTrace(
 
   return { pushExecution, popExecution, SetTrace };
 }
-export function calculateStatus(
-  myPath: AllPath,
-  activeBatch: AllPath[],
-  affectedPaths: AllPath[],
-  finishedArray: AllPath[]
+export function calculateStatus<T>(
+  myPath: T,
+  activeBatch: T[],
+  affectedPaths: T[],
+  finishedArray: T[]
 ) {
   const myLevel = affectedPaths.indexOf(myPath);
 

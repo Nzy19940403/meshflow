@@ -207,13 +207,13 @@ import {
   InputField,
   CheckboxField,
   SelectField,
-} from "@/utils/schema";
+} from "@/utils/core/schema/schema";
 import { toRaw } from "vue";
 import { inject } from "vue";
 import { computed } from "vue";
 import { shallowRef, ref } from "vue";
 import { onMounted } from "vue";
-import { useEngine } from "@/utils/hooks/useEngineManager";
+import { useEngine } from "@/utils/core/engine/useEngineManager";
 
 const engine = useEngine('main-engine');
 const AddNewSchema = inject("AddNewSchema") as (

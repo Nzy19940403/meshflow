@@ -1,9 +1,9 @@
 //这里需要定义一些预设的rule，然后暴露一下createRule方法
 
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
-import { DefaultStarategy, SchemaBucket } from "./bucket";
+import { DefaultStarategy, SchemaBucket } from "../engine/bucket";
 import { FormFieldSchema, GroupField, RenderSchema, RenderSchemaFn } from "./schema";
-import { KeysOfUnion } from './util';
+import { KeysOfUnion } from '../utils/util';
 
 export interface logicApi {
     // affectKey: string,
@@ -15,11 +15,11 @@ export interface logicApi {
     }
 }
 
-const CreateRule = (targetPath: AllPath, targetKey: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options: {
+const CreateRule = <P>(targetPath: P, targetKey: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options: {
     value?: any
     priority?: number,
     logic: (api: any) => any,
-    triggerPaths: AllPath[]
+    triggerPaths: P[]
 }) => {
 
     const basePriority = 10;
@@ -65,31 +65,31 @@ const CreateRule = (targetPath: AllPath, targetKey: KeysOfUnion<Exclude<FormFiel
     }
 }
 
-export const useSetRule = (
-    Finder: (path: AllPath) => RenderSchemaFn<Exclude<FormFieldSchema,GroupField>>, 
-    dependencyGraph: Map<AllPath, Set<AllPath>>,
-    predecessorGraph: Map<AllPath, Set<AllPath>>
+export const useSetRule = <P>(
+    Finder: (path: P) => RenderSchemaFn<Exclude<FormFieldSchema,GroupField>>, 
+    dependencyGraph: Map<P, Set<P>>,
+    predecessorGraph: Map<P, Set<P>>
 ) => {
     if (!Finder) {
         throw Error('')
     }
     let GetByPath = Finder;
 
-    const updateGraphRelation = (source: AllPath, target: AllPath) => {
+    const updateGraphRelation = (source: P, target: P) => {
         // 1. 维护出度表 (dependencyGraph): source -> targets
         if (!dependencyGraph.has(source)) {
-            dependencyGraph.set(source, new Set<AllPath>());
+            dependencyGraph.set(source, new Set<P>());
         }
         dependencyGraph.get(source)!.add(target);
 
         // 2. 维护入度表 (predecessorGraph): target -> sources
         if (!predecessorGraph.has(target)) {
-            predecessorGraph.set(target, new Set<AllPath>());
+            predecessorGraph.set(target, new Set<P>());
         }
         predecessorGraph.get(target)!.add(source);
     };
 
-    const SetRule = (outDegreePath: AllPath, inDegreePath: AllPath, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options: {
+    const SetRule = (outDegreePath: P, inDegreePath: P, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options: {
         value?: any
         priority?: number,
         // subscribeKey?: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>[],
@@ -104,7 +104,7 @@ export const useSetRule = (
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
         let newRule = CreateRule(inDegreePath, key, { ...options, triggerPaths: [outDegreePath] });
 
-        const DepsArray:Array<[AllPath,any]> = [outDegreePath].map(path=>[path,GetByPath(path).defaultValue])
+        const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).defaultValue])
 
         // 维护图关系
         updateGraphRelation(outDegreePath, inDegreePath);
@@ -115,7 +115,7 @@ export const useSetRule = (
 
         } else {
        
-            let newBucket = new SchemaBucket(
+            let newBucket = new SchemaBucket<P>(
                 inDegree[key as keyof typeof inDegree] ,
                 key      
             );
@@ -133,8 +133,8 @@ export const useSetRule = (
     }
 
     const SetRules = (
-        outDegreePaths: AllPath[],
-        inDegreePath: AllPath,
+        outDegreePaths: P[],
+        inDegreePath: P,
         key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>,
         options: {
             value?: any
@@ -155,7 +155,7 @@ export const useSetRule = (
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
         let newRule = CreateRule(inDegreePath, key, { ...options, triggerPaths: outDegreePaths });
 
-        const DepsArray:Array<[AllPath,any]> = outDegreePaths.map(path=>[path,GetByPath(path).defaultValue])
+        const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).defaultValue])
 
         if (inDegree.nodeBucket[key]) {
 
@@ -182,17 +182,17 @@ export const useSetRule = (
     return {SetRule,SetRules}
 }
 
-export const useSetStrategy = (Finder: any) => {
+export const useSetStrategy = <P>(Finder: any) => {
     let GetByPath = Finder ? Finder : undefined;
 
     if (!GetByPath) {
         throw Error('')
     }
 
-    const SetStrategy = (path: AllPath, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, strategy: DefaultStarategy) => {
+    const SetStrategy = (path: P, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, strategy: DefaultStarategy) => {
         let degree = GetByPath(path);
 
-        (degree.nodeBucket[key] as SchemaBucket).setStrategy(strategy);
+        (degree.nodeBucket[key] as SchemaBucket<P>).setStrategy(strategy);
     }
 
     return { SetStrategy }

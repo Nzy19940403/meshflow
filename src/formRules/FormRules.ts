@@ -1,8 +1,8 @@
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
-import { DefaultStarategy } from "@/utils/bucket";
-import { FormFieldSchema, GroupField, InputField,CheckboxField,SelectField } from "@/utils/schema";
-import { logicApi } from "@/utils/schema-rule";
-import { KeysOfUnion } from "@/utils/util";
+import { DefaultStarategy } from "@/utils/core/engine/bucket";
+import { FormFieldSchema, GroupField, InputField,CheckboxField,SelectField } from "@/utils/core/schema/schema";
+import { logicApi } from "@/utils/core/schema/schema-rule";
+import { KeysOfUnion } from "@/utils/core/utils/util";
 
 export function setupBusinessRules(
     SetRule:(outDegreePath: AllPath, inDegreePath: AllPath, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options?: {

@@ -1,6 +1,6 @@
-import { SchemaBucket } from "../bucket";
+import { SchemaBucket } from "./bucket";
 
-function useMeshTask<T extends string>(
+function useMeshTask<T>(
     dependency: {
         GetAllNextDependency: (p: T) => T[],
         GetAllPrevDependency: (p: T) => T[],
@@ -18,44 +18,12 @@ function useMeshTask<T extends string>(
     },
     trigger: {
         requestUpdate: () => void,
-        flushPathSet: Set<string>
+        flushPathSet: Set<T>
     }
 ) {
     const currentExecutionToken: Map<T, symbol> = new Map();
 
-    const isReachable = (
-        trigger: T,
-        target: T,
-        knownAffected: Set<T>
-    ): boolean => {
-        if (trigger === target || knownAffected.has(target)) return true;
-
-        const visited = new Set<T>();
-        const stack = [target]; // 向上溯源用栈(DFS)或队列(BFS)都可以
-
-        while (stack.length > 0) {
-            const curr = stack.pop()!;
-            if (visited.has(curr)) continue;
-            visited.add(curr);
-
-            const parents = dependency.GetPrevDependency(curr);
-
-            for (const p of parents) {
-                // 核心优化点：剪枝
-                // 只要任何一个父节点在已知战区，或者就是触发点，直接断定
-                if (p === trigger || knownAffected.has(p)) {
-                    return true;
-                }
-
-                if (!visited.has(p)) {
-                    stack.push(p);
-                }
-            }
-        }
-
-        return false;
-    }
-
+ 
     //运行调用入口
     const TaskRunner = (
         triggerPath: T,
@@ -137,7 +105,7 @@ function useMeshTask<T extends string>(
                 console.log(`%c ✅ 计算完成: ${targetPath}` + "当前值:", targetSchema.defaultValue, "color: #67c23a;");
 
                 for (let bucketName in targetSchema.nodeBucket) {
-                    const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket;
+                    const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket<T>;
 
                     // 桶内部会根据自己的 version 进行判断是否真正执行
                     const result = await bucket.evaluate({

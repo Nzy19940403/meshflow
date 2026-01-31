@@ -1,7 +1,7 @@
 import { Ref, ref } from "vue";
-import { DeepReadonly, DeepWriteable, FinalFlatten, KeysOfUnion } from "./util";
+import { DeepReadonly, DeepWriteable, FinalFlatten, KeysOfUnion } from "../utils/util";
 
-import { SchemaBucket, ValidatorsBucket } from "./bucket";
+import { SchemaBucket, ValidatorsBucket } from "../engine/bucket";
 
 
 import {
@@ -9,9 +9,9 @@ import {
   FormDataModel,
 } from "@/devSchemaConfig/dev.form.Schema.check";
 
-import { HistoryActionItem } from "./hooks/useHistory";
+import { HistoryActionItem } from "../plugins/useHistory";
  
-import {useMeshTask} from './core/useMeshTask'
+import {useMeshTask} from '../engine/useMeshTask'
 
 export type FormItemValidationFn = (value: any) => boolean | string;
 export type FormItemValidationFns = readonly FormItemValidationFn[];
@@ -63,11 +63,11 @@ export type FormFieldSchema =
   | GroupField;
 
 //一些额外的共同属性，属于渲染时的schema，不属于基础的schema
-type RenderSchemaExtraCommonType = {
+type RenderSchemaExtraCommonType<P = any> = {
   path: AllPath;
   dirtySignal: any;
   uid: number;
-  nodeBucket: Record<string, SchemaBucket>;
+  nodeBucket: Record<string, SchemaBucket<P>>;
   // affectedArray: Set<string>; //用来记录哪些path会被本属性值影响
   dependOn: (cb: (...args: any) => void) => void;
 };
@@ -118,15 +118,15 @@ export type FormResultType<T> = T extends any
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
-export function useForm<T>(
+export function useForm<T,P>(
   schema: FormFieldSchema,
   dependency: {
-    GetDependencyOrder: () => AllPath[][];
-    GetAllNextDependency: (path: AllPath) => AllPath[];
-    GetNextDependency: (path: AllPath) => AllPath[];
-    GetPrevDependency: (path: AllPath) => AllPath[];
-    GetAllPrevDependency: (path: AllPath) => AllPath[];
-    GetPathToLevelMap:()=>Map<AllPath,number> 
+    GetDependencyOrder: () => P[][];
+    GetAllNextDependency: (path: P) => P[];
+    GetNextDependency: (path: P) => P[];
+    GetPrevDependency: (path: P) => P[];
+    GetAllPrevDependency: (path: P) => P[];
+    GetPathToLevelMap:()=>Map<P,number> 
   },
   trace: {
     pushExecution: any;
@@ -147,16 +147,16 @@ export function useForm<T>(
   const formData = initFormData(schema as FormFieldSchema) as FormDataModel;
 
   let uid: number = 0;
-  const PathToUid = new Map<string, number>();
+  const PathToUid = new Map<P, number>();
   const UidToSchemaMap = new Map<number, RenderSchema>();
   const GroupsMap = new Map<string, RenderSchema>();
 
   let isPending = false;
-  const flushPathSet = new Set<string>();
+  const flushPathSet = new Set<P>();
 
   // const currentExecutionToken: Map<string, symbol> = new Map();
 
-  const GetRenderSchemaByPath = (path: string) => {
+  const GetRenderSchemaByPath = (path: P) => {
     const uid = PathToUid.get(path) as number;
     const targetSchema = UidToSchemaMap.get(uid) as RenderSchemaFn<
       Exclude<FormFieldSchema, GroupField>
@@ -207,7 +207,7 @@ export function useForm<T>(
         if (list.length > 0) {
           const lastkey = list[list.length - 1];
           parentNode[lastkey] = GetRenderSchemaByPath(
-            list.join(".")
+            list.join(".")  as any
           ).defaultValue;
         }
         return;
@@ -227,7 +227,7 @@ export function useForm<T>(
     return formData;
   };
 
-  const taskrunner = useMeshTask<AllPath>(
+  const taskrunner = useMeshTask<P>(
     dependency,
     trace,
     {
@@ -239,68 +239,68 @@ export function useForm<T>(
     }
   )
 
-  const notifyChild = async (targetPath: AllPath, triggerPath: AllPath) => {
-    const targetSchema = GetRenderSchemaByPath(targetPath) as any;
+  // const notifyChild = async (targetPath: AllPath, triggerPath: AllPath) => {
+  //   const targetSchema = GetRenderSchemaByPath(targetPath) as any;
 
-    let hasValueChanged = false;
+  //   let hasValueChanged = false;
 
-    try {
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve();
-        }, 0);
-      });
+  //   try {
+  //     await new Promise<void>((resolve) => {
+  //       setTimeout(() => {
+  //         resolve();
+  //       }, 0);
+  //     });
 
-      for (let bucketName in targetSchema.nodeBucket) {
-        const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket;
+  //     for (let bucketName in targetSchema.nodeBucket) {
+  //       const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket;
 
-        const result = await bucket.evaluate({
-          affectKey: bucketName, //正在更新的桶名称
-          triggerPath,
-          GetRenderSchemaByPath,
-          GetValueByPath: (p: string) => GetRenderSchemaByPath(p).defaultValue,
-        });
+  //       const result = await bucket.evaluate({
+  //         affectKey: bucketName, //正在更新的桶名称
+  //         triggerPath,
+  //         GetRenderSchemaByPath,
+  //         GetValueByPath: (p: string) => GetRenderSchemaByPath(p).defaultValue,
+  //       });
 
-        if (bucketName === "options") {
-          let isLegal = false;
-          let val = targetSchema.defaultValue;
-          for (let item of result) {
-            if (item.value == val) {
-              isLegal = true;
-            }
-          }
+  //       if (bucketName === "options") {
+  //         let isLegal = false;
+  //         let val = targetSchema.defaultValue;
+  //         for (let item of result) {
+  //           if (item.value == val) {
+  //             isLegal = true;
+  //           }
+  //         }
 
-          if (!isLegal) {
-            targetSchema["defaultValue"] = undefined;
-            hasValueChanged = true;
-          }
-        }
+  //         if (!isLegal) {
+  //           targetSchema["defaultValue"] = undefined;
+  //           hasValueChanged = true;
+  //         }
+  //       }
 
-        // 更新数据
-        if (result !== targetSchema[bucketName]) {
-          targetSchema[bucketName] = result;
+  //       // 更新数据
+  //       if (result !== targetSchema[bucketName]) {
+  //         targetSchema[bucketName] = result;
 
-          hasValueChanged = true;
-        }
-      }
-    } catch (err) {
-      console.log(err);
-    } finally {
-      trace.popExecution([targetPath]);
-    }
+  //         hasValueChanged = true;
+  //       }
+  //     }
+  //   } catch (err) {
+  //     console.log(err);
+  //   } finally {
+  //     trace.popExecution([targetPath]);
+  //   }
 
-    // 【核心递归】如果我变了，我作为“新触发者”去通知我的儿子
-    if (hasValueChanged) {
-      flushPathSet.add(targetPath);
-      requestUpdate();
-    }
-    //必须全量更新，因为不能判断此path不受影响，下游的path也会不受影响
-    const nextOrder = dependency.GetNextDependency(targetPath);
-    trace.pushExecution(nextOrder);
-    for (let grandchildPath of nextOrder) {
-      notifyChild(grandchildPath, targetPath);
-    }
-  };
+  //   // 【核心递归】如果我变了，我作为“新触发者”去通知我的儿子
+  //   if (hasValueChanged) {
+  //     flushPathSet.add(targetPath);
+  //     requestUpdate();
+  //   }
+  //   //必须全量更新，因为不能判断此path不受影响，下游的path也会不受影响
+  //   const nextOrder = dependency.GetNextDependency(targetPath);
+  //   trace.pushExecution(nextOrder);
+  //   for (let grandchildPath of nextOrder) {
+  //     notifyChild(grandchildPath, targetPath);
+  //   }
+  // };
 
   const notifyAll = async () => {
     const paths = dependency.GetDependencyOrder().flat();
@@ -314,7 +314,7 @@ export function useForm<T>(
             affectKey: bucketName,
             triggerPath: undefined,
             GetRenderSchemaByPath,
-            GetValueByPath: (p: string) =>
+            GetValueByPath: (p: P) =>
               GetRenderSchemaByPath(p).defaultValue,
             isSameToken: () => false,
           });
@@ -351,7 +351,7 @@ export function useForm<T>(
   };
 
   //单个字段变化之后触发此函数，然后触发notifyChild来递归的渲染后续字段
-  const notify = async (path: AllPath) => {
+  const notify = async (path: P) => {
     if (!path) {
       throw Error("没有路径");
     }
@@ -374,13 +374,13 @@ export function useForm<T>(
     trace.popExecution([path], true);
   };
 
-  async function runNotifyTask(initialNodes: AllPath[], triggerPath: AllPath) {
+  async function runNotifyTask(initialNodes: P[], triggerPath: P) {
 
     taskrunner(triggerPath,initialNodes)
 
   }
 
-  const updateInputValueRuleManually = (path: string) => {
+  const updateInputValueRuleManually = (path: P) => {
     if (!path) {
       throw Error("没有路径");
     }
@@ -412,7 +412,8 @@ export function useForm<T>(
 
     //传入dependOn回调的参数
     let dependOnContext = {
-      getRenderSchema: (path: string) => {
+      getRenderSchema: (path: P) => {
+       
         return GetRenderSchemaByPath(path);
       },
     };
@@ -434,11 +435,11 @@ export function useForm<T>(
             value: newVal,
           },
         ],
-        async (metadata: { path: string; value: any }) => {
+        async (metadata: { path: P; value: any }) => {
           let data = GetRenderSchemaByPath(metadata.path);
           data.defaultValue = metadata.value;
           updateInputValueRuleManually(metadata.path);
-          await notify(metadata.path as AllPath);
+          await notify(metadata.path);
         }
       );
 
@@ -486,7 +487,7 @@ export function useForm<T>(
     }
 
     //用户只需要使用path去注入actions
-    PathToUid.set(newNode.path, newNode.uid);
+    PathToUid.set(newNode.path as P, newNode.uid);
     UidToSchemaMap.set(newNode.uid, newNode as RenderSchema);
 
     return newNode;

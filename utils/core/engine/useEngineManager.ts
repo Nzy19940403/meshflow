@@ -1,9 +1,11 @@
-import { setupBusinessRules } from "@/src/formRules/FormRules";
+ 
+ 
 import { useFlowScheduler } from "./useFlowScheduler";
  
 
 
-type SchedulerInstance = ReturnType<typeof useFlowScheduler>;
+// type SchedulerInstance = ReturnType<typeof useFlowScheduler>;
+type SchedulerType<T, P extends string> = ReturnType<typeof useFlowScheduler<T, P>>;
 
 type GetType<T, P> = P extends keyof T ? T[P] : never;
 
@@ -28,9 +30,9 @@ type Engine<T> = {
   };
 };
 
-const engineMap = new Map<string|symbol,Engine<SchedulerInstance>>()
+const engineMap = new Map<string|symbol,Engine<any>>()
 
-const useEngineManager = <T>(id:string|symbol,Schema:any, UITrigger:{
+const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITrigger:{
   signalCreateor:()=>T,
   signalTrigger:(signal:T)=>void
 }) => {
@@ -42,7 +44,9 @@ const useEngineManager = <T>(id:string|symbol,Schema:any, UITrigger:{
     if(engineMap.has(id)){
       throw Error('engineID重复，修改id或者使用symbol');
     }
-  
+    const scheduler = useFlowScheduler<T, P>(Schema, UITrigger);
+
+    type ConcreteScheduler = typeof scheduler;
     const {
       schema,
       GetFormData,
@@ -60,9 +64,9 @@ const useEngineManager = <T>(id:string|symbol,Schema:any, UITrigger:{
       Redo,
       initCanUndo,
       initCanRedo,
-    } = useFlowScheduler<T>(Schema,UITrigger);
+    } = scheduler;
   
-    let engine:Engine<SchedulerInstance> = {
+    let engine:Engine<ConcreteScheduler> = {
       config: {
         SetRule,
         SetRules,
@@ -97,9 +101,9 @@ const useEngineManager = <T>(id:string|symbol,Schema:any, UITrigger:{
   
 };
 
-const useEngine = (id:string|symbol) => {
+const useEngine = <T = any, P extends string = string>(id:string|symbol) => {
   if(engineMap.has(id)){
-    return engineMap.get(id)!;
+    return engineMap.get(id)! as Engine<SchedulerType<T, P>>;
   }
   throw Error('不存在的id')
 };

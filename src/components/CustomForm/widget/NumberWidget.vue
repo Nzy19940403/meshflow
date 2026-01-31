@@ -26,14 +26,12 @@
 <script setup lang="ts">
 import { toRefs ,ref,computed,onMounted,shallowRef,inject,Ref,watch} from 'vue';
 import { VNumberInput } from 'vuetify/components';
-import type {FormFieldSchema, RenderSchemaFn,InputField} from '@/utils/schema';
-import {useDebounce} from '@/utils/hooks/useDebounce';
-import { formdataChangeSymbol } from '@/utils/symbols'
+import type {FormFieldSchema, RenderSchemaFn,InputField} from '@/utils/core/schema/schema';
+import {useDebounce} from '@/utils/useDebounce';
+ 
  
 
-const commintFn = inject<(path:any,val:any)=>void>(formdataChangeSymbol,()=>{
-    console.error('未注入方法')
-})  
+ 
 
 const props = withDefaults(
     defineProps<{

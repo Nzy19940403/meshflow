@@ -20,7 +20,7 @@
 
 <script setup lang="ts">
 import { watch ,ref,Ref,computed,onMounted,shallowRef,defineAsyncComponent} from 'vue';
-import type {  RenderSchema} from '@/utils/schema';
+import type {  RenderSchema} from '@/utils/core/schema/schema';
 import InputWidgetVue from './widget/InputWidget.vue';
 import StatusIcon from './StatusIcon.vue';
 

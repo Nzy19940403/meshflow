@@ -2,22 +2,22 @@
 
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
 
-export function useDependency(
-    getDependencyGraph: () => Map<AllPath, Set<AllPath>>,
-    getPredecessorGraph: () => Map<AllPath, Set<AllPath>>,
-    getDirectParentDependencyGraph: () => Map<AllPath, Set<AllPath>>,
-    getDirectChildDependencyGraph: () => Map<AllPath, Set<AllPath>>
+export function useDependency<P>(
+    getDependencyGraph: () => Map<P, Set<P>>,
+    getPredecessorGraph: () => Map<P, Set<P>>,
+    getDirectParentDependencyGraph: () => Map<P, Set<P>>,
+    getDirectChildDependencyGraph: () => Map<P, Set<P>>
 ) {
 
      
 
 
-    const _GetNextDependency = (targetPath: AllPath) => {
+    const _GetNextDependency = (targetPath: P) => {
         const fullGraph = getDependencyGraph(); // 出度 Map
         const predecessorGraph = getPredecessorGraph(); // 入度 Map
 
         // 1. 获取所有直接下游 (这是真理，不受 Order 影响)
-        const directChildren = new Set<AllPath>();
+        const directChildren = new Set<P>();
         // for (const path of targetPaths) {
         fullGraph.get(targetPath)?.forEach((child) => directChildren.add(child));
         // }
@@ -56,20 +56,20 @@ export function useDependency(
     //     }
     //     return Array.from(res);
     //   };
-    const GetAllPrevDependency = (targetPath: AllPath) => {
+    const GetAllPrevDependency = (targetPath: P) => {
         const predecessorGraph = getPredecessorGraph();
 
         return Array.from(predecessorGraph.get(targetPath) || []);
     };
-    const GetAllNextDependency = (targetPath: AllPath) => {
+    const GetAllNextDependency = (targetPath: P) => {
         const fullGraph = getDependencyGraph();
 
         return Array.from(fullGraph.get(targetPath) || []);
     };
 
-    const rebuildDirectDependencyMaps = (allPaths: AllPath[]) => {
-        const directNextMap = new Map<AllPath, Set<AllPath>>();
-        const directPrevMap = new Map<AllPath, Set<AllPath>>();
+    const rebuildDirectDependencyMaps = (allPaths: P[]) => {
+        const directNextMap = new Map<P, Set<P>>();
+        const directPrevMap = new Map<P, Set<P>>();
 
         for (const path of allPaths) {
             // 1. 调用你那个“基于全量表计算直接下游”的方法
@@ -88,11 +88,11 @@ export function useDependency(
         return { directNextMap, directPrevMap };
     };
 
-    const GetNextDependency = (targetPath: AllPath) => {
+    const GetNextDependency = (targetPath: P) => {
         const map = getDirectChildDependencyGraph();
         return Array.from(map.get(targetPath) || [])
     }
-    const GetPrevDependency = (targetPath: AllPath) => {
+    const GetPrevDependency = (targetPath: P) => {
         const map = getDirectParentDependencyGraph();
         return Array.from(map.get(targetPath) || [])
     }
@@ -106,15 +106,15 @@ export function useDependency(
     };
 }
 
-export function useCheckCycleInGraph(
-    dependencyGraph: Map<AllPath, Set<AllPath>>
+export function useCheckCycleInGraph<T>(
+    dependencyGraph: Map<T, Set<T>>
 ) {
-    const solve = (inDegreeMap: Map<AllPath, number>): { steps:AllPath[][] , levelMap:Map<AllPath,number>} => {
-        const result: AllPath[][] = [];
+    const solve = (inDegreeMap: Map<T, number>): { steps:T[][] , levelMap:Map<T,number>} => {
+        const result: T[][] = [];
         // 使用临时队列存储当前层级
-        let queue: AllPath[] = [];
+        let queue: T[] = [];
 
-        const tempLevelMap = new Map<AllPath, number>();
+        const tempLevelMap = new Map<T, number>();
 
         const len = inDegreeMap.size;
         let processedCount = 0;
@@ -135,7 +135,7 @@ export function useCheckCycleInGraph(
         while (queue.length > 0) {
             // 💡 这一层的节点都在 queue 里
             result.push([...queue]);
-            const nextQueue: AllPath[] = [];
+            const nextQueue: T[] = [];
 
             // 处理当前层的所有节点
             for (const current of queue) {
@@ -173,7 +173,7 @@ export function useCheckCycleInGraph(
     };
 
     const check = () => {
-        const inDegreeMap: Map<AllPath, number> = new Map();
+        const inDegreeMap: Map<T, number> = new Map();
 
         for (let item of dependencyGraph.keys()) {
             let paths = Array.from(dependencyGraph.get(item) || []);

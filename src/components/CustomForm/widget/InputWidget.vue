@@ -21,9 +21,9 @@
 <script setup lang="ts">
 import { shallowRef,Ref,watch} from 'vue';
 import { VTextField } from 'vuetify/components';
-import type {RenderSchemaFn,InputField} from '@/utils/schema';
-import { ValidatorsBucket } from '@/utils/bucket';
-import { useDebounce } from '@/utils/hooks/useDebounce';
+import type {RenderSchemaFn,InputField} from '@/utils/core/schema/schema';
+import { ValidatorsBucket } from '@/utils/core/engine/bucket';
+import { useDebounce } from '@/utils/useDebounce';
 
 const props = withDefaults(
     defineProps<{

@@ -28,7 +28,7 @@
 <script setup lang="ts">
 import { shallowRef, Ref, watch } from 'vue';
 import { VCheckbox,VIcon,VTooltip } from 'vuetify/components';
-import type { RenderSchemaFn, CheckboxField } from '@/utils/schema';
+import type { RenderSchemaFn, CheckboxField } from '@/utils/core/schema/schema';
 import { ref } from 'vue';
 
 const props = withDefaults(

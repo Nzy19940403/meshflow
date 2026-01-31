@@ -11,9 +11,10 @@
 import { provide } from "vue";
 // import { Schema } from "@/devSchemaConfig/dev.form.Schema";
 // import { Schema } from "@/devSchemaConfig/test.form.Schema";
-import { useEngineManager, useEngine } from "@/utils/hooks/useEngineManager";
+import { useEngineManager, useEngine } from "@/utils/core/engine/useEngineManager";
 import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
+import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
 
 const maxCount = 3
 const generateHugeMesh = () => {
@@ -82,7 +83,7 @@ const TransformSchema = (data:any)=>{
 let newdata = generateHugeMesh()
 // let newdata = TransformSchema(Schema);
 // console.log(newdata)
-const engine = useEngineManager('main-engine',newdata, {
+const engine = useEngineManager<Ref<number,number>,AllPath>('main-engine',newdata, {
   signalCreateor: () => ref(0),
   signalTrigger(signal) {
     signal.value++;
@@ -128,6 +129,7 @@ for (let i = 2; i <= maxCount; i++) {
     }
   });
 }
+
  
 
 for (let i = 1; i <= maxCount; i++) {

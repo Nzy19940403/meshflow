@@ -27,7 +27,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { useEngine } from "@/utils/hooks/useEngineManager";
+import { useEngine } from "@/utils/core/engine/useEngineManager";
 import { useRouter } from "vue-router";
 import rough from "roughjs";
 import { onMounted } from "vue";
