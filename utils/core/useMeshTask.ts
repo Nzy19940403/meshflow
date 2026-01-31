@@ -5,7 +5,9 @@ function useMeshTask<T extends string>(
         GetAllNextDependency: (p: T) => T[],
         GetAllPrevDependency: (p: T) => T[],
         GetPrevDependency: (p: T) => T[],
-        GetNextDependency: (p: T) => T[]
+        GetNextDependency: (p: T) => T[],
+        GetDependencyOrder: () => T[][],
+        GetPathToLevelMap: () => Map<T, number>
     },
     trace: {
         pushExecution: any;
@@ -61,10 +63,10 @@ function useMeshTask<T extends string>(
     ) => {
         //最大并发数
         const MAX_CONCURRENT_TASKS = 20;
-        const GRACE_THRESHOLD = 5; // 允许“抢跑”的阻力余量
+
 
         const curToken = Symbol("token");
-         
+
         currentExecutionToken.set(triggerPath, curToken);
 
         let isLooping = false; // 状态锁：标志 while 循环是否在运行
@@ -72,11 +74,11 @@ function useMeshTask<T extends string>(
         const processed = new Set<T>();
         const processingSet = new Set<T>();
         const AllAffectedPaths = new Set<T>(
-           
+
             dependency.GetAllNextDependency(triggerPath)
         );
         AllAffectedPaths.add(triggerPath)
-        processed.add(triggerPath);
+
         const queueCountMap = new Map<T, number>();
         //悲观队列，如果一个path的直接上游并没有被纳入计算但是这个path本身已经被影响，之前是乐观的直接计算，但是由于镜像依赖问题，
         //导致计算会拿到过期的数据，新数据更新之后没法继续更新了，所以加入悲观队列先挂起，最后再入队
@@ -84,6 +86,24 @@ function useMeshTask<T extends string>(
         const stagingArea = new Map<T, number>();
 
         let lastYieldTime = performance.now();
+
+        // 获取初始水位线（触发点所在层级）
+        const pathToLevelMap = dependency.GetPathToLevelMap();
+        const triggerLevel = pathToLevelMap.get(triggerPath) ?? 0;
+        let currentLevel = triggerLevel;
+
+        AllAffectedPaths.forEach(path => {
+            if (path === triggerPath) return;
+            if (initialNodes.includes(path)) return;
+
+            const directParents = dependency.GetPrevDependency(path);
+            const effectParentsCount = directParents.filter(p => AllAffectedPaths.has(p)).length;
+            if (effectParentsCount > 0) {
+                stagingArea.set(path, effectParentsCount);
+            }
+        })
+        processed.add(triggerPath);
+
 
         const queue: Array<{
             target: T;
@@ -110,6 +130,7 @@ function useMeshTask<T extends string>(
 
             try {
                 if (currentExecutionToken.get(triggerPath) !== curToken) return;
+              
                 let hasValueChanged = false;
                 let notifyNext = false;
                 const targetSchema = data.GetRenderSchemaByPath(targetPath);
@@ -117,26 +138,24 @@ function useMeshTask<T extends string>(
 
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket;
-                  
+
                     // 桶内部会根据自己的 version 进行判断是否真正执行
                     const result = await bucket.evaluate({
                         affectKey: bucketName,
                         triggerPath: currentTriggerPath,
-                        targetPath:targetPath,
+                        // targetPath:targetPath,
                         GetRenderSchemaByPath: data.GetRenderSchemaByPath,
-                        GetValueByPath: (p: T) =>
-                        data.GetRenderSchemaByPath(p).defaultValue,
-                        GetToken:()=>curToken
-                        // isSameToken: () =>
-                        //     currentExecutionToken.get(triggerPath) === curToken,
+                        GetValueByPath: (p: T) => data.GetRenderSchemaByPath(p).defaultValue,
+                        GetToken: () => curToken
+
                     });
-                   
+
                     if (currentExecutionToken.get(triggerPath) !== curToken) {
-                   
+
                         console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
                         return; // 不要执行 processed.add，不要触发 hasValueChanged
                     }
-                    // processingSet.delete(targetPath);
+
                     // Options 合法性检查
                     if (bucketName === "options") {
                         const isLegal = result.some(
@@ -154,7 +173,7 @@ function useMeshTask<T extends string>(
                         hasValueChanged = true;
                     }
                     // if (currentExecutionToken.get(triggerPath) !== curToken) {
-                   
+
                     //     console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
                     //     return; // 不要执行 processed.add，不要触发 hasValueChanged
                     // }
@@ -164,55 +183,54 @@ function useMeshTask<T extends string>(
                     if (hasValueChanged) {
                         trigger.flushPathSet.add(targetPath as any);
                     }
-
+                    processed.add(targetPath);
                     const directChildren = dependency.GetNextDependency(targetPath);
                     // 1. 如果值变了，扩充疆域（这是为了让更深层的节点能正确进入暂存区）
                     if (hasValueChanged || notifyNext) {
                         const allNextOrder = dependency.GetAllNextDependency(targetPath);
                         allNextOrder.forEach((p: any) => AllAffectedPaths.add(p));
                     }
+                    for (const child of directChildren) {
+                        if (processed.has(child)) {
+                            console.log(`🧊 [拦截] 下游 ${child} 已由其他路径处理`);
+                            continue; 
+                        }
+                        // 2. 关键分歧点：看当前节点是否产生了“影响力”
+                        if (hasValueChanged || notifyNext) {
+                            // --- 【强影响】下游必须进入悲观区并尝试救赎 ---
 
-                    for (const childPath of directChildren) {
-                        const isProcessed = processed.has(childPath);
-                        const isInQueue = queueCountMap.has(childPath) || processingSet.has(childPath);
-                        const isInStaging = stagingArea.has(childPath);
-
-                        // --- 核心判定逻辑 ---
-                        // 1. 如果值变了/强制通知：只要下游还没处理完，就必须接力
-                        const shouldPropagate = (hasValueChanged || notifyNext) && !isProcessed;
-
-                        // 2. 救赎逻辑：如果它在暂存区（说明之前依赖没好），现在上游算完了，必须给它一次机会
-                        const shouldRescue = isInStaging && !isInQueue;
-
-                        // 3. 兜底逻辑：如果它在受影响名单里，但目前既没算完也没入队，说明它掉队了
-                        const shouldRefill = AllAffectedPaths.has(childPath) && !isProcessed && !isInQueue;
-
-                        if (shouldPropagate || shouldRescue || shouldRefill) {
-                            // 关键：只有当前不在队列/不在执行中，才执行 push
-                            if (!isInQueue) {
-                                if (isInStaging) stagingArea.delete(childPath);
-
-                                queue.push({
-                                    target: childPath,
-                                    trigger: targetPath,
-                                    isReleased: false,
-                                });
-
-                                queueCountMap.set(childPath, (queueCountMap.get(childPath) || 0) + 1);
-
-                                // 必须调用 trace 才能让 UI 看到“转圈”状态
-                                trace.pushExecution([childPath]);
-
-                                console.log(`%c 🛰️ 信号接力: ${targetPath} -> ${childPath}`, "color: #00bcd4;");
+                            // 如果孩子不在悲观区，先送进去并计算它在波及名单内的阻力
+                            if (!stagingArea.has(child) && !processed.has(child) && !queueCountMap.has(child)) {
+                                const effectParentsCount = dependency.GetPrevDependency(child)
+                                    .filter(p => AllAffectedPaths.has(p)).length;
+                                stagingArea.set(child, effectParentsCount);
                             }
+
+                            // 尝试减阻力
+                            const currentResistance = stagingArea.get(child) ?? 0;
+                            const newResistance = Math.max(0, currentResistance - 1);
+
+                            if (newResistance <= 0) {
+                                stagingArea.delete(child);
+                                queue.push({ target: child, trigger: targetPath, isReleased: true });
+                                queueCountMap.set(child, 1);
+                              
+                                trace.pushExecution([child]);
+                                console.log(`🔥 [强拉动] ${targetPath} 值变了，释放下游: ${child}`);
+                            } else {
+                                stagingArea.set(child, newResistance);
+                            }
+                        } else {
+                            // --- 【弱影响】值没变，下游不入悲观区，不减阻力 ---
+                            // 它们现在只是 AllAffectedPaths 里的一个“标记”，
+                            // 等待 flushQueue 的水位线步进或者其他变动的路径来捞它们
+                            console.log(`🧊 [弱关联] ${targetPath} 值未变，${child} 仅更新疆域，原地待命`);
                         }
                     }
+
                 }
-                // if (currentExecutionToken.get(triggerPath) !== curToken) {
-                //     console.log("🚫 令牌过期，物理切断信号扩散");
-                //     return; // 必须在这里 return，后面所有的 processed.add 和信号接力都不准跑！
-                // }
-                processed.add(targetPath);
+
+                // processed.add(targetPath);
                 if (performance.now() - lastYieldTime > 16) {
                     await new Promise((resolve) => requestAnimationFrame(resolve));
                     lastYieldTime = performance.now();
@@ -227,6 +245,7 @@ function useMeshTask<T extends string>(
 
             } finally {
                 if (currentExecutionToken.get(triggerPath) === curToken) {
+                    console.log(`[释放Processing] - ${targetPath} | 剩余Size: ${processingSet.size - 1}`);
                     processingSet.delete(targetPath);
                     trace.popExecution([targetPath]);
 
@@ -235,6 +254,7 @@ function useMeshTask<T extends string>(
                     // 由于你有 isLooping 锁，如果 while 还在转，这一句会被 return，不产生副作用
                     // 如果 while 已经退出了，这一句会重新激活循环，去处理 A3, B2 等下游
                     if (!isLooping) {
+                        // console.log(`[点火] 🔥 异步任务回执，重启扫描: ${targetPath}`);
                         flushQueue();
                     }
 
@@ -247,171 +267,150 @@ function useMeshTask<T extends string>(
         }
 
         const flushQueue = async () => {
+            // 1. 令牌与状态锁检查
             if (currentExecutionToken.get(triggerPath) !== curToken) {
                 isLooping = false;
                 return;
             }
 
             isLooping = true;
+
             try {
-                while (queue.length || stagingArea.size > 0) {
-                    //如果不是最新的对于本次起源路径的计算就可以停止扩散了
-                    if (currentExecutionToken.get(triggerPath) !== curToken) {
-                        console.log("💀 旧任务自毁");
-                        return; // 直接退出，不要走 finally 里的 isLooping = false，因为那是旧任务的锁
-                    }
-                    // 🔴 流量控制：如果正在飞的任务太多了，先憋着
-                    if (processingSet.size >= MAX_CONCURRENT_TASKS) {
-                        console.log(`⏳ 并发已达上限 (${MAX_CONCURRENT_TASKS})，暂停派发...`);
-                        isLooping = false; // 暂时熄火
-                        return; // 退出循环，等待任意一个飞着的任务 finally 后来“点火”
-                    }
-                    //如果队列里面没有任务了去看看悲观区，把悲观区的移入进来，后面可能会修改，因为还要看processingset里面有没有
-                    if (queue.length === 0 && stagingArea.size > 0) {
-                        // 如果还有人在异步计算，绝对不能全量释放！
-                        // 此时我们直接 return（拉闸），等最后那个异步任务算完来点火。
-                        if (processingSet.size > 0) {
-                            // 🛑 关键：只要还有异步任务在跑，绝不能全量释放暂存区！
-                            console.log(`🧊 还有 ${processingSet.size} 个任务在飞，保持拉闸状态...`);
-                            console.log("在飞的任务是:", Array.from(processingSet))
+                // --- 核心控制循环 ---
+                // 准入条件：队列有任务 OR 悲观区有待释放的任务
+                while (queue.length > 0 || stagingArea.size > 0) {
+                    if (currentExecutionToken.get(triggerPath) !== curToken) break;
+
+
+                     
+
+                    // --- 情况 1：优先消费队列 ---
+                    if (queue.length > 0) {
+
+                        // 并发上限检查
+                        if (processingSet.size >= MAX_CONCURRENT_TASKS) {
                             isLooping = false;
-                            return;
+                            return; // 熄火，等待点火
                         }
 
+                        const task = queue.shift()!;
+                        const { target: targetPath } = task;
 
-                        console.log(
-                            `%c 🔓 [全量释放] 暂存区节点已无更新动力，强制回填执行`,
-                            "color: #9c27b0;"
-                        );
+                        if (processed.has(targetPath)) {
+                            console.warn(`[拦截] 🛡️ 拒绝重入: ${targetPath} | 原因: 已计算完成`);
+                            // trace.popExecution([targetPath]);
+                            continue;
+                        }
+
+                        console.log(`[调度] 📥 出队: ${targetPath} | 来源: ${task.isReleased ? '救赎/拉动' : '初始'} | 剩余: ${queue.length}`);
+                        // 记账逻辑
+
+
+                        const currentCount = queueCountMap.get(targetPath) || 0;
+                        if (currentCount <= 1) queueCountMap.delete(targetPath);
+                        else queueCountMap.set(targetPath, currentCount - 1);
+
+                       
+
+                        // 检查水位线准入
+                        const pLevel = pathToLevelMap.get(targetPath) ?? 0;
+                        if (pLevel > currentLevel + 1 && !task.isReleased) {
+                            console.log(`[强制拦截] ${targetPath} 层级太深(${pLevel})，当前水位(${currentLevel})，移入悲观区`);
+                            stagingArea.set(targetPath, 1); // 重新入悲观区确权
+                            continue;
+                        }
+
+                        processingSet.add(targetPath);
+                        console.log(`[锁定Processing] + ${targetPath} | 当前Size: ${processingSet.size} | 成员: ${Array.from(processingSet).join(',')}`);
+                        // currentLevel = Math.max(currentLevel, pLevel);
+                        
+                     
+                        trace.pushExecution([targetPath]);
+                        executorNodeCalculate(task); // 异步启动
+                        continue; // 只要队列还有，就一直跑
+                    }
+
+                    // --- 情况 2：队列空了，检查是否满足“熄火等待”条件 ---
+                    // 💡 严格熄火规定：队列干了，但还有异步任务在飞，必须立刻退出
+                    if (processingSet.size > 0) {
+                        console.log(`[熄火拦截] 队列空但有任务在飞 | 正在飞: ${Array.from(processingSet).join(',')} | 拦截水位线推进`);
+                        isLooping = false;
+                        return; // 流程真正熄火，靠 finally 里的点火唤醒
+                    }
+
+                    // --- 情况 3：系统全静默（Queue空且Processing空），扫描悲观区救赎 ---
+                    if (stagingArea.size > 0) {
+                        console.log(`%c ⚡ 系统静默，扫描悲观区... 层级: ${currentLevel}`, "color: #9c27b0;");
+
+                        let liberated = false; // 标志位：本轮是否成功救出任务
+                        const toRelease: T[] = [];
+
+                        // 1. 扫描悲观区，寻找可以释放的节点
                         for (const [path] of stagingArea) {
-                            // 标记这个任务是“赦免”归来的
-                            queue.push({
-                                target: path,
-                                trigger: triggerPath,
-                                isReleased: true,
-                            } as any);
-                            queueCountMap.set(path, 1);
-                        }
-                        stagingArea.clear(); // 彻底清空，防止死循环
-                        continue;
-                    }
+                            const directParents = dependency.GetPrevDependency(path);
+                            const isBlocked = directParents.some(p => {
+                                if (processed.has(p)) return false; // 已完成，不阻塞
+                                if (processingSet.has(p) || queueCountMap.has(p)) return true; // 正在跑或在队里，阻塞
+                                if (AllAffectedPaths.has(p)) return true; // 在波及名单但还没跑，阻塞
 
-                    const task = queue.shift()!;
-                    const { target: targetPath, trigger: currentTriggerPath } = task;
-                    const currentCount = queueCountMap.get(targetPath) || 0;
-                    if (currentCount <= 1) {
-                        queueCountMap.delete(targetPath);
-                    } else {
-                        queueCountMap.set(targetPath, currentCount - 1);
-                    }
+                                const pLevel = pathToLevelMap.get(p) ?? 0;
+                                return pLevel > currentLevel; // 父节点层级比当前水位高，阻塞
+                            });
 
-                    const parents = dependency.GetAllPrevDependency(targetPath);
-
-                    // 打印当前出队节点
-                    console.log(
-                        `%c 📦 出队检查: ${targetPath} (来自: ${currentTriggerPath})`,
-                        "color: #409eff;"
-                    );
-
-                    const directParents = dependency.GetPrevDependency(targetPath);
-                    // 【第一步：移交判定】
-                    // 如果我发现我有父节点在“视界之外”（在名单里但没进队列），我立刻移交悲观区
-                    const isUncertain = directParents.some((p) => {
-                        // console.log(`${targetPath}的直接上游` + `${directParents.join(',')}`)
-                        // console.log(`检查${targetPath}是否悲观时的正在执行列表:` + `${Array.from(processingSet).join(',')}`)
-                        if (processed.has(p)) return false; // 已完成，安全
-                        if (queueCountMap.has(p) || processingSet.has(p)) return false; // 正在动，不属于不确定
-
-                        if (task.isReleased) {
-                            return false;
+                            if (!isBlocked) toRelease.push(path);
                         }
 
-                        // 关键：如果父节点 p 在本次触发的影响范围内，但现在还没进队列
-                        // 说明信号还没传导到 p，那么我现在 (targetPath) 就是抢跑！
-                        if (
-                            AllAffectedPaths.has(p) ||
-                            isReachable(triggerPath, p, AllAffectedPaths)
-                        ) {
-                            return true;
+                        // 2. 执行救赎
+                        if (toRelease.length > 0) {
+                            toRelease.forEach(p => {
+                                stagingArea.delete(p);
+                                queue.push({ target: p, trigger: triggerPath, isReleased: true });
+                                queueCountMap.set(p, 1);
+                                trace.pushExecution([p]);
+                            });
+                            liberated = true; // 成功救人
+                            console.log(`🚀 [精准救赎] 释放节点: ${toRelease.join(',')}`);
                         }
-                        return false;
-                    });
-                    //检查上游是否完成，没有的话就是悲观，移入悲观区
-                    if (isUncertain) {
 
-                        console.log(
-                            `%c 📥 [移交暂存] ${targetPath} 依赖的 ${directParents
-                                .filter((p) => !processed.has(p))
-                                .join(",")} 尚未入队，移交悲观区`,
-                            "color: #e91e63;"
-                        );
-                        stagingArea.set(targetPath, 1);
-                        // 注意：这里不需要 push 回 queue，直接 continue，它就在 queue 中消失了，只存在于 stagingArea
-                        continue;
-                    }
-                    //不是悲观的话就要去检查一下是否又父元素正在执行，如果是在正在处理的队列中，还是需要等待，
-                    //但是这里也要后期改成直接剔除后重新点火启动while逻辑
+                        // 3. 💡 核心逻辑：根据救赎结果决定下一步
+                        if (liberated) {
+                            // 既然救到了人，说明当前水位线还有活干
+                            // 直接 continue 回到 while 顶部去消费 queue，不许推水位线
+                            continue;
+                        } else {
+                            // --- 走到这里，说明【当前水位线下】已经捞不到任何任务了 ---
 
-                    const isAnyParentNotReady = parents.some((p) => {
-                        // 1. 如果父节点正在“飞行中”（正在 await ），绝对不能跑下游
-                        if (processingSet.has(p)) return true;
+                            // 检查是否还有活跃的上游依赖（那些在名单里但还没跑完的）
+                            const hasPendingActiveDeps = Array.from(stagingArea.keys()).some(path => {
+                                const parents = dependency.GetPrevDependency(path);
+                                return parents.some(p => AllAffectedPaths.has(p) && !processed.has(p));
+                            });
 
-                        // 2. 如果父节点还在队列里排队，还没轮到它算，下游必须等
-                        if (queueCountMap.has(p) && queueCountMap.get(p)! > 0) return true;
+                            if (hasPendingActiveDeps) {
+                                // 如果还有 B2 这种任务在名单里没进 processed，说明还在等点火
+                                // 此时必须强制熄火，严禁推水位线！
+                                console.log(`⏳ 尚有活跃依赖 未完成，水位线锁定在 ${currentLevel}`);
+                                isLooping = false;
+                                return;
+                            }
+                            // console.log(`[水位] 📈 推进至 Level ${currentLevel + 1} | 理由: 当前层级无待处理任务`);
+                            // 只有【彻底没救到人】且【没有活跃依赖】时，才允许推水位线
+                            currentLevel++;
+                            console.log(`📈 水位线推移至: ${currentLevel}`);
 
-                        // 3. 【核心】如果这个父节点属于“本次任务受影响”的范围，但它还没进过 processed
-                        // 这说明它还没被计算过，下游不能抢跑
-                        if (AllAffectedPaths.has(p) && !processed.has(p)) return true;
-
-                        // 其他情况（比如父节点不在受影响范围，或者已经算完且不在处理中），视为 Ready
-                        return false;
-                    });
-
-                    if (isAnyParentNotReady) {
-
-
-                        // 无论 queue 是否为空，都要移入暂存区，不能直接 return
-                        console.log(`⏳ [拓扑挂起] ${targetPath} 依赖未就绪，移入暂存等待唤醒`);
-                        stagingArea.set(targetPath, 1);
-
-                        // 如果队列空了，确实要熄火，等待正在跑的任务来点火
-                        if (queue.length === 0) {
-                            console.log('🛑 队列已空，停止当前循环，等待异步任务点火');
-                            isLooping = false;
-                            return;
+                            if (currentLevel > 2000) {
+                                break;
+                            }
+                            // 水位线变了，continue 回去，下一轮 while 会用新水位重新扫描悲观区
+                            continue;
                         }
-                        continue;
-
                     }
-                    //到这里如果已经处理过的节点就不予计算了，因为拓扑序和悲观等待还有不存在环的原因，节点就应该被计算一次，所以处理过的
-                    //节点就肯定是安全的节点，可以不用再重复处理了
-                    if (processed.has(targetPath)) {
-                        console.log(
-                            `%c ⏭️ 跳过已处理: ${targetPath}`,
-                            "color: #909399; font-style: italic;"
-                        );
-                        // 因为这个节点在被 push 进队列时，trace 已经认为它要执行了
-                        // 如果跳过它，必须在这里手动把它 pop 掉，否则计数永远不会归零
-                        trace.popExecution([targetPath]);
-                        continue;
-                    }
-                    //此时到这里的肯定是可以被处理但是还没被处理的路径，加入正在处理列表
-                    processingSet.add(targetPath);
-
-                    if ((targetPath as string).includes('c14')) {
-
-                        const deps = dependency.GetAllPrevDependency(targetPath);
-                        console.log(`c14 依赖状态:`, deps.map(d => ({ path: d, done: processed.has(d) })));
-                    }
-                    executorNodeCalculate(task);
-
                 }
             } finally {
                 isLooping = false;
-
+                console.log(`[熄火] 💤 全场静默，等待异步任务降落...`);
             }
-
-        }
+        };
 
         flushQueue();
 

@@ -15,7 +15,7 @@ export interface logicApi {
     }
 }
 
-export const CreateRule = (targetPath: AllPath, targetKey: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options: {
+const CreateRule = (targetPath: AllPath, targetKey: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options: {
     value?: any
     priority?: number,
     logic: (api: any) => any,
@@ -172,7 +172,7 @@ export const useSetRule = (
 
             inDegree.nodeBucket[key] = newBucket;
         }
-        
+
         if(options.forceNotify){
             //如果设置了强制刷新就给桶设置成强制刷新，一个桶里面只要有
             inDegree.nodeBucket[key].forceNotify(); 

@@ -15,7 +15,7 @@ import { useEngineManager, useEngine } from "@/utils/hooks/useEngineManager";
 import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
 
-const maxCount = 15
+const maxCount = 3
 const generateHugeMesh = () => {
   const regions = ['a', 'b', 'c',  ]; // 5 个区域
   const nodesPerRegion = maxCount; // 每个区域 100 个节点

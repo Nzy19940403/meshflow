@@ -276,10 +276,7 @@ export class SchemaBucket {
         };
 
     };
-    // deleteRule(witnessId: string) {
-    //     this.rules.delete(witnessId);
-    //     this.strategy.updateComputedRules();
-    // };
+ 
 
     async evaluate(api: any) {
         
