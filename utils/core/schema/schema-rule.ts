@@ -117,7 +117,8 @@ export const useSetRule = <P>(
        
             let newBucket = new SchemaBucket<P>(
                 inDegree[key as keyof typeof inDegree] ,
-                key      
+                key,
+                inDegreePath
             );
 
             newBucket.setRule(newRule,DepsArray)
@@ -165,7 +166,8 @@ export const useSetRule = <P>(
 
             let newBucket = new SchemaBucket(
                 inDegree[key as keyof typeof inDegree],
-                key
+                key,
+                inDegreePath
             );
 
             newBucket.setRules(newRule,DepsArray)

@@ -11,7 +11,7 @@ type GetType<T, P> = P extends keyof T ? T[P] : never;
 
 type Engine<T> = {
   data: {
-    [K in "schema" | "GetFormData" | "AddNewSchema"]: GetType<T, K>;
+    [K in "schema" | "GetFormData" | "AddNewSchema"|'SetValue']: GetType<T, K>;
   };
   config: {
     [K in
@@ -28,6 +28,9 @@ type Engine<T> = {
   history: {
     [K in "Undo" | "Redo" | "initCanUndo" | "initCanRedo"]: GetType<T, K>;
   };
+  hooks:{
+    [K in "onError"]: GetType<T, K>;
+  }
 };
 
 const engineMap = new Map<string|symbol,Engine<any>>()
@@ -54,7 +57,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       SetRules,
       SetStrategy,
       SetValidators,
-    
+      SetValue,
+
       notifyAll,
       SetTrace,
       GetAllDependency,
@@ -64,6 +68,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       Redo,
       initCanUndo,
       initCanRedo,
+
+      onError
     } = scheduler;
   
     let engine:Engine<ConcreteScheduler> = {
@@ -80,6 +86,7 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
         schema,
         GetFormData,
         AddNewSchema,
+        SetValue,
       },
       history: {
         Undo,
@@ -88,8 +95,11 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
         initCanRedo,
       },
       dependency:{
-          GetAllDependency,
-          GetDependencyOrder
+        GetAllDependency,
+        GetDependencyOrder
+      },
+      hooks:{
+        onError
       }
     };
   

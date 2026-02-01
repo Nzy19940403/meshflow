@@ -55,17 +55,21 @@ export class StrategyStore {
         'PRIORITY': async (api: any, version: number) => {
             let res = null;
             const allRules = this.computedRules
+            try{
+                for (const rule of allRules) {
+
+                    const val = await rule.logic(api);
+    
+                    // 💡 核心：如果当前规则返回 undefined，表示它“弃权”，看下一个
+                    if (val !== undefined) {
+                        res = val;
+                        break; // 找到了最高优先级的有效意见，跳出循环
+                    }
+                };
+            }catch(err){
+                throw err;
+            }
             
-            for (const rule of allRules) {
-
-                const val = await rule.logic(api);
-
-                // 💡 核心：如果当前规则返回 undefined，表示它“弃权”，看下一个
-                if (val !== undefined) {
-                    res = val;
-                    break; // 找到了最高优先级的有效意见，跳出循环
-                }
-            };
             return { res, version };
         }
     }
@@ -106,6 +110,8 @@ export class StrategyStore {
 
 export class SchemaBucket<P>{
 
+    private path:any;
+
     private strategy: StrategyStore;
 
     public contract: ContractType;
@@ -129,10 +135,10 @@ export class SchemaBucket<P>{
 
     promiseToken:any = null;
 
-    constructor(baseValue: any,key:string) {
+    constructor(baseValue: any,key:string,path:P) {
         const getRule = () => this.rules
         this.strategy = new StrategyStore(getRule)
-
+        this.path = path;
         this.isDefaultValue = key==='defaultValue';
 
         this.contract = this.inferType(baseValue);
@@ -145,7 +151,9 @@ export class SchemaBucket<P>{
             priority: 0,
             entityId: '__base__',
             logic: () => baseValue
-        })
+        });
+
+        
     }
 
     forceNotify(){
@@ -370,6 +378,12 @@ export class SchemaBucket<P>{
                 
                 
                 return res;
+            }catch(err:any){
+                const info = {
+                    path:this.path,
+                    info:err
+                }
+                throw info
             } finally {
                 if (this.promiseToken === curToken) {
                     this.pendingPromise = null;

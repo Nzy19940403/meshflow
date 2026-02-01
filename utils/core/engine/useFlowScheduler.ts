@@ -6,6 +6,7 @@ import { useSchemaValidators } from "../schema/schema-validators";
 import {useExecutionTrace} from '../plugins/useExecutionTrace';
 import { useDependency,useCheckCycleInGraph } from "../schema/useDepenency";
 import { useHistory } from "../plugins/useHistory";
+import { useOnError } from "../hooks/useOnError";
 
 //入口函数,传入符合格式的json
 export function useFlowScheduler<T,P>(data:any,UITrigger:{
@@ -40,7 +41,11 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         ()=>directChildDependencyGraph,//传入直接子路径map集合
     );
 
-    const {SetTrace,pushExecution, popExecution} = useExecutionTrace<P>( GetNextDependency );
+    const {
+        SetTrace,
+        pushExecution, 
+        popExecution
+    } = useExecutionTrace<P>( GetNextDependency );
     
     const {
         Undo,
@@ -49,7 +54,12 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         CreateHistoryAction,
         initCanUndo,
         initCanRedo
-    } = useHistory()
+    } = useHistory();
+
+    const {
+        onError,
+        callOnError
+    } = useOnError()
     
 
     const {schema,GetFormData,GetRenderSchemaByPath,GetGroupByPath,notifyAll,convertToRenderSchema} = useForm<T,P>(
@@ -69,6 +79,9 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         {
             pushIntoHistory:PushIntoHistory,
             createHistoryAction:CreateHistoryAction
+        },
+        {
+            callOnError
         },
         UITrigger
     );
@@ -161,7 +174,12 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         notifyAll()
     }
 
-   
+   const SetValue = (path:P,value:any)=>{
+    let node = GetRenderSchemaByPath(path);
+    node.dependOn(()=>{
+        return value
+    })
+   }
 
     return {
         schema,
@@ -171,7 +189,7 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         SetValidators,
         SetTrace,
         // CheckCycleInGraph,
-
+        SetValue,
         GetFormData,
         notifyAll:notifyAllWrapper,  
         AddNewSchema,
@@ -182,7 +200,9 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         Undo,
         Redo,
         initCanUndo,
-        initCanRedo
+        initCanRedo,
+
+        onError
     }  
 }
 

@@ -136,6 +136,9 @@ export function useForm<T,P>(
     pushIntoHistory: any;
     createHistoryAction: any;
   },
+  hooks:{
+    callOnError:any
+  },
   UITrigger: {
     signalCreateor: () => T;
     signalTrigger: (signal: T) => void;
@@ -344,7 +347,9 @@ export function useForm<T,P>(
         }
       }
     } catch (err) {
-      console.log(err);
+  
+    
+      hooks.callOnError(err)
     } finally {
   
     }
