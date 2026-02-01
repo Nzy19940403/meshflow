@@ -25,21 +25,21 @@ const iconClass = shallowRef("");
 
 const iconStatus = shallowRef("idle");
 
-const show = shallowRef(true);
+// const show = shallowRef(true);
 
 const props = defineProps<{
   path: AllPath;
   hide: boolean;
 }>();
 
-const inited = shallowRef(false);
+// const inited = shallowRef(false);
 
 const SetTrace = inject("SetTrace") as Function;
 
 onMounted(() => {
   SetTrace(props.path, (status: any) => {
     //检查是否显示
-
+ 
     iconStatus.value = status;
 
     const baseIcon: any = {
@@ -47,6 +47,8 @@ onMounted(() => {
       idle: "",
       calculated: "mdi-check-outline",
       calculating: "mdi-loading",
+      error:"mdi-close-octagon",
+      canceled:"mdi-cancel"
     };
 
     const baseAnimation: any = {
@@ -54,6 +56,8 @@ onMounted(() => {
       idle: "",
       calculated: "",
       calculating: "animate-spin",
+      error:"",
+      canceled:""
     };
 
     iconClass.value = baseAnimation[iconStatus.value];

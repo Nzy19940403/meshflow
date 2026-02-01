@@ -131,6 +131,7 @@ export function useForm<T,P>(
   trace: {
     pushExecution: any;
     popExecution: any;
+    markError:any
   },
   history: {
     pushIntoHistory: any;
@@ -236,6 +237,7 @@ export function useForm<T,P>(
     {
       GetRenderSchemaByPath
     },
+    hooks,
     {
       requestUpdate,
       flushPathSet
@@ -349,7 +351,7 @@ export function useForm<T,P>(
     } catch (err) {
   
     
-      hooks.callOnError(err)
+      hooks.callOnError(err);
     } finally {
   
     }
@@ -380,9 +382,9 @@ export function useForm<T,P>(
   };
 
   async function runNotifyTask(initialNodes: P[], triggerPath: P) {
-
+    
     taskrunner(triggerPath,initialNodes)
-
+ 
   }
 
   const updateInputValueRuleManually = (path: P) => {

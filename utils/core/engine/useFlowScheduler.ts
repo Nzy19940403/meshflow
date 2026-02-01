@@ -44,7 +44,8 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
     const {
         SetTrace,
         pushExecution, 
-        popExecution
+        popExecution,
+        markError
     } = useExecutionTrace<P>( GetNextDependency );
     
     const {
@@ -74,7 +75,8 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         },
         {
             pushExecution,
-            popExecution
+            popExecution,
+            markError
         },
         {
             pushIntoHistory:PushIntoHistory,

@@ -12,9 +12,13 @@ function useMeshTask<T>(
     trace: {
         pushExecution: any;
         popExecution: any;
+        markError:any
     },
     data: {
         GetRenderSchemaByPath: (p: T) => any
+    },
+    hooks:{
+        callOnError:any
     },
     trigger: {
         requestUpdate: () => void,
@@ -210,7 +214,17 @@ function useMeshTask<T>(
                 }
             } catch (err) {
                 console.error(`计算路径 ${targetPath} 时出错:`, err);
+                const abortToken = Symbol("abort");
+                currentExecutionToken.set(triggerPath, abortToken);
+          
+                // 2. 物理清空任务队列，让 flushQueue 的 while 循环立刻失去动力
+                queue.length = 0; 
+                stagingArea.clear();
+                processingSet.clear(); // 强制清空正在处理的集合
 
+                
+                trace.markError(targetPath)
+                hooks.callOnError(err)
             } finally {
                 if (currentExecutionToken.get(triggerPath) === curToken) {
                     console.log(`[释放Processing] - ${targetPath} | 剩余Size: ${processingSet.size - 1}`);
@@ -248,9 +262,6 @@ function useMeshTask<T>(
                 // 准入条件：队列有任务 OR 悲观区有待释放的任务
                 while (queue.length > 0 || stagingArea.size > 0) {
                     if (currentExecutionToken.get(triggerPath) !== curToken) break;
-
-
-                     
 
                     // --- 情况 1：优先消费队列 ---
                     if (queue.length > 0) {
