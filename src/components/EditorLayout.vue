@@ -12,9 +12,12 @@ import { provide } from "vue";
 // import { Schema } from "@/devSchemaConfig/dev.form.Schema";
 // import { Schema } from "@/devSchemaConfig/test.form.Schema";
 import { useEngineManager, useEngine } from "@/utils/core/engine/useEngineManager";
+
+// import { useEngineManager } from "@meshflow/core";
 import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
+import {useLogger} from '@/utils/plugins/useLogger'
 
 const maxCount = 2
 const generateHugeMesh = () => {
@@ -115,6 +118,8 @@ const engine = useEngineManager<Ref<number,number>,AllPath>('main-engine',newdat
   },
 });
 // const engine = useEngine('main-engine');
+const logger = useLogger()
+engine.config.usePlugin(logger)
 
 console.log(engine.data.schema)
 
@@ -264,5 +269,7 @@ const setupRules = ()=>{
     )
   }
 }
+
+ 
 // setupRules()
 </script>

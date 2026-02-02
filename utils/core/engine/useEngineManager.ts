@@ -18,7 +18,8 @@ type Engine<T> = {
       | "SetStrategy"
       | "SetValidators"
       | "notifyAll"
-      | "SetTrace"]: GetType<T, K>;
+      | "SetTrace"
+      | "usePlugin" ]: GetType<T, K>;
   };
   dependency:{
     [K in 'GetAllDependency'|'GetDependencyOrder']:GetType<T,K>
@@ -27,12 +28,13 @@ type Engine<T> = {
     [K in "Undo" | "Redo" | "initCanUndo" | "initCanRedo"]: GetType<T, K>;
   };
   hooks:{
-    [K in "onError"|"onSuccess"]: GetType<T, K>;
+    [K in "onError"|"onSuccess"|"onStart"]: GetType<T, K>;
   }
 };
 
 const engineMap = new Map<string|symbol,Engine<any>>()
 
+/** @deprecated 请使用新的 useMeshFlow 别名 */
 const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITrigger:{
   signalCreateor:()=>T,
   signalTrigger:(signal:T)=>void
@@ -43,7 +45,7 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
     }
   
     if(engineMap.has(id)){
-      throw Error('engineID重复，修改id或者使用symbol');
+      throw Error('engineID重复,修改id或者使用symbol');
     }
     const scheduler = useFlowScheduler<T, P>(Schema, UITrigger);
 
@@ -56,6 +58,7 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       SetStrategy,
       SetValidators,
       SetValue,
+      usePlugin,
 
       notifyAll,
       SetTrace,
@@ -68,7 +71,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       initCanRedo,
 
       onError,
-      onSuccess
+      onSuccess,
+      onStart
     } = scheduler;
   
     let engine:Engine<ConcreteScheduler> = {
@@ -80,6 +84,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       
         notifyAll,
         SetTrace,
+
+        usePlugin,
       },
       data: {
         schema,
@@ -99,7 +105,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       },
       hooks:{
         onError,
-        onSuccess
+        onSuccess,
+        onStart
       }
     };
   
@@ -122,10 +129,11 @@ const useEngine = <T = any, P extends string = string>(id:string|symbol) => {
 const deleteEngine = (id:string|symbol)=>{
   engineMap.delete(id);
 }
+const useMeshFlow = useEngineManager;
 
 export { 
   useEngineManager,
-  useEngineManager as useMeshFlow, 
+  useMeshFlow, 
   useEngine ,
   deleteEngine
 };

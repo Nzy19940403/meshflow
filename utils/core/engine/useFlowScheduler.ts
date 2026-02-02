@@ -8,9 +8,11 @@ import { useDependency,useCheckCycleInGraph } from "../schema/useDepenency";
 import { useHistory } from "../plugins/useHistory";
 import { useOnError } from "../hooks/useOnError";
 import { useOnSuccess } from "../hooks/useOnSuccess";
+import { usePluginManager } from "../plugins/usePlugin";
+import { useOnStart } from "../hooks/useOnStart";
 
 //入口函数,传入符合格式的json
-export function useFlowScheduler<T,P>(data:any,UITrigger:{
+export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
     signalCreateor:()=>T,
     signalTrigger:(signal:T)=>void
   }){
@@ -68,6 +70,17 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         callOnSuccess
     } = useOnSuccess();
 
+    const {
+        onStart,
+        callOnStart
+    } = useOnStart<{path:P}>()
+
+    //插入插件管理
+    const {
+        emit,
+        usePlugin
+    } = usePluginManager();
+   
     const {schema,GetFormData,GetRenderSchemaByPath,GetGroupByPath,notifyAll,convertToRenderSchema} = useForm<T,P>(
         data,
         {
@@ -89,7 +102,9 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         },
         {
             callOnError,
-            callOnSuccess
+            callOnSuccess,
+            callOnStart,
+            emit
         },
         UITrigger
     );
@@ -196,6 +211,7 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         SetStrategy,
         SetValidators,
         SetTrace,
+        usePlugin,
         // CheckCycleInGraph,
         SetValue,
         GetFormData,
@@ -211,7 +227,8 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         initCanRedo,
 
         onError,
-        onSuccess
+        onSuccess,
+        onStart
     }  
 }
 

@@ -4,10 +4,10 @@ import {  FinalFlatten   } from "../utils/util";
 import { SchemaBucket, ValidatorsBucket } from "../engine/bucket";
 
 
-import {
-  AllPath,
-  FormDataModel,
-} from "@/devSchemaConfig/dev.form.Schema.check";
+// import {
+//   AllPath,
+//   FormDataModel,
+// } from "@/devSchemaConfig/dev.form.Schema.check";
 
 import { HistoryActionItem } from "../plugins/useHistory";
  
@@ -64,7 +64,7 @@ export type FormFieldSchema =
 
 //一些额外的共同属性，属于渲染时的schema，不属于基础的schema
 type RenderSchemaExtraCommonType<P = any> = {
-  path: AllPath;
+  path: P;
   dirtySignal: any;
   uid: number;
   nodeBucket: Record<string, SchemaBucket<P>>;
@@ -118,7 +118,7 @@ export type FormResultType<T> = T extends any
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
-export function useForm<T,P>(
+export function useForm<T,P extends string>(
   schema: FormFieldSchema,
   dependency: {
     GetDependencyOrder: () => P[][];
@@ -139,7 +139,9 @@ export function useForm<T,P>(
   },
   hooks:{
     callOnError:any
-    callOnSuccess:any
+    callOnSuccess:any,
+    callOnStart:any,
+    emit:any
   },
   UITrigger: {
     signalCreateor: () => T;
@@ -149,7 +151,7 @@ export function useForm<T,P>(
   //这个getDepenencyOrder是用来获取设置好rule之后的经过拓扑排序的path路径，入度从低到高，这样可以方便检测rule的设置是否有环，并且实现全量更新
 
   //schema内部维护的formdata，外部获取的时候调用getFormData方法
-  const formData = initFormData(schema as FormFieldSchema) as FormDataModel;
+  const formData = initFormData(schema as FormFieldSchema) as any;
 
   let uid: number = 0;
   const PathToUid = new Map<P, number>();
@@ -244,69 +246,6 @@ export function useForm<T,P>(
       flushPathSet
     }
   )
-
-  // const notifyChild = async (targetPath: AllPath, triggerPath: AllPath) => {
-  //   const targetSchema = GetRenderSchemaByPath(targetPath) as any;
-
-  //   let hasValueChanged = false;
-
-  //   try {
-  //     await new Promise<void>((resolve) => {
-  //       setTimeout(() => {
-  //         resolve();
-  //       }, 0);
-  //     });
-
-  //     for (let bucketName in targetSchema.nodeBucket) {
-  //       const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket;
-
-  //       const result = await bucket.evaluate({
-  //         affectKey: bucketName, //正在更新的桶名称
-  //         triggerPath,
-  //         GetRenderSchemaByPath,
-  //         GetValueByPath: (p: string) => GetRenderSchemaByPath(p).defaultValue,
-  //       });
-
-  //       if (bucketName === "options") {
-  //         let isLegal = false;
-  //         let val = targetSchema.defaultValue;
-  //         for (let item of result) {
-  //           if (item.value == val) {
-  //             isLegal = true;
-  //           }
-  //         }
-
-  //         if (!isLegal) {
-  //           targetSchema["defaultValue"] = undefined;
-  //           hasValueChanged = true;
-  //         }
-  //       }
-
-  //       // 更新数据
-  //       if (result !== targetSchema[bucketName]) {
-  //         targetSchema[bucketName] = result;
-
-  //         hasValueChanged = true;
-  //       }
-  //     }
-  //   } catch (err) {
-  //     console.log(err);
-  //   } finally {
-  //     trace.popExecution([targetPath]);
-  //   }
-
-  //   // 【核心递归】如果我变了，我作为“新触发者”去通知我的儿子
-  //   if (hasValueChanged) {
-  //     flushPathSet.add(targetPath);
-  //     requestUpdate();
-  //   }
-  //   //必须全量更新，因为不能判断此path不受影响，下游的path也会不受影响
-  //   const nextOrder = dependency.GetNextDependency(targetPath);
-  //   trace.pushExecution(nextOrder);
-  //   for (let grandchildPath of nextOrder) {
-  //     notifyChild(grandchildPath, targetPath);
-  //   }
-  // };
 
   const notifyAll = async () => {
     const paths = dependency.GetDependencyOrder().flat();

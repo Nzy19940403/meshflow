@@ -107,7 +107,7 @@ import { shallowRef,defineAsyncComponent } from "vue";
 import {setupBusinessRules} from '../formRules/FormRules';
 import {  useRouter } from "vue-router";
 import { useEngine } from "@/utils/core/engine/useEngineManager";
- 
+// import { useEngine } from "@meshflow/core";
 
 defineOptions({
   name:'EditorForm'
@@ -172,6 +172,9 @@ let cancel = engine.hooks.onError((error)=>{
   console.log(error.info)
 })
 
+engine.hooks.onStart((data)=>{
+  console.log('触发变更:'+data.path)
+})
  
  
 

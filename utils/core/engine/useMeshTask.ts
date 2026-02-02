@@ -1,6 +1,7 @@
+import { MeshEmit } from "../plugins/usePlugin";
 import { SchemaBucket } from "./bucket";
 
-function useMeshTask<T>(
+function useMeshTask<T extends string>(
     dependency: {
         GetAllNextDependency: (p: T) => T[],
         GetAllPrevDependency: (p: T) => T[],
@@ -19,7 +20,9 @@ function useMeshTask<T>(
     },
     hooks:{
         callOnError:any,
-        callOnSuccess:any
+        callOnSuccess:any,
+        callOnStart:any,
+        emit:MeshEmit
     },
     trigger: {
         requestUpdate: () => void,
@@ -96,6 +99,10 @@ function useMeshTask<T>(
             `%c 🚀 任务启动 | Trigger: ${triggerPath} | Token: ${curToken.description}`,
             "color: #67c23a; font-weight: bold;"
         );
+        //调用开始钩子
+        hooks.callOnStart({
+            path:triggerPath,
+        })
 
         const executorNodeCalculate = async (task: { target: T; trigger: T; isReleased: boolean; }) => {
 
@@ -107,8 +114,10 @@ function useMeshTask<T>(
                 let hasValueChanged = false;
                 let notifyNext = false;
                 const targetSchema = data.GetRenderSchemaByPath(targetPath);
-                console.log(`%c ✅ 计算完成: ${targetPath}` + "当前值:", targetSchema.defaultValue, "color: #67c23a;");
-
+                // console.log(`%c ✅ 计算完成: ${targetPath}` + "当前值:", targetSchema.defaultValue, "color: #67c23a;");
+                hooks.emit('node:start', { 
+                    path:targetPath, 
+                });
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket<T>;
 
@@ -124,8 +133,15 @@ function useMeshTask<T>(
                     });
 
                     if (currentExecutionToken.get(triggerPath) !== curToken) {
+                        hooks.emit(
+                            'node:intercept',
+                            {
+                                path:targetPath,
+                                reason:`令牌过期，丢弃${targetPath}旧任务计算结果`
+                            }
+                        )
 
-                        console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
+                        // console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
                         return; // 不要执行 processed.add，不要触发 hasValueChanged
                     }
 
@@ -144,6 +160,12 @@ function useMeshTask<T>(
                     if (result !== targetSchema[bucketName]) {
                         targetSchema[bucketName] = result;
                         hasValueChanged = true;
+                        //桶计算赋值成功打印
+                        hooks.emit('node:bucket:success',{
+                            path:targetPath,
+                            key:bucketName,
+                            value:result
+                        })
                     }
   
                     if (bucket.isForceNotify()) {
@@ -152,7 +174,7 @@ function useMeshTask<T>(
                     if (hasValueChanged) {
                         trigger.flushPathSet.add(targetPath as any);
                     }
-                    processed.add(targetPath);
+                    // processed.add(targetPath);
                     const directChildren = dependency.GetNextDependency(targetPath);
                     // 1. 如果值变了，扩充疆域（这是为了让更深层的节点能正确进入暂存区）
                     if (hasValueChanged || notifyNext) {
@@ -161,11 +183,18 @@ function useMeshTask<T>(
                     }
                     for (const child of directChildren) {
                         if (processed.has(child)) {
-                            console.log(`🧊 [拦截] 下游 ${child} 已由其他路径处理`);
+                            hooks.emit(
+                                'node:intercept',
+                                {
+                                    path:child,
+                                    reason:` 下游 ${child} 已由其他路径处理`
+                                }
+                            )
+                            // console.log(`🧊 [拦截] 下游 ${child} 已由其他路径处理`);
                             continue; 
                         }
                         // 2. 关键分歧点：看当前节点是否产生了“影响力”
-                        if (hasValueChanged || notifyNext) {
+                        if (hasValueChanged || notifyNext) { 
                             // --- 【强影响】下游必须进入悲观区并尝试救赎 ---
 
                             // 如果孩子不在悲观区，先送进去并计算它在波及名单内的阻力
@@ -185,7 +214,8 @@ function useMeshTask<T>(
                                 queueCountMap.set(child, 1);
                               
                                 trace.pushExecution([child]);
-                                console.log(`🔥 [强拉动] ${targetPath} 值变了，释放下游: ${child}`);
+                                hooks.emit('node:release',{path:child,reason:  ` 上游${targetPath} 值变了`})
+                                // console.log(`🔥 [强拉动] ${targetPath} 值变了，释放下游: ${child}`);
                             } else {
                                 stagingArea.set(child, newResistance);
                             }
@@ -193,13 +223,17 @@ function useMeshTask<T>(
                             // --- 【弱影响】值没变，下游不入悲观区，不减阻力 ---
                             // 它们现在只是 AllAffectedPaths 里的一个“标记”，
                             // 等待 flushQueue 的水位线步进或者其他变动的路径来捞它们
-                            console.log(`🧊 [弱关联] ${targetPath} 值未变，${child} 仅更新疆域，原地待命`);
+                            // console.log(`🧊 [弱关联] ${targetPath} 值未变，${child} 仅更新疆域，原地待命`);
+                            hooks.emit('node:stagnate',{path:child,reason:` 上游${targetPath} 值未变`})
                         }
                     }
 
                 }
 
-                // processed.add(targetPath);
+                hooks.emit('node:success',{path:targetPath});
+                processed.add(targetPath);
+                
+
                 if (performance.now() - lastYieldTime > 16) {
                     await new Promise((resolve) => requestAnimationFrame(resolve));
                     lastYieldTime = performance.now();
@@ -210,7 +244,13 @@ function useMeshTask<T>(
                     trigger.requestUpdate();
                 }
             } catch (err) {
-                console.error(`计算路径 ${targetPath} 时出错:`, err);
+                // console.error(`计算路径 ${targetPath} 时出错:`, err);
+
+                hooks.emit('node:error',{
+                    path:targetPath,
+                    error:err
+                })
+
                 const abortToken = Symbol("abort");
                 currentExecutionToken.set(triggerPath, abortToken);
           
@@ -224,7 +264,7 @@ function useMeshTask<T>(
                 hooks.callOnError(err)
             } finally {
                 if (currentExecutionToken.get(triggerPath) === curToken) {
-                    console.log(`[释放Processing] - ${targetPath} | 剩余Size: ${processingSet.size - 1}`);
+                    // console.log(`[释放Processing] - ${targetPath} | 剩余Size: ${processingSet.size - 1}`);
                     processingSet.delete(targetPath);
                     trace.popExecution([targetPath]);
 
@@ -234,6 +274,13 @@ function useMeshTask<T>(
                     // 如果 while 已经退出了，这一句会重新激活循环，去处理 A3, B2 等下游
                     if (!isLooping) {
                         // console.log(`[点火] 🔥 异步任务回执，重启扫描: ${targetPath}`);
+                        hooks.emit(
+                            'flow:fire',
+                            {
+                                path:targetPath,
+                                reason:'任务归航'
+                            }
+                        )
                         flushQueue();
                     }
 
@@ -273,12 +320,14 @@ function useMeshTask<T>(
                         const { target: targetPath } = task;
 
                         if (processed.has(targetPath)) {
-                            console.warn(`[拦截] 🛡️ 拒绝重入: ${targetPath} | 原因: 已计算完成`);
+                             
+                            hooks.emit('node:intercept',{path:targetPath,reason:` 拒绝重入${targetPath},已计算完成`})
+                            // console.warn(`[拦截] 🛡️ 拒绝重入: ${targetPath} | 原因: 已计算完成`);
                             // trace.popExecution([targetPath]);
                             continue;
                         }
 
-                        console.log(`[调度] 📥 出队: ${targetPath} | 来源: ${task.isReleased ? '救赎/拉动' : '初始'} | 剩余: ${queue.length}`);
+                        // console.log(`[调度] 📥 出队: ${targetPath} | 来源: ${task.isReleased ? '救赎/拉动' : '初始'} | 剩余: ${queue.length}`);
                         // 记账逻辑
 
 
@@ -291,15 +340,20 @@ function useMeshTask<T>(
                         // 检查水位线准入
                         const pLevel = pathToLevelMap.get(targetPath) ?? 0;
                         if (pLevel > currentLevel + 1 && !task.isReleased) {
-                            console.log(`[强制拦截] ${targetPath} 层级太深(${pLevel})，当前水位(${currentLevel})，移入悲观区`);
+                            hooks.emit('node:intercept',{
+                                path:targetPath,
+                                reason:` ${targetPath} 层级太深(${pLevel})，当前水位(${currentLevel})`
+                            })
+                            // console.log(`[强制拦截] ${targetPath} 层级太深(${pLevel})，当前水位(${currentLevel})，移入悲观区`);
                             stagingArea.set(targetPath, 1); // 重新入悲观区确权
                             continue;
                         }
 
                         processingSet.add(targetPath);
-                        console.log(`[锁定Processing] + ${targetPath} | 当前Size: ${processingSet.size} | 成员: ${Array.from(processingSet).join(',')}`);
+                        // console.log(`[锁定Processing] + ${targetPath} | 当前Size: ${processingSet.size} | 成员: ${Array.from(processingSet).join(',')}`);
                         // currentLevel = Math.max(currentLevel, pLevel);
-                        
+                      
+                        hooks.emit('node:processing',{path:targetPath})
                      
                         trace.pushExecution([targetPath]);
                         executorNodeCalculate(task); // 异步启动
@@ -309,14 +363,15 @@ function useMeshTask<T>(
                     // --- 情况 2：队列空了，检查是否满足“熄火等待”条件 ---
                     // 💡 严格熄火规定：队列干了，但还有异步任务在飞，必须立刻退出
                     if (processingSet.size > 0) {
-                        console.log(`[熄火拦截] 队列空但有任务在飞 | 正在飞: ${Array.from(processingSet).join(',')} | 拦截水位线推进`);
+                        // console.log(`[熄火拦截] 队列空但有任务在飞 | 正在飞: ${Array.from(processingSet).join(',')} | 拦截水位线推进`);
+                        hooks.emit('flow:wait',{reason:`队列已空,熄火等待，等待异步任务归航 | 飞行中: ${Array.from(processingSet).join(',')} | `})
                         isLooping = false;
                         return; // 流程真正熄火，靠 finally 里的点火唤醒
                     }
 
                     // --- 情况 3：系统全静默（Queue空且Processing空），扫描悲观区救赎 ---
                     if (stagingArea.size > 0) {
-                        console.log(`%c ⚡ 系统静默，扫描悲观区... 层级: ${currentLevel}`, "color: #9c27b0;");
+                        // console.log(`%c ⚡ 系统静默，扫描悲观区... 层级: ${currentLevel}`, "color: #9c27b0;");
 
                         let liberated = false; // 标志位：本轮是否成功救出任务
                         const toRelease: T[] = [];
@@ -345,7 +400,7 @@ function useMeshTask<T>(
                                 trace.pushExecution([p]);
                             });
                             liberated = true; // 成功救人
-                            console.log(`🚀 [精准救赎] 释放节点: ${toRelease.join(',')}`);
+                            // console.log(`🚀 [精准救赎] 释放节点: ${toRelease.join(',')}`);
                         }
 
                         // 3. 💡 核心逻辑：根据救赎结果决定下一步
@@ -365,14 +420,15 @@ function useMeshTask<T>(
                             if (hasPendingActiveDeps) {
                                 // 如果还有 B2 这种任务在名单里没进 processed，说明还在等点火
                                 // 此时必须强制熄火，严禁推水位线！
-                                console.log(`⏳ 尚有活跃依赖 未完成，水位线锁定在 ${currentLevel}`);
+                                hooks.emit('flow:wait',{reason:`尚有活跃依赖 未完成,熄火等待`})
+                                // console.log(`⏳ 尚有活跃依赖 未完成，水位线锁定在 ${currentLevel}`);
                                 isLooping = false;
                                 return;
                             }
                             // console.log(`[水位] 📈 推进至 Level ${currentLevel + 1} | 理由: 当前层级无待处理任务`);
                             // 只有【彻底没救到人】且【没有活跃依赖】时，才允许推水位线
                             currentLevel++;
-                            console.log(`📈 水位线推移至: ${currentLevel}`);
+                            // console.log(`📈 水位线推移至: ${currentLevel}`);
 
                             if (currentLevel > 2000) {
                                 break;
@@ -386,8 +442,10 @@ function useMeshTask<T>(
                 
                 console.log(stagingArea.size,processingSet.size,queue.length)
                 isLooping = false;
-                console.log(`[熄火] 💤 全场静默，等待异步任务降落...`);
-
+                // console.log(`[熄火] 💤 全场静默，等待异步任务降落...`);
+                hooks.emit('flow:wait', { 
+                    reason: '熄火静默', 
+                });
                 Promise.resolve()
                 .then(()=>{
                     if(stagingArea.size===0 && processingSet.size===0 && queue.length===0){

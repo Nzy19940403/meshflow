@@ -299,13 +299,14 @@ export class SchemaBucket<P>{
         }
         
         if (this.pendingPromise && this.promiseToken !== curToken) {
-            console.log(`[桶身份失效] 票号变了，抛弃旧 Promise`);
+            // console.log(`[桶身份失效] 票号变了，抛弃旧 Promise`);
+            
             this.pendingPromise = null; 
             this.promiseToken = null;
         }
 
         if (this.pendingPromise) {
-            console.log("✅ 命中性能优化：复用相同 Token 的 Promise");
+            // console.log("✅ 命中性能优化：复用相同 Token 的 Promise");
             return this.pendingPromise;
         }
         
@@ -338,7 +339,7 @@ export class SchemaBucket<P>{
                     let curVal = api.GetValueByPath(api.triggerPath)
 
                     // 2. 打印直接触发者的对比
-                    console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
+                    // console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
 
                     if( typeof oldVal === 'object'|| typeof curVal === 'object' ){
                         shouldSkipCalculate = false;     
@@ -349,7 +350,7 @@ export class SchemaBucket<P>{
                             let oldVal = this.deps.get(path);
                             let curVal = api.GetValueByPath(path);
                             if(oldVal !== curVal){
-                                console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
+                                // console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
                                 shouldSkipCalculate = false;
                            
                                 break;
@@ -362,7 +363,7 @@ export class SchemaBucket<P>{
                
                 if(shouldSkipCalculate){
                 
-                    console.log(`%c [⚡️高速缓存] ${this.path} 命中! 缓存值:`, "color: #409EFF", this.cache);
+                    // console.log(`%c [⚡️高速缓存] ${this.path} 命中! 缓存值:`, "color: #409EFF", this.cache);
                     return this.cache
                 }
             
@@ -373,14 +374,14 @@ export class SchemaBucket<P>{
  
          
                 if( curToken !== this.promiseToken){
-                    console.warn(`[拦截幽灵] 桶版本已进化为 ${this.version}, 任务版本 ${version} 作废`);
-                    console.log(res,this.cache)
+                    // console.warn(`[拦截幽灵] 桶版本已进化为 ${this.version}, 任务版本 ${version} 作废`);
+                    // console.log(res,this.cache)
                     return this.cache
                 }
                 
 
                 if (version < this.version) {
-                    console.log('过期任务');
+                    // console.log('过期任务');
                     return this.cache;
                 }
 
@@ -393,7 +394,7 @@ export class SchemaBucket<P>{
 
                 if(curToken === this.promiseToken){
                      
-                    console.log(`${this.path}修改了cache:`,res)
+                    // console.log(`${this.path}修改了cache:`,res)
                     let paths = Array.from(this.deps.keys());
                     for(let path of paths){
                     
