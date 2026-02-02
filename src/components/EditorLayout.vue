@@ -140,7 +140,7 @@ for (let i = 2; i <= maxCount; i++) {
       if(targetPath==='mesh.b2_val'){
         return new Promise((resolve,reject)=>{
           setTimeout(() => {
-            reject(Number(trigger1) + (Number(trigger2) || 0) );
+            resolve(Number(trigger1) + (Number(trigger2) || 0) );
             console.log('等待5s再返回逻辑：'+[trigger1,trigger2])
           }, 2000);
         })

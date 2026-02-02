@@ -7,6 +7,7 @@ import {useExecutionTrace} from '../plugins/useExecutionTrace';
 import { useDependency,useCheckCycleInGraph } from "../schema/useDepenency";
 import { useHistory } from "../plugins/useHistory";
 import { useOnError } from "../hooks/useOnError";
+import { useOnSuccess } from "../hooks/useOnSuccess";
 
 //入口函数,传入符合格式的json
 export function useFlowScheduler<T,P>(data:any,UITrigger:{
@@ -57,11 +58,15 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         initCanRedo
     } = useHistory();
 
+    //钩子代码
     const {
         onError,
         callOnError
-    } = useOnError()
-    
+    } = useOnError();
+    const {
+        onSuccess,
+        callOnSuccess
+    } = useOnSuccess();
 
     const {schema,GetFormData,GetRenderSchemaByPath,GetGroupByPath,notifyAll,convertToRenderSchema} = useForm<T,P>(
         data,
@@ -83,7 +88,8 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
             createHistoryAction:CreateHistoryAction
         },
         {
-            callOnError
+            callOnError,
+            callOnSuccess
         },
         UITrigger
     );
@@ -204,7 +210,8 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
         initCanUndo,
         initCanRedo,
 
-        onError
+        onError,
+        onSuccess
     }  
 }
 

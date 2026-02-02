@@ -18,7 +18,8 @@ function useMeshTask<T>(
         GetRenderSchemaByPath: (p: T) => any
     },
     hooks:{
-        callOnError:any
+        callOnError:any,
+        callOnSuccess:any
     },
     trigger: {
         requestUpdate: () => void,
@@ -144,11 +145,7 @@ function useMeshTask<T>(
                         targetSchema[bucketName] = result;
                         hasValueChanged = true;
                     }
-                    // if (currentExecutionToken.get(triggerPath) !== curToken) {
-
-                    //     console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
-                    //     return; // 不要执行 processed.add，不要触发 hasValueChanged
-                    // }
+  
                     if (bucket.isForceNotify()) {
                         notifyNext = true;
                     }
@@ -386,8 +383,17 @@ function useMeshTask<T>(
                     }
                 }
             } finally {
+                
+                console.log(stagingArea.size,processingSet.size,queue.length)
                 isLooping = false;
                 console.log(`[熄火] 💤 全场静默，等待异步任务降落...`);
+
+                Promise.resolve()
+                .then(()=>{
+                    if(stagingArea.size===0 && processingSet.size===0 && queue.length===0){
+                        hooks.callOnSuccess()
+                    }
+                })
             }
         };
 

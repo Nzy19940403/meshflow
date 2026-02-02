@@ -27,7 +27,7 @@ type Engine<T> = {
     [K in "Undo" | "Redo" | "initCanUndo" | "initCanRedo"]: GetType<T, K>;
   };
   hooks:{
-    [K in "onError"]: GetType<T, K>;
+    [K in "onError"|"onSuccess"]: GetType<T, K>;
   }
 };
 
@@ -67,7 +67,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       initCanUndo,
       initCanRedo,
 
-      onError
+      onError,
+      onSuccess
     } = scheduler;
   
     let engine:Engine<ConcreteScheduler> = {
@@ -97,7 +98,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
         GetDependencyOrder
       },
       hooks:{
-        onError
+        onError,
+        onSuccess
       }
     };
   

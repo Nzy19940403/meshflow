@@ -139,6 +139,7 @@ export function useForm<T,P>(
   },
   hooks:{
     callOnError:any
+    callOnSuccess:any
   },
   UITrigger: {
     signalCreateor: () => T;
