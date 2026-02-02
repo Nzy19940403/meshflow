@@ -1,4 +1,4 @@
-import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
+
 
 type ContractType = 'boolean' | 'scalar' | 'array' | 'object';
 
@@ -55,11 +55,13 @@ export class StrategyStore {
         'PRIORITY': async (api: any, version: number) => {
             let res = null;
             const allRules = this.computedRules
+
+            
+
             try{
                 for (const rule of allRules) {
 
                     const val = await rule.logic(api);
-    
                     // 💡 核心：如果当前规则返回 undefined，表示它“弃权”，看下一个
                     if (val !== undefined) {
                         res = val;
@@ -109,7 +111,7 @@ export class StrategyStore {
 }
 
 export class SchemaBucket<P>{
-
+   
     private path:any;
 
     private strategy: StrategyStore;
@@ -134,6 +136,8 @@ export class SchemaBucket<P>{
     private _forceNotify:boolean = false;
 
     promiseToken:any = null;
+
+    globalCalcCount = 0
 
     constructor(baseValue: any,key:string,path:P) {
         const getRule = () => this.rules
@@ -287,7 +291,7 @@ export class SchemaBucket<P>{
  
 
     async evaluate(api: any) {
-        
+    
         let curToken  = null;
 
         if(api.GetToken){
@@ -306,32 +310,48 @@ export class SchemaBucket<P>{
         }
         
         this.promiseToken = curToken;
+        const currentVersion = ++this.version;
 
         this.pendingPromise = (async () => {
+            
+            // const taskVersion = currentVersion;
             try {
                 
                 await Promise.resolve();
-                const currentVersion = ++this.version;
+                // const currentVersion = ++this.version;
 
-
+              
 
                 let shouldSkipCalculate = false;
-   
+               
                 //当不是从notifyAll触发的时候
                 if(typeof api.triggerPath === 'string'){
                     shouldSkipCalculate = true;
+
+                    // // 1. 打印触发源
+                    // console.log(`%c [桶预检] ${this.path}`, "color: #e6a23c; font-weight: bold;", {
+                    //     triggerPath: api.triggerPath,
+                    //     curToken: curToken
+                    // });
+
                     let oldVal = this.deps.get(api.triggerPath);
                     let curVal = api.GetValueByPath(api.triggerPath)
+
+                    // 2. 打印直接触发者的对比
+                    console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
+
                     if( typeof oldVal === 'object'|| typeof curVal === 'object' ){
                         shouldSkipCalculate = false;     
                     }else{
-                         
+             
                         let paths = Array.from(this.deps.keys());
                         for(let path of paths){
                             let oldVal = this.deps.get(path);
                             let curVal = api.GetValueByPath(path);
                             if(oldVal !== curVal){
+                                console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
                                 shouldSkipCalculate = false;
+                           
                                 break;
                             }
                         }
@@ -339,19 +359,26 @@ export class SchemaBucket<P>{
                   
                 } 
             
-           
+               
                 if(shouldSkipCalculate){
+                
+                    console.log(`%c [⚡️高速缓存] ${this.path} 命中! 缓存值:`, "color: #409EFF", this.cache);
                     return this.cache
                 }
-               
-                
-                //命中自己订阅的key值，它变更的时候需要重新计算
-                let { res, version } = await this.strategy.evaluate(api, currentVersion);
-
-                if ( typeof api.triggerPath==='string' &&(api.GetToken() !== this.promiseToken)) {
-                    return this.cache; 
-                }
+            
            
+                //命中自己订阅的key值，它变更的时候需要重新计算
+ 
+                let { res, version } = await this.strategy.evaluate(api, currentVersion);
+ 
+         
+                if( curToken !== this.promiseToken){
+                    console.warn(`[拦截幽灵] 桶版本已进化为 ${this.version}, 任务版本 ${version} 作废`);
+                    console.log(res,this.cache)
+                    return this.cache
+                }
+                
+
                 if (version < this.version) {
                     console.log('过期任务');
                     return this.cache;
@@ -364,7 +391,9 @@ export class SchemaBucket<P>{
 
                 this.cache = res;
 
-                if(typeof api.triggerPath === 'string'){
+                if(curToken === this.promiseToken){
+                     
+                    console.log(`${this.path}修改了cache:`,res)
                     let paths = Array.from(this.deps.keys());
                     for(let path of paths){
                     
@@ -373,11 +402,9 @@ export class SchemaBucket<P>{
                     }
                   
                 }
-                
-                
-                
-                
+
                 return res;
+
             }catch(err:any){
                 const info = {
                     path:this.path,

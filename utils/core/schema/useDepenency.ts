@@ -1,7 +1,5 @@
 // 获取全局依赖或者下一步依赖，提供方法检测依赖是否有环
-
-import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
-
+ 
 export function useDependency<P>(
     getDependencyGraph: () => Map<P, Set<P>>,
     getPredecessorGraph: () => Map<P, Set<P>>,
@@ -43,19 +41,8 @@ export function useDependency<P>(
             return iAmReady;
         });
     };
-    //获取直接上游
-    //   const GetPrevDependency = (targetPath: AllPath) => {
-    //     const predecessorGraph = getPredecessorGraph();
-    //     const ancestors = Array.from(predecessorGraph.get(targetPath)!);
-    //     const res: Set<AllPath> = new Set();
-    //     for (let path of ancestors) {
-    //       let nextOrder = new Set(GetNextDependency(path));
-    //       if (nextOrder.has(targetPath)) {
-    //         res.add(path);
-    //       }
-    //     }
-    //     return Array.from(res);
-    //   };
+   
+ 
     const GetAllPrevDependency = (targetPath: P) => {
         const predecessorGraph = getPredecessorGraph();
 

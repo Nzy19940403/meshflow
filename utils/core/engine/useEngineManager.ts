@@ -2,9 +2,7 @@
  
 import { useFlowScheduler } from "./useFlowScheduler";
  
-
-
-// type SchedulerInstance = ReturnType<typeof useFlowScheduler>;
+ 
 type SchedulerType<T, P extends string> = ReturnType<typeof useFlowScheduler<T, P>>;
 
 type GetType<T, P> = P extends keyof T ? T[P] : never;
@@ -123,4 +121,9 @@ const deleteEngine = (id:string|symbol)=>{
   engineMap.delete(id);
 }
 
-export { useEngineManager, useEngine ,deleteEngine};
+export { 
+  useEngineManager,
+  useEngineManager as useMeshFlow, 
+  useEngine ,
+  deleteEngine
+};

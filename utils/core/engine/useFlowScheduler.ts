@@ -1,5 +1,5 @@
  
-import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
+
 import { FormFieldSchema, GroupField, RenderSchema, RenderSchemaFn, initFormData, useForm } from "../schema/schema";
 import { useSetRule, useSetStrategy } from "../schema/schema-rule";
 import { useSchemaValidators } from "../schema/schema-validators";
@@ -106,7 +106,7 @@ export function useFlowScheduler<T,P>(data:any,UITrigger:{
 
     const { SetStrategy } = useSetStrategy(GetRenderSchemaByPath)
 
-    const { SetValidators } = useSchemaValidators(GetRenderSchemaByPath)
+    const { SetValidators } = useSchemaValidators<P>(GetRenderSchemaByPath)
      
     const check = useCheckCycleInGraph<P>(dependencyGraph);
     

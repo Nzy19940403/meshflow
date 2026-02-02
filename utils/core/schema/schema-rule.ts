@@ -1,6 +1,6 @@
 //这里需要定义一些预设的rule，然后暴露一下createRule方法
 
-import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
+ 
 import { DefaultStarategy, SchemaBucket } from "../engine/bucket";
 import { FormFieldSchema, GroupField, RenderSchema, RenderSchemaFn } from "./schema";
 import { KeysOfUnion } from '../utils/util';
@@ -24,17 +24,17 @@ const CreateRule = <P>(targetPath: P, targetKey: KeysOfUnion<Exclude<FormFieldSc
 
     const basePriority = 10;
 
-    let lastDeps: any[] | undefined = undefined;
-    let cache: any = undefined;
+    // let lastDeps: any[] | undefined = undefined;
+    // let cache: any = undefined;
 
     //这里的参数就是调用evaluate的时候传入的参数
     const logic = (api: any) => {
 
         const currentDeps = options.triggerPaths.map(path => api.GetValueByPath(path));
 
-        if (lastDeps && currentDeps.every((val, i) => val === lastDeps![i])) {
-            return cache; 
-        }
+        // if (lastDeps && currentDeps.every((val, i) => val === lastDeps![i])) {
+        //     return cache; 
+        // }
 
         const slot = Object.create(null);
         Object.defineProperty(slot, 'triggerTargets', {
@@ -49,8 +49,8 @@ const CreateRule = <P>(targetPath: P, targetKey: KeysOfUnion<Exclude<FormFieldSc
 
         const result = options.logic({ slot });
 
-        lastDeps = currentDeps;
-        cache = result;
+        // lastDeps = currentDeps;
+        // cache = result;
 
         return result;
     }

@@ -16,7 +16,7 @@ import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
 
-const maxCount = 3
+const maxCount = 2
 const generateHugeMesh = () => {
   const regions = ['a', 'b', 'c',  ]; // 5 个区域
   const nodesPerRegion = maxCount; // 每个区域 100 个节点
@@ -80,7 +80,32 @@ const TransformSchema = (data:any)=>{
   return data
 }
 
-let newdata = generateHugeMesh()
+const generateHugeMesh2 = (maxCount = 100) => {
+    const regions = ['a', 'b', 'c']; // 简化为3个区做测试
+    const children = [];
+  
+    // 全局开关
+    children.push({ type: "select", name: "global_mode", defaultValue: "auto" });
+  
+    // 区域节点生成
+    regions.forEach((region) => {
+      for (let i = 1; i <= maxCount; i++) {
+        children.push({
+          type: "number",
+          name: `${region}${i}_val`,
+          defaultValue: 100
+        });
+      }
+    });
+  
+    // 总指数
+    children.push({ type: "number", name: "total_index", defaultValue: 0 });
+  
+    return { type: 'group', name: '', children };  
+  };
+
+let newdata = generateHugeMesh();
+// let newdata2 = generateHugeMesh2(100)
 // let newdata = TransformSchema(Schema);
 // console.log(newdata)
 const engine = useEngineManager<Ref<number,number>,AllPath>('main-engine',newdata, {
@@ -113,11 +138,11 @@ for (let i = 2; i <= maxCount; i++) {
       const [trigger1, trigger2] = slot.triggerTargets
 
       if(targetPath==='mesh.b2_val'){
-        return new Promise((resolve)=>{
+        return new Promise((resolve,reject)=>{
           setTimeout(() => {
-            resolve(Number(trigger1) + (Number(trigger2) || 0));
+            reject(Number(trigger1) + (Number(trigger2) || 0) );
             console.log('等待5s再返回逻辑：'+[trigger1,trigger2])
-          }, 4000);
+          }, 2000);
         })
       }else{
         // trigger1 是上一个 b 的值，trigger2 是对应 a 的值
@@ -157,6 +182,56 @@ for (let i = 1; i <= maxCount; i++) {
 engine.config.notifyAll();
 }
 setupfactoryformrule();
+
+
+
+const setrules = ()=>{
+  for (let i = 1; i <= 100; i++) {
+            const aNode = `a${i}_val`;
+            const bNode = `b${i}_val`;
+            const cNode = `c${i}_val`;
+      
+            // 规则 1: B 依赖 A 和 Global Mode
+            // 逻辑: 如果是 manual，B 不动；否则 B = A + 1
+            engine.config.SetRules([aNode, 'global_mode'], bNode, 'defaultValue', {
+              logic: (api: any) => {
+                const [aVal,global_mode] = api.slot.triggerTargets;
+           
+                return aVal + 1;
+              }
+            });
+      
+            // 规则 2: C 依赖 B (深度传导)
+            // 逻辑: C = B * 2
+            engine.config.SetRule(bNode, cNode, 'defaultValue', {
+              logic: (api: any) => {
+                const [val] = api.slot.triggerTargets
+                 // 注意：这里 api.triggerTargets[bNode] 能拿到 B 的最新值
+                 return val * 2;
+              }
+            });
+
+              // // 规则: Total 依赖所有 C
+              const allCNodes = Array.from({ length: 100 }, (_, i) => `c${i + 1}_val`);
+
+              engine.config.SetRules(allCNodes, 'total_index', 'defaultValue', {
+              logic: (api: any) => {
+                  // 1. 获取输入数组
+                  // 根据你的新写法，api.slot.triggerTargets 是一个数组 [c1值, c2值, ... c100值]
+                  const allCValues = api.slot.triggerTargets;
+
+                  // 2. 数组求和
+                  // 建议转一下 Number 防止字符串拼接，并处理可能的 undefined
+                  return allCValues.reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
+              }
+            });
+        
+      
+          }
+         
+          engine.config.notifyAll()
+}
+// setrules()
 
 //设置rule连线
 // setupBusinessRules(
