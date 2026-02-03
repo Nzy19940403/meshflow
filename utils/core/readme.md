@@ -30,17 +30,53 @@
 * **⚡ 最小受影响路径**：触发变更时无需遍历全局，仅针对受影响的“下游子图”进行动态增量计算。
 * **🚨 循环依赖检测**：在节点定义阶段实时进行 $O(V+E)$ 的环检测，提前发现逻辑死循环。
 * **📦 极简轻量**：零依赖，体积仅 ~7kB(zipped)，适配任何 JavaScript 运行时。
-
+* **🔌 插件化架构 (New)**：支持生命周期拦截与监听（如官方调试插件 `@meshflow/logger`）。
 ---
 
 ## 🚀 快速上手
 
-### 安装
+#### 安装
 
 ```bash
 npm install @meshflow/core
 ``` 
-
+#### 定义节点
+```typescript
+import { useMeshFlow } from "@meshflow/core";
+const schema = {
+    type: 'group',
+    name: 'billing',
+    label: '计费与汇总',
+    children: [
+        { type: 'number', name: 'totalPrice', label: '预估月度总价', defaultValue: 0, },
+        { type: 'input', name: 'priceDetail', label: '计费项说明', defaultValue: '基础配置费用'}
+    ]
+};
+const engine = useMeshFlow<Ref<number,number>,AllPath>('main',schema, {
+  signalCreateor: () => ref(0),
+  signalTrigger(signal) {
+    signal.value++;
+  },
+});
+```
+#### 添加联动依赖
+```typescript
+//声明联动规则：当总价 > 2000 时，自动修改描述与主题
+engine.config.SetRule("billing.totalPrice", "billing.priceDetail", "defaultValue", {
+  logic: ({ slot }) => {
+    const [total] = slot.triggerTargets; // 从触发目标中解构出 totalPrice
+    return total > 2000 ? "大客户折扣" : undefined;
+  }
+});
+engine.config.SetRule( "billing.totalPrice", "billing.priceDetail", "theme", {
+    logic: (api) => {
+        const [value] = api.slot.triggerTargets;
+        return total > 2000 ? "warning" : undefined;
+    },
+});
+//触发首屏计算
+engine.config.notifyAll();
+```
 
 ## 🛠️ 为什么选择 MeshFlow？
 

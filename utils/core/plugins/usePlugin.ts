@@ -38,13 +38,29 @@ const usePluginManager = ()=>{
 
         return ()=>eventGroups.get(event)!.delete(cb);
     }
+ 
 
     const usePlugin = (plugin:{apply:(api:{on:typeof on})=>void})=>{
-        plugin.apply({on});
+       
+        // 专门为这个插件建立一个销毁任务池
+        const cleanups = new Set<Function>();
 
-        return ()=>{
+        const proxyOn: typeof on = (event, cb) => {
+            const cancel = on(event, cb);
+            cleanups.add(cancel); // 偷偷存起来
+            return cancel;
+        };
+
+        plugin.apply({ on: proxyOn });
+        plugins.add(plugin);
+
+        return () => {
+            cleanups.forEach(cancel => cancel());
+            cleanups.clear();
             plugins.delete(plugin);
-        }
+           
+            console.log(`[Plugin] 插件已彻底卸载，并清理了所有事件监听`);
+        };
     }
 
     return {usePlugin,emit}
