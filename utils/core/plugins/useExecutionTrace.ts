@@ -2,13 +2,33 @@
 
 type NodeStatus = 'idle' | 'pending' | 'calculating' | 'calculated' | 'error' | 'canceled';
 
+interface TraceInternalEvents {
+  'flow:start':{path:string}
+
+  'node:start': { path: string };
+  'node:success': { path: string;};
+
+
+  'node:error': { path: string; error: any };
+  'node:intercept': { path: string; reason: string; detail?: any };
+  'node:release': { path: string; reason:string}
+  'node:stagnate': { path: string;reason:string }
+  'node:processing': { path:string }
+
+  'node:pending':{path:string}
+
+  'flow:wait':{type:number;detail?:any};
+
+  'flow:fire': { path: string;type:number ; detail?:any };
+}
+type TraceEventName = keyof TraceInternalEvents
 export function useExecutionTrace<T>(
-  GetNextDependency: (path: T) => T[]
+
 ) {
-  // ♻️ 替换：不再需要 activeSet/finishedSet，用一个 Map 记录所有人的状态
+  // 存储当前路径的状态快照
   const statusMap = new Map<T, NodeStatus>();
 
-  // ♻️ 替换：回调不再接收数组，而是直接接收当前的状态字符串
+  // 存储每个路径对应的 UI 更新回调
   const callbackMap = new Map<T, (status: NodeStatus) => void>();
 
   // 保留：记录当前版图，用于重置和熔断时的遍历
@@ -20,7 +40,7 @@ export function useExecutionTrace<T>(
    */
   const updateStatus = (path: T, newStatus: NodeStatus) => {
     // 防抖：状态没变就不触发
-    if (statusMap.get(path) === newStatus) return;
+    // if (statusMap.get(path) === newStatus) return;
 
     statusMap.set(path, newStatus);
 
@@ -31,72 +51,77 @@ export function useExecutionTrace<T>(
     }
   };
 
-  const pushExecution = (paths: T[], clean?: boolean) => {
-    // 1. 清理逻辑：如果是新一轮联动，先把上一轮的人都重置为 idle
-    if (clean) {
-      currentSessionAffected.forEach(p => updateStatus(p, 'idle'));
-      currentSessionAffected.clear();
-      statusMap.clear();
-    }
-
-    if (paths.length === 0) return;
-
-    // 2. 核心逻辑：当前正在执行的节点 -> calculating
-    paths.forEach((p) => {
-      // 记录版图
-      if (!currentSessionAffected.has(p)) {
-        currentSessionAffected.add(p);
-      }
+  const useTrace = ()=>{
+    const apply = (api: { 
+      on: (event: TraceEventName, cb: (data: any) => void) => void 
+    }) => {
+      // 1. 全局流点火：新任务开始，重置上一轮
+      api.on('flow:start', () => {
+         
+        currentSessionAffected.forEach(p => updateStatus(p, 'idle'));
+        currentSessionAffected.clear();
+        statusMap.clear();
       
-      // 更新状态：变蓝/闪烁
-      updateStatus(p, 'calculating');
-
-      // 3. 【深度预判】(保留你的逻辑)
-      // 找到所有下游，如果它们还没状态，就标记为 pending (等待中/变黄)
-      const nextDeps = GetNextDependency(p);
-      nextDeps.forEach((desc) => {
-        if (!currentSessionAffected.has(desc)) {
-          currentSessionAffected.add(desc);
-          // 仅当它还没有状态时才设为 pending，防止覆盖掉已经 calculating 的
-          if (!statusMap.has(desc)) {
-            updateStatus(desc, 'pending');
-          }
-        }
       });
-    });
-  };
+  
+      // 2. 释放点火：标记为待命状态
+      api.on('node:release', ({ path }: { path: T }) => {
+        // currentSessionAffected.add(path);
+        // if (!statusMap.has(path) || statusMap.get(path) === 'idle') {
+        //   updateStatus(path, 'pending');
+        // }
+      });
 
-  const popExecution = (paths: T[]) => {
-    paths.forEach((p) => {
-      // 核心逻辑：执行完成 -> calculated (变绿)
-      updateStatus(p, 'calculated');
-    });
-  };
+      api.on('node:pending',({path})=>{
+         currentSessionAffected.add(path);
+        if (!statusMap.has(path) || statusMap.get(path) === 'idle') {
+          updateStatus(path, 'pending');
+        }
+      })
+  
+      // 3. 计算启动：正式施工
+      api.on('node:start', ({ path }: { path: T }) => {
+        // if(path==='cloudConsole.billing.totalPrice'){
+        //   debugger
+        // }
+        currentSessionAffected.add(path);
+        updateStatus(path, 'calculating');
+      
+      });
+  
+      // 4. 计算成功：完成施工
+      api.on('node:success', ({ path }: { path: T }) => {
+        updateStatus(path, 'calculated');
+      });
+  
+      // 5. 路径终结信号：确保 UI 不会悬挂
+      api.on('node:intercept', ({ path ,type}) => {
+        // if(path==='cloudConsole.billing.priceDetail'){
+        //   debugger
+        // }
+        console.log(type)
+        // if(statusMap.get(path)!=='calculated'){
+        //   updateStatus(path, 'canceled')
+        // }
+        // 
+      });
+      api.on('node:stagnate', ({ path } ) => {
+        updateStatus(path, 'pending')
+      });
+      api.on('node:error', ({ path } ) => updateStatus(path, 'error'));
+    };
 
-  /**
-   * 🛑 新增：熔断处理
-   * 当 path 报错时调用
-   */
-  const markError = (errorPath: T) => {
-    // 1. 报错节点变红
-    updateStatus(errorPath, 'error');
+    return { apply }
+  }
 
-    // 2. 扫荡战场：所有还在等待(pending)或者计算中(calculating)的节点，强制变灰(canceled)
-    currentSessionAffected.forEach((p) => {
-      const current = statusMap.get(p);
-      if (p !== errorPath && (current === 'pending' || current === 'calculating')) {
-        updateStatus(p, 'canceled');
-      }
-    });
-  };
 
+  
   /**
    * 🔌 订阅接口
    */
   const SetTrace = (
     myPath: T,
     onUpdate: (newStatus: NodeStatus) => void, // 这里类型变了
-    context: any
   ) => {
     // 1. 注册回调
     callbackMap.set(myPath, onUpdate);
@@ -111,5 +136,5 @@ export function useExecutionTrace<T>(
     };
   };
 
-  return { pushExecution, popExecution, markError, SetTrace };
+  return {  SetTrace ,useTrace};
 }

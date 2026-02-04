@@ -6,14 +6,25 @@ export interface MeshEvents {
     'node:bucket:success':{path:string,key:string,value:any}
  
     'node:error': { path: string; error: any };
-    'node:intercept': { path: string; reason: string; detail?: any };
-    'node:release': { path: string; reason:string}
-    'node:stagnate': { path: string;reason:string }
+    'node:intercept': { path: string;  type:number,detail?:any };
+    'node:release': { path: string; type:number,detail?:any}
+    'node:stagnate': { path: string;type:number }
     'node:processing': { path:string }
-    'flow:wait':{reason:string}
-    'flow:fire': { path: string; reason: string };
-};
+    'flow:wait':{type:number;detail?:any}
+    'flow:fire': { path: string;type:number ; detail?:any };
+    'flow:start':{path:string}
+    'flow:success':{duration:string}
 
+    'node:pending':{path:string}
+
+};
+/*
+    给node:intercept加入几个状态
+    1:token过期的拦截
+    2:已经计算完的路径拦截
+    3:正在计算的路径拦截
+    4:整体水位进度还没到路径层级的拦截
+*/
 export type MeshEventName = keyof MeshEvents;
 
 export type MeshEmit = <K extends MeshEventName>(

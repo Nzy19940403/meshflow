@@ -409,7 +409,7 @@ export class SchemaBucket<P>{
             }catch(err:any){
                 const info = {
                     path:this.path,
-                    info:err
+                    error:err
                 }
                 throw info
             } finally {

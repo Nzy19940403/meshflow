@@ -2,7 +2,7 @@ import { useCreateHooks } from "./useCreateHook";
 
 export interface MeshErrorContext {
     path: string;
-    info: any;
+    error: any;
 }
 type Unsubscribe = () => void;
 interface UseOnErrorReturn {

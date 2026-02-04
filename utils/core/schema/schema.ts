@@ -1,17 +1,12 @@
- 
-import {  FinalFlatten   } from "../utils/util";
+import { FinalFlatten } from "../utils/util";
 
 import { SchemaBucket, ValidatorsBucket } from "../engine/bucket";
 
-
-// import {
-//   AllPath,
-//   FormDataModel,
-// } from "@/devSchemaConfig/dev.form.Schema.check";
+import { MeshEmit } from "../plugins/usePlugin";
 
 import { HistoryActionItem } from "../plugins/useHistory";
- 
-import {useMeshTask} from '../engine/useMeshTask'
+
+import { useMeshTask } from "../engine/useMeshTask";
 
 export type FormItemValidationFn = (value: any) => boolean | string;
 export type FormItemValidationFns = readonly FormItemValidationFn[];
@@ -118,7 +113,7 @@ export type FormResultType<T> = T extends any
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
-export function useForm<T,P extends string>(
+export function useForm<T, P extends string>(
   schema: FormFieldSchema,
   dependency: {
     GetDependencyOrder: () => P[][];
@@ -126,22 +121,18 @@ export function useForm<T,P extends string>(
     GetNextDependency: (path: P) => P[];
     GetPrevDependency: (path: P) => P[];
     GetAllPrevDependency: (path: P) => P[];
-    GetPathToLevelMap:()=>Map<P,number> 
+    GetPathToLevelMap: () => Map<P, number>;
   },
-  trace: {
-    pushExecution: any;
-    popExecution: any;
-    markError:any
-  },
+
   history: {
     pushIntoHistory: any;
     createHistoryAction: any;
   },
-  hooks:{
-    callOnError:any
-    callOnSuccess:any,
-    callOnStart:any,
-    emit:any
+  hooks: {
+    callOnError: any;
+    callOnSuccess: any;
+    callOnStart: any;
+    emit: MeshEmit;
   },
   UITrigger: {
     signalCreateor: () => T;
@@ -160,6 +151,13 @@ export function useForm<T,P extends string>(
 
   let isPending = false;
   const flushPathSet = new Set<P>();
+
+  // 标记：是否正在初始化
+  let isInitializing = false;
+  let forbidUserNotify = true;
+
+  // 锁：初始化的 Promise，外部如果想 await 可以用这个
+  let initializationPromise: Promise<void> | null = null;
 
   // const currentExecutionToken: Map<string, symbol> = new Map();
 
@@ -214,7 +212,7 @@ export function useForm<T,P extends string>(
         if (list.length > 0) {
           const lastkey = list[list.length - 1];
           parentNode[lastkey] = GetRenderSchemaByPath(
-            list.join(".")  as any
+            list.join(".") as any
           ).defaultValue;
         }
         return;
@@ -236,69 +234,133 @@ export function useForm<T,P extends string>(
 
   const taskrunner = useMeshTask<P>(
     dependency,
-    trace,
+    // trace,
     {
-      GetRenderSchemaByPath
+      GetRenderSchemaByPath,
     },
     hooks,
     {
       requestUpdate,
-      flushPathSet
+      flushPathSet,
     }
-  )
+  );
 
   const notifyAll = async () => {
-    const paths = dependency.GetDependencyOrder().flat();
+    // 1. 防重入
+    if (isInitializing && initializationPromise) {
+      return initializationPromise;
+    }
 
-    try {
-      for (let path of paths) {
-        let schema = GetRenderSchemaByPath(path);
+    isInitializing = true;
 
-        for (let bucketName in schema.nodeBucket) {
-          let result = await schema.nodeBucket[bucketName].evaluate({
-            affectKey: bucketName,
-            triggerPath: undefined,
-            GetRenderSchemaByPath,
-            GetValueByPath: (p: P) =>
-              GetRenderSchemaByPath(p).defaultValue,
-            isSameToken: () => false,
-          });
+    initializationPromise = (async () => {
+      // 获取分层依赖 [[Level0], [Level1]...]，利用并发
+      const levels = dependency.GetDependencyOrder();
+      const startTime = performance.now();
+      let lastYieldTime = performance.now();
 
-          if (bucketName === "options") {
-            let isLegal = false;
-            let val = schema.defaultValue;
-            for (let item of result) {
-              if (item.value == val) {
-                isLegal = true;
+      try {
+        // --- 分层遍历 ---
+        for (let i = 0; i < levels.length; i++) {
+          const currentLevelNodes = levels[i];
+
+          // ⚡️ 并发：同一层的节点同时计算
+          await Promise.all(
+            currentLevelNodes.map(async (path) => {
+              let schema = GetRenderSchemaByPath(path);
+              let nodeHasChanged = false;
+
+              // 遍历桶
+              for (let bucketName in schema.nodeBucket) {
+                let result = await schema.nodeBucket[bucketName].evaluate({
+                  affectKey: bucketName,
+                  triggerPath: undefined,
+                  GetRenderSchemaByPath,
+                  GetValueByPath: (p: P) =>
+                    GetRenderSchemaByPath(p).defaultValue,
+                  // 初始化通常拥有最高权限，建议这里设为 true，或者保持你原来的逻辑
+                  isSameToken: () => true,
+                });
+
+                // Options 校验逻辑 (原样保留)
+                if (bucketName === "options") {
+                  let isLegal = false;
+                  let val = schema.defaultValue;
+                  // 你的原始逻辑
+                  for (let item of result) {
+                    if (item.value == val) {
+                      isLegal = true;
+                      break;
+                    }
+                  }
+                  if (!isLegal) {
+                    schema["defaultValue"] = undefined;
+                    nodeHasChanged = true; // 标记变更
+                  }
+                }
+
+                // 赋值
+                if (result !== schema[bucketName as keyof typeof schema]) {
+                  (schema as any)[bucketName] = result;
+                  nodeHasChanged = true; // 标记变更
+                  
+                }
               }
-            }
 
-            if (!isLegal) {
-              schema["defaultValue"] = undefined;
-              requestUpdate();
-            }
-          }
+              // 如果有变动，加入待更新集合
+              if (nodeHasChanged) {
+                flushPathSet.add(path);
+              }
+            })
+          );
 
-          if (result !== schema[bucketName as keyof typeof schema]) {
-            (schema as any)[bucketName] = result;
-
-            flushPathSet.add(path);
-
-            requestUpdate();
+          // --- ⏳ 时间切片 ---
+          // 每算完一层，如果耗时超过 12ms，让出主线程，防止页面卡死
+          if (performance.now() - lastYieldTime > 12) {
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            lastYieldTime = performance.now();
           }
         }
+
+        // --- 统一提交 UI ---
+        // 跑完(或分片间隙)再触发 UI 更新，比在循环里每次都调要快得多
+        if (flushPathSet.size > 0) {
+          requestUpdate();
+        }
+
+        // 等待 Vue/React 渲染一帧，确保状态同步
+        // if (typeof nextTick !== "undefined") await nextTick();
+        forbidUserNotify = false
+        const endTime = performance.now();
+        hooks.emit("flow:success", {
+          duration: (endTime - startTime).toFixed(2) + "ms",
+        });
+        hooks.callOnSuccess();
+        
+      } catch (err: any) {
+        hooks.emit("node:error", {
+          path: err.path  ,
+          error: err.error  ,
+        });
+        hooks.callOnError(err);
+        throw err;
+      } finally {
+        // 🎉 解锁
+        isInitializing = false;
+        initializationPromise = null;
+        forbidUserNotify = false;
       }
-    } catch (err) {
-  
-    
-      hooks.callOnError(err);
-    } finally {
-  
-    }
+    })();
+
+    return initializationPromise;
   };
 
   //单个字段变化之后触发此函数，然后触发notifyChild来递归的渲染后续字段
   const notify = async (path: P) => {
+    //notifyAll完成之前不允许操作
+    if(forbidUserNotify){
+      return
+    }
     if (!path) {
       throw Error("没有路径");
     }
@@ -317,14 +379,10 @@ export function useForm<T,P extends string>(
     let nextOrder = dependency.GetNextDependency(path);
 
     runNotifyTask(nextOrder, path);
-
-    trace.popExecution([path], true);
   };
 
   async function runNotifyTask(initialNodes: P[], triggerPath: P) {
-    
-    taskrunner(triggerPath,initialNodes)
- 
+    taskrunner(triggerPath, initialNodes);
   }
 
   const updateInputValueRuleManually = (path: P) => {
@@ -360,7 +418,6 @@ export function useForm<T,P extends string>(
     //传入dependOn回调的参数
     let dependOnContext = {
       getRenderSchema: (path: P) => {
-       
         return GetRenderSchemaByPath(path);
       },
     };

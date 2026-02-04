@@ -9,7 +9,7 @@ type GetType<T, P> = P extends keyof T ? T[P] : never;
 
 type Engine<T> = {
   data: {
-    [K in "schema" | "GetFormData" | "AddNewSchema"|'SetValue']: GetType<T, K>;
+    [K in "schema" | "GetFormData" | "AddNewSchema"|'SetValue'|'GetValue'|'GetGroupByPath']: GetType<T, K>;
   };
   config: {
     [K in
@@ -58,8 +58,10 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
       SetStrategy,
       SetValidators,
       SetValue,
+      GetValue,
       usePlugin,
 
+      GetGroupByPath,
       notifyAll,
       SetTrace,
       GetAllDependency,
@@ -92,6 +94,8 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITri
         GetFormData,
         AddNewSchema,
         SetValue,
+        GetValue,
+        GetGroupByPath,
       },
       history: {
         Undo,

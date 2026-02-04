@@ -29,7 +29,9 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
  
     let dependencyOrder:P[][] = []
 
-    let pathToLevelMap:Map<P,number> = new Map()
+    let pathToLevelMap:Map<P,number> = new Map();
+
+    let isReady:boolean = false;
 
     const {
         GetNextDependency,
@@ -44,12 +46,7 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
         ()=>directChildDependencyGraph,//传入直接子路径map集合
     );
 
-    const {
-        SetTrace,
-        pushExecution, 
-        popExecution,
-        markError
-    } = useExecutionTrace<P>( GetNextDependency );
+   
     
     const {
         Undo,
@@ -81,6 +78,14 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
         usePlugin
     } = usePluginManager();
    
+    const {
+        SetTrace,
+        useTrace
+    } = useExecutionTrace<P>();
+
+    const cancelTrace = useTrace();
+    usePlugin(cancelTrace);
+
     const {schema,GetFormData,GetRenderSchemaByPath,GetGroupByPath,notifyAll,convertToRenderSchema} = useForm<T,P>(
         data,
         {
@@ -91,11 +96,7 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
             GetAllPrevDependency,
             GetPathToLevelMap:()=>pathToLevelMap
         },
-        {
-            pushExecution,
-            popExecution,
-            markError
-        },
+  
         {
             pushIntoHistory:PushIntoHistory,
             createHistoryAction:CreateHistoryAction
@@ -192,9 +193,10 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
         })
     };
 
-    const notifyAllWrapper = ()=>{
+    const notifyAllWrapper = async ()=>{
         CheckCycleInGraph();
-        notifyAll()
+        await notifyAll();
+        isReady = true;
     }
 
    const SetValue = (path:P,value:any)=>{
@@ -202,6 +204,11 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
     node.dependOn(()=>{
         return value
     })
+   }
+
+   const GetValue = (path:P,key='defaultValue')=>{
+    const node = GetRenderSchemaByPath(path);
+    return node[key as keyof typeof node];
    }
 
     return {
@@ -214,7 +221,9 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
         usePlugin,
         // CheckCycleInGraph,
         SetValue,
+        GetValue,
         GetFormData,
+        GetGroupByPath,
         notifyAll:notifyAllWrapper,  
         AddNewSchema,
 
