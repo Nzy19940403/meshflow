@@ -193,11 +193,9 @@ function useMeshTask<T extends string>(
                     });
                     let result:any = p;
                     if(p instanceof Promise){
-                         console.log(p)
+                       
                         result = await p;
-                    }else{
-                        debugger
-                    }
+                    } 
 
                     if (currentExecutionToken.get(triggerPath) !== curToken) {
                         hooks.emit(

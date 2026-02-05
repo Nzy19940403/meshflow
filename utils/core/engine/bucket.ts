@@ -16,21 +16,51 @@ type validatorItem = {
 
 export class StrategyStore {
 
-    private computedRules:any[] = [];
+    private computedRules: any[] = [];
 
     private store: Record<DefaultStarategy, any> = {
-        'OR': async (api: any, version: number) => {
+        'OR': (api: any, version: number) => {
             let res = undefined;
- 
+
 
             let baseValue: any = undefined;
 
             const allRules = this.computedRules
 
-            for (let rule of allRules) {
+            for (let i = 0; i < allRules.length; i++) {
+                const rule = allRules[i];
+                const p = rule.logic(api);
 
-                const val = await rule.logic(api);
-                
+                if (p instanceof Promise) {
+                    // 发现异步规则！立即切断同步流，进入异步闭包
+                    return (async () => {
+                        let val = await p;
+                        
+                        // 处理当前这个异步规则的结果
+                        if (rule.entityId === '__base__') { baseValue = val; }
+                        else if (val) { res = rule.value; }
+        
+                        // 如果还没出结果，继续跑剩下的规则
+                        if (typeof res === 'undefined') {
+                            for (let j = i + 1; j < allRules.length; j++) {
+                                const nextRule = allRules[j];
+                                const nextP = nextRule.logic(api);
+                                const nextVal = (nextP instanceof Promise) ? await nextP : nextP;
+        
+                                if (nextRule.entityId === '__base__') { baseValue = nextVal; continue; }
+                                if (nextVal) { res = nextRule.value; break; }
+                            }
+                        }
+        
+                        if (typeof res === 'undefined') res = baseValue;
+                        return { res, version };
+                    })();
+                }
+
+                const val = p;
+
+                // const val = await rule.logic(api);
+
                 if (rule.entityId === '__base__') {
                     baseValue = val;
                     continue;
@@ -52,33 +82,44 @@ export class StrategyStore {
 
             return { res, version }
         },
-        'PRIORITY': async (api: any, version: number) => {
+        'PRIORITY': (api: any, version: number) => {
             let res = null;
             const allRules = this.computedRules
 
-            
 
-            try{
-                for (const rule of allRules) {
-
-                    const val = await rule.logic(api);
-                    // 💡 核心：如果当前规则返回 undefined，表示它“弃权”，看下一个
-                    if (val !== undefined) {
-                        res = val;
-                        break; // 找到了最高优先级的有效意见，跳出循环
-                    }
-                };
-            }catch(err){
-                throw err;
+            for (let i = 0; i < allRules.length; i++) {
+                const rule = allRules[i];
+                const p = rule.logic(api);
+        
+                if (p instanceof Promise) {
+                    // 异步切断点
+                    return (async () => {
+                        const val = await p;
+                        if (val !== undefined) return { res: val, version };
+        
+                        // 继续跑剩下的
+                        for (let j = i + 1; j < allRules.length; j++) {
+                            const nextP = allRules[j].logic(api);
+                            const nextVal = (nextP instanceof Promise) ? await nextP : nextP;
+                            if (nextVal !== undefined) return { res: nextVal, version };
+                        }
+                        return { res: undefined, version };
+                    })();
+                }
+        
+                // --- 同步路径 ---
+                if (p !== undefined) {
+                    return { res: p, version }; // 直接同步截断返回
+                }
             }
-            
+        
             return { res, version };
         }
     }
 
     private CurrentStrategy: Function = () => { }
 
-    private CurrentStrategyType:'PRIORITY'|'OR' = 'PRIORITY';
+    private CurrentStrategyType: 'PRIORITY' | 'OR' = 'PRIORITY';
 
     private getRules: Function = () => { }
 
@@ -90,12 +131,12 @@ export class StrategyStore {
         this.updateComputedRules()
     }
 
-    updateComputedRules(){
+    updateComputedRules() {
         const list: any[] = this.getRules();
-         
-        if(this.CurrentStrategyType==='PRIORITY'){
+
+        if (this.CurrentStrategyType === 'PRIORITY') {
             this.computedRules = Array.from(list.values()).map(item => Array.from(item)).flat<any>().sort((a, b) => b.priority - a.priority);
-        }else{
+        } else {
             this.computedRules = Array.from(list.values()).map(item => Array.from(item)).flat();
         }
     }
@@ -105,14 +146,14 @@ export class StrategyStore {
         this.updateComputedRules()
     }
 
-    evaluate(api:any, currentVersion:number) {
-        return this.CurrentStrategy(api,currentVersion)
+    evaluate(api: any, currentVersion: number) {
+        return this.CurrentStrategy(api, currentVersion)
     }
 }
 
 export class SchemaBucket<P>{
-   
-    private path:any;
+
+    private path: any;
 
     private strategy: StrategyStore;
 
@@ -131,22 +172,22 @@ export class SchemaBucket<P>{
 
     private version: number = 0;
 
-    private deps:Map<P,any> = new Map();
+    private deps: Map<P, any> = new Map();
     //强制通知下游，优化的策略
-    private _forceNotify:boolean = false;
+    private _forceNotify: boolean = false;
 
-    promiseToken:any = null;
+    promiseToken: any = null;
 
     globalCalcCount = 0
 
-    constructor(baseValue: any,key:string,path:P) {
+    constructor(baseValue: any, key: string, path: P) {
         const getRule = () => this.rules
         this.strategy = new StrategyStore(getRule)
         this.path = path;
-        this.isDefaultValue = key==='defaultValue';
+        this.isDefaultValue = key === 'defaultValue';
 
         this.contract = this.inferType(baseValue);
-         
+
         this.cache = baseValue;
         //生成默认规则，在所有规则失效的时候兜底
 
@@ -157,15 +198,15 @@ export class SchemaBucket<P>{
             logic: () => baseValue
         });
 
-        
+
     }
 
-    forceNotify(){
-       
+    forceNotify() {
+
         this._forceNotify = true;
     }
-    isForceNotify(){
-         
+    isForceNotify() {
+
         return this._forceNotify;
     }
     setStrategy(type: DefaultStarategy) {
@@ -187,8 +228,8 @@ export class SchemaBucket<P>{
         this.rules.set(value.id, rules);
     }
 
-    setRules(value: any,DepsArray?:Array<[P,any]>) {
-        if(DepsArray){
+    setRules(value: any, DepsArray?: Array<[P, any]>) {
+        if (DepsArray) {
             this.updateDeps(DepsArray)
         }
         const entityId = ++this.id;
@@ -228,21 +269,21 @@ export class SchemaBucket<P>{
         };
     };
 
-    updateDeps( DepsArray:Array<[P,any]> ){
-       
-        for(let [triggerPath,value] of DepsArray){
-            this.deps.set(triggerPath,value)
+    updateDeps(DepsArray: Array<[P, any]>) {
+
+        for (let [triggerPath, value] of DepsArray) {
+            this.deps.set(triggerPath, value)
         }
     }
 
-    setRule(value: any,DepsArray?:Array<[P,any]>) {
-        
+    setRule(value: any, DepsArray?: Array<[P, any]>) {
+
         //如果是内部调用，DepsArray是没有值的，那就按照默认的逻辑执行。如果传入DepsArray，就是外界注册setRule的时候传入的，需要记录一下
         //当前的桶关联了哪些path，这些path的defaultValue会被记录下来当作依赖，变化了之后会执行计算，没有变化就返回cache
-        if(DepsArray){
+        if (DepsArray) {
             this.updateDeps(DepsArray)
         }
-        
+
 
         //需要避开默认的rule，因为默认的rule也会调用次方法添加rule,默认的rule的id是字符串，用户添加的rule的id是数值类型
         if (typeof value.entityId === 'string') {
@@ -259,14 +300,14 @@ export class SchemaBucket<P>{
             entityId,
         };
 
-        if(value)
+        if (value)
 
-        for (let path of value.triggerPaths) {
-            if (!this.rules.has(path)) {
-                this.rules.set(path, new Set<any>());
-            }
-            this.rules.get(path)!.add(ruleEntity)
-        };
+            for (let path of value.triggerPaths) {
+                if (!this.rules.has(path)) {
+                    this.rules.set(path, new Set<any>());
+                }
+                this.rules.get(path)!.add(ruleEntity)
+            };
         this.strategy.updateComputedRules();
         //返回删除对应rule的方法
         return () => {
@@ -288,20 +329,20 @@ export class SchemaBucket<P>{
         };
 
     };
- 
 
-    async evaluate(api: any) {
-    
-        let curToken  = null;
 
-        if(api.GetToken){
+    evaluate(api: any) {
+
+        let curToken = null;
+
+        if (api.GetToken) {
             curToken = api.GetToken();
         }
-        
+
         if (this.pendingPromise && this.promiseToken !== curToken) {
             // console.log(`[桶身份失效] 票号变了，抛弃旧 Promise`);
-            
-            this.pendingPromise = null; 
+
+            this.pendingPromise = null;
             this.promiseToken = null;
         }
 
@@ -309,109 +350,66 @@ export class SchemaBucket<P>{
             // console.log("✅ 命中性能优化：复用相同 Token 的 Promise");
             return this.pendingPromise;
         }
-        
+
+        //把这个移出来看看能否把异步变成同步
+        let shouldSkipCalculate = false;
+        //当不是从notifyAll触发的时候
+        if (typeof api.triggerPath === 'string') {
+            shouldSkipCalculate = true;
+
+            // // 1. 打印触发源
+            // console.log(`%c [桶预检] ${this.path}`, "color: #e6a23c; font-weight: bold;", {
+            //     triggerPath: api.triggerPath,
+            //     curToken: curToken
+            // });
+
+            let oldVal = this.deps.get(api.triggerPath);
+            let curVal = api.GetValueByPath(api.triggerPath)
+
+            // 2. 打印直接触发者的对比
+            // console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
+
+            if (typeof oldVal === 'object' || typeof curVal === 'object') {
+                shouldSkipCalculate = false;
+            } else {
+
+                let paths = Array.from(this.deps.keys());
+                for (let path of paths) {
+                    let oldVal = this.deps.get(path);
+                    let curVal = api.GetValueByPath(path);
+                    if (oldVal !== curVal) {
+                        // console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
+                        shouldSkipCalculate = false;
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (shouldSkipCalculate) {
+
+            // console.log(`%c [⚡️高速缓存] ${this.path} 命中! 缓存值:`, "color: #409EFF", this.cache);
+            return this.cache
+        }
+
         this.promiseToken = curToken;
         const currentVersion = ++this.version;
 
+        const p = this.strategy.evaluate(api, currentVersion)
+
+        // 🔥🔥🔥 核心优化点：探测同步结果 🔥🔥🔥
+        if (!(p instanceof Promise)) {
+            // 如果规则全是同步的，直接在这里结算并返回结果
+            const { res, version } = p;
+            return this.finalizeSync(res, version, api, curToken); 
+        }
         this.pendingPromise = (async () => {
-            
-            // const taskVersion = currentVersion;
             try {
-                
-                await Promise.resolve();
-                // const currentVersion = ++this.version;
-
-              
-
-                let shouldSkipCalculate = false;
-               
-                //当不是从notifyAll触发的时候
-                if(typeof api.triggerPath === 'string'){
-                    shouldSkipCalculate = true;
-
-                    // // 1. 打印触发源
-                    // console.log(`%c [桶预检] ${this.path}`, "color: #e6a23c; font-weight: bold;", {
-                    //     triggerPath: api.triggerPath,
-                    //     curToken: curToken
-                    // });
-
-                    let oldVal = this.deps.get(api.triggerPath);
-                    let curVal = api.GetValueByPath(api.triggerPath)
-
-                    // 2. 打印直接触发者的对比
-                    // console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
-
-                    if( typeof oldVal === 'object'|| typeof curVal === 'object' ){
-                        shouldSkipCalculate = false;     
-                    }else{
-             
-                        let paths = Array.from(this.deps.keys());
-                        for(let path of paths){
-                            let oldVal = this.deps.get(path);
-                            let curVal = api.GetValueByPath(path);
-                            if(oldVal !== curVal){
-                                // console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
-                                shouldSkipCalculate = false;
-                           
-                                break;
-                            }
-                        }
-                    }
-                  
-                } 
-            
-               
-                if(shouldSkipCalculate){
-                
-                    // console.log(`%c [⚡️高速缓存] ${this.path} 命中! 缓存值:`, "color: #409EFF", this.cache);
-                    return this.cache
-                }
-            
-           
-                //命中自己订阅的key值，它变更的时候需要重新计算
- 
-                let { res, version } = await this.strategy.evaluate(api, currentVersion);
- 
-         
-                if( curToken !== this.promiseToken){
-                    // console.warn(`[拦截幽灵] 桶版本已进化为 ${this.version}, 任务版本 ${version} 作废`);
-                    // console.log(res,this.cache)
-                    return this.cache
-                }
-                
-
-                if (version < this.version) {
-                    // console.log('过期任务');
-                    return this.cache;
-                }
-
-                if (this.inferType(res) !== this.contract) {
-
-                    console.error(`[类型泄露] 桶产出了非 ${this.contract} 类型的值:`, res);
-                }
-
-                this.cache = res;
-
-                if(curToken === this.promiseToken){
-                     
-                    // console.log(`${this.path}修改了cache:`,res)
-                    let paths = Array.from(this.deps.keys());
-                    for(let path of paths){
-                    
-                        let curVal = api.GetValueByPath(path);
-                        this.deps.set(path,curVal)
-                    }
-                  
-                }
-
-                return res;
-
-            }catch(err:any){
-                const info = {
-                    path:this.path,
-                    error:err
-                }
-                throw info
+                const { res, version } = await p;
+                return this.finalizeSync(res, version, api, curToken);
+            } catch (err: any) {
+                throw { path: this.path, error: err };
             } finally {
                 if (this.promiseToken === curToken) {
                     this.pendingPromise = null;
@@ -419,8 +417,132 @@ export class SchemaBucket<P>{
                 }
             }
         })();
-
         return this.pendingPromise;
+
+        // this.pendingPromise = (async () => {
+
+        //     // const taskVersion = currentVersion;
+        //     try {
+
+        //         await Promise.resolve();
+        //         // const currentVersion = ++this.version;
+
+
+
+        //         let shouldSkipCalculate = false;
+
+        //         //当不是从notifyAll触发的时候
+        //         if (typeof api.triggerPath === 'string') {
+        //             shouldSkipCalculate = true;
+
+        //             // // 1. 打印触发源
+        //             // console.log(`%c [桶预检] ${this.path}`, "color: #e6a23c; font-weight: bold;", {
+        //             //     triggerPath: api.triggerPath,
+        //             //     curToken: curToken
+        //             // });
+
+        //             let oldVal = this.deps.get(api.triggerPath);
+        //             let curVal = api.GetValueByPath(api.triggerPath)
+
+        //             // 2. 打印直接触发者的对比
+        //             // console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
+
+        //             if (typeof oldVal === 'object' || typeof curVal === 'object') {
+        //                 shouldSkipCalculate = false;
+        //             } else {
+
+        //                 let paths = Array.from(this.deps.keys());
+        //                 for (let path of paths) {
+        //                     let oldVal = this.deps.get(path);
+        //                     let curVal = api.GetValueByPath(path);
+        //                     if (oldVal !== curVal) {
+        //                         // console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
+        //                         shouldSkipCalculate = false;
+
+        //                         break;
+        //                     }
+        //                 }
+        //             }
+
+        //         }
+
+
+        //         if (shouldSkipCalculate) {
+
+        //             // console.log(`%c [⚡️高速缓存] ${this.path} 命中! 缓存值:`, "color: #409EFF", this.cache);
+        //             return this.cache
+        //         }
+
+
+        //         //命中自己订阅的key值，它变更的时候需要重新计算
+
+        //         // let { res, version } = await this.strategy.evaluate(api, currentVersion);
+        //         const p = this.strategy.evaluate(api, currentVersion);
+
+        //         const { res, version } = (p instanceof Promise) ? await p : p;
+
+        //         if (curToken !== this.promiseToken) {
+        //             // console.warn(`[拦截幽灵] 桶版本已进化为 ${this.version}, 任务版本 ${version} 作废`);
+        //             // console.log(res,this.cache)
+        //             return this.cache
+        //         }
+
+
+        //         if (version < this.version) {
+        //             // console.log('过期任务');
+        //             return this.cache;
+        //         }
+
+        //         if (this.inferType(res) !== this.contract) {
+
+        //             console.error(`[类型泄露] 桶产出了非 ${this.contract} 类型的值:`, res);
+        //         }
+
+        //         this.cache = res;
+
+        //         if (curToken === this.promiseToken) {
+
+        //             // console.log(`${this.path}修改了cache:`,res)
+        //             let paths = Array.from(this.deps.keys());
+        //             for (let path of paths) {
+
+        //                 let curVal = api.GetValueByPath(path);
+        //                 this.deps.set(path, curVal)
+        //             }
+
+        //         }
+
+        //         return res;
+
+        //     } catch (err: any) {
+        //         const info = {
+        //             path: this.path,
+        //             error: err
+        //         }
+        //         throw info
+        //     } finally {
+        //         if (this.promiseToken === curToken) {
+        //             this.pendingPromise = null;
+        //             this.promiseToken = null;
+        //         }
+        //     }
+        // })();
+
+        // return this.pendingPromise;
+    }
+
+    // 提取出的同步结算方法
+    private finalizeSync(res: any, version: number, api: any, curToken: any) {
+        if (curToken !== this.promiseToken || version < this.version) {
+            return this.cache;
+        }
+        // ... (类型检查逻辑) ...
+        this.cache = res;
+        // 更新依赖快照 (同步)
+        this.deps.forEach((_, path) => {
+            this.deps.set(path, api.GetValueByPath(path));
+        });
+        return res;
     }
 
     private inferType(val: any): ContractType {
