@@ -17,6 +17,7 @@ type LoggerEventName = keyof LoggerInternalEvents
 
 const NODE_RELEASE = {
     1:(detail:any)=>{
+         
         return ` 上游${detail.path} 值变了`
     },
     2:(detail:any)=>{
@@ -24,6 +25,9 @@ const NODE_RELEASE = {
     },
     3:(detail:any)=>{
         return `水位推进至 L${detail.level}，释放暂存节点`
+    },
+    4:(detail:any)=>{
+        return `贪婪推进${detail.path}`
     }
 }
 /*
@@ -31,7 +35,9 @@ const NODE_RELEASE = {
     1:token过期的拦截
     2:已经计算完的路径拦截
     3:正在计算的路径拦截
-    4:整体水位进度还没到路径层级的拦截
+    4:整体水位进度还没到路径层级,并且入度还没减到0,暂时等待后续水位推进再一次执行
+    5,整体水位进度还没到路径层级,但是入度已经减到0了,在非贪婪模式下暂时扣押,
+    6:最后的截流,清空resureArea,这是静默的信号
 */
 
 const NODE_INTERCEPT = {
@@ -42,10 +48,19 @@ const NODE_INTERCEPT = {
         return '已计算完成'
     },
     3:()=>{
-        return '节点正在队列或被计算,忽略本次重复信号'
+        return '节点正在被计算,忽略本次重复信号'
+    },
+    3.1:()=>{
+        return '节点正在队列中,忽略本次重复信号'
     },
     4:(detail:any)=>{
         return `层级过高(L${detail.targetLevel}>L${detail.currentLevel})，退回暂存区等待上游(余${detail.pendingParentsCount})`
+    },
+    5:(detail:any)=>{
+        return `上游已清,暂时扣押，等待水位 (L${detail.currentLevel} ➔ L${detail.targetLevel})`
+    },
+    6:()=>{
+        return `上游静默，链路收敛`
     }
 }
 const FLOW_WAIT = {
@@ -121,6 +136,7 @@ const useLogger = () => {
 
         on('node:intercept', ({ path, type,detail }) => {
             const reason = NODE_INTERCEPT[type as keyof typeof NODE_INTERCEPT](detail);
+         
             console.log(`%c🛑 [Intercept] %c${path} | ${reason}`, "background: #FFF7E8; color: #E6A23C; padding: 2px 4px", "color: #E6A23C");
         })
 

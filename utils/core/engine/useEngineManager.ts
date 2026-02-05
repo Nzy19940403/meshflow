@@ -35,19 +35,28 @@ type Engine<T> = {
 const engineMap = new Map<string|symbol,Engine<any>>()
 
 /** @deprecated 请使用新的 useMeshFlow 别名 */
-const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, UITrigger:{
-  signalCreateor:()=>T,
-  signalTrigger:(signal:T)=>void
+const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, options:{
+  config?:{
+    useGreedy:boolean
+  },
+  UITrigger:{
+    signalCreateor:()=>T,
+    signalTrigger:(signal:T)=>void
+  }
 }) => {
   try{
-    if(typeof UITrigger.signalCreateor !== 'function' || typeof UITrigger.signalTrigger !== 'function'){
+    if(typeof options.UITrigger.signalCreateor !== 'function' || typeof options.UITrigger.signalTrigger !== 'function'){
       throw Error('需要定义signal来通知ui')
     }
   
     if(engineMap.has(id)){
       throw Error('engineID重复,修改id或者使用symbol');
     }
-    const scheduler = useFlowScheduler<T, P>(Schema, UITrigger);
+    const scheduler = useFlowScheduler<T, P>(
+      Schema, 
+      options.config||{useGreedy:false},
+      options.UITrigger
+    );
 
     type ConcreteScheduler = typeof scheduler;
     const {

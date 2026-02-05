@@ -19,11 +19,14 @@ export interface MeshEvents {
 
 };
 /*
-    给node:intercept加入几个状态
+   给node:intercept加入几个状态
     1:token过期的拦截
     2:已经计算完的路径拦截
     3:正在计算的路径拦截
-    4:整体水位进度还没到路径层级的拦截
+    3.1:正在队列的路径拦截
+    4:整体水位进度还没到路径层级,并且入度还没减到0,暂时等待后续水位推进再一次执行
+    5,整体水位进度还没到路径层级,但是入度已经减到0了,在非贪婪模式下暂时扣押,
+    6:最后的截流,清空resureArea,这是静默的信号,
 */
 export type MeshEventName = keyof MeshEvents;
 

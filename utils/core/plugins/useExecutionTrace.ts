@@ -10,9 +10,9 @@ interface TraceInternalEvents {
 
 
   'node:error': { path: string; error: any };
-  'node:intercept': { path: string; reason: string; detail?: any };
-  'node:release': { path: string; reason:string}
-  'node:stagnate': { path: string;reason:string }
+  'node:intercept': { path: string;  type:number,detail?:any };
+  'node:release': { path: string; type:number,detail?:any}
+  'node:stagnate': { path: string;type:number }
   'node:processing': { path:string }
 
   'node:pending':{path:string}
@@ -65,7 +65,12 @@ export function useExecutionTrace<T>(
       });
   
       // 2. 释放点火：标记为待命状态
-      api.on('node:release', ({ path }: { path: T }) => {
+      api.on('node:release', ({ path ,type}) => {
+        if(type==1||type==2){
+          
+          currentSessionAffected.add(path);
+          updateStatus(path, 'pending');
+        }
         // currentSessionAffected.add(path);
         // if (!statusMap.has(path) || statusMap.get(path) === 'idle') {
         //   updateStatus(path, 'pending');
@@ -73,6 +78,7 @@ export function useExecutionTrace<T>(
       });
 
       api.on('node:pending',({path})=>{
+        
          currentSessionAffected.add(path);
         if (!statusMap.has(path) || statusMap.get(path) === 'idle') {
           updateStatus(path, 'pending');
@@ -96,14 +102,15 @@ export function useExecutionTrace<T>(
   
       // 5. 路径终结信号：确保 UI 不会悬挂
       api.on('node:intercept', ({ path ,type}) => {
-        // if(path==='cloudConsole.billing.priceDetail'){
-        //   debugger
-        // }
-        console.log(type)
-        // if(statusMap.get(path)!=='calculated'){
-        //   updateStatus(path, 'canceled')
-        // }
-        // 
+        //3是节点正在被计算的拦截信号,所以显示正在被计算
+        if(type==3){
+          updateStatus(path, 'calculating');
+        }
+
+        if(type==6){
+          updateStatus(path, 'idle');
+        }
+
       });
       api.on('node:stagnate', ({ path } ) => {
         updateStatus(path, 'pending')

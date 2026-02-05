@@ -12,9 +12,14 @@ import { usePluginManager } from "../plugins/usePlugin";
 import { useOnStart } from "../hooks/useOnStart";
 
 //入口函数,传入符合格式的json
-export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
-    signalCreateor:()=>T,
-    signalTrigger:(signal:T)=>void
+export function useFlowScheduler<T,P extends string>(
+    data:any,
+    config:{
+        useGreedy:boolean
+    },
+    UITrigger:{
+        signalCreateor:()=>T,
+        signalTrigger:(signal:T)=>void
   }){
     let isRulesChanged:boolean = false;
     let isCircleChecking:boolean = false;
@@ -88,6 +93,9 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
 
     const {schema,GetFormData,GetRenderSchemaByPath,GetGroupByPath,notifyAll,convertToRenderSchema} = useForm<T,P>(
         data,
+        {
+            useGreedy:config.useGreedy
+        },
         {
             GetDependencyOrder: ()=>dependencyOrder,
             GetAllNextDependency,
@@ -220,7 +228,8 @@ export function useFlowScheduler<T,P extends string>(data:any,UITrigger:{
         SetTrace,
         usePlugin,
         // CheckCycleInGraph,
-        SetValue,
+        
+        SetValue, //设置节点的defaultValue
         GetValue,
         GetFormData,
         GetGroupByPath,

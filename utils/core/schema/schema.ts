@@ -115,6 +115,9 @@ export type FormResultType<T> = T extends any
 /*----------------------------------------------------------------------------------------------------*/
 export function useForm<T, P extends string>(
   schema: FormFieldSchema,
+  config:{
+    useGreedy:boolean
+  },
   dependency: {
     GetDependencyOrder: () => P[][];
     GetAllNextDependency: (path: P) => P[];
@@ -194,7 +197,7 @@ export function useForm<T, P extends string>(
   const requestUpdate = () => {
     if (isPending) return;
     isPending = true;
-    Promise.resolve().then(() => {
+    requestAnimationFrame(() => {
       try {
         while (flushPathSet.size > 0) {
           flushUpdate();
@@ -233,12 +236,15 @@ export function useForm<T, P extends string>(
   };
 
   const taskrunner = useMeshTask<P>(
+    {
+      useGreedy:config.useGreedy
+    },
     dependency,
-    // trace,
     {
       GetRenderSchemaByPath,
     },
     hooks,
+    //UITrigger
     {
       requestUpdate,
       flushPathSet,
@@ -339,8 +345,8 @@ export function useForm<T, P extends string>(
         
       } catch (err: any) {
         hooks.emit("node:error", {
-          path: err.path  ,
-          error: err.error  ,
+          path: err.path,
+          error: err.error,
         });
         hooks.callOnError(err);
         throw err;
@@ -361,9 +367,9 @@ export function useForm<T, P extends string>(
     if(forbidUserNotify){
       return
     }
-    if (!path) {
-      throw Error("没有路径");
-    }
+    // if (!path) {
+    //   throw Error("没有路径");
+    // }
 
     let inDegree = GetRenderSchemaByPath(path);
 
