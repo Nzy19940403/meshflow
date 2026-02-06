@@ -14,6 +14,7 @@ export interface MeshEvents {
     'flow:fire': { path: string;type:number ; detail?:any };
     'flow:start':{path:string}
     'flow:success':{duration:string}
+    'flow:end':{type:number}
 
     'node:pending':{path:string}
 

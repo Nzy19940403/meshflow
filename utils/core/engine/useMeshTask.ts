@@ -56,7 +56,7 @@ function useMeshTask<T extends string>(
         AllAffectedPaths.add(triggerPath);
         // changedPaths.add(triggerPath);
 
-        const queueCountMap = new Map<T, number>();
+        // const queueCountMap = new Map<T, number>();
          //等待执行区,直接上游发生变化了会把节点加入这里
         const stagingArea = new Map<T, number>();
         // 等待捕捞区,上游没有变但是不好直接扔所以把这个先扔在这里等待捕捞
@@ -85,36 +85,13 @@ function useMeshTask<T extends string>(
             });
         };
         updateWatermark(triggerPath);
+        initialNodes.forEach((p) => {
+            readyToRunBuffer.add(p);
+        });
 
-        // AllAffectedPaths.forEach(path => {
-        //     if (path === triggerPath) return;
-        //     if (initialNodes.includes(path)) return;
-
-        //     const directParents = dependency.GetPrevDependency(path);
-        //     const effectParentsCount = directParents.filter(p => AllAffectedPaths.has(p)).length;
-        //     if (effectParentsCount > 0) {
-        //         stagingArea.set(path, effectParentsCount);
-        //     }
-        // })
         processed.add(triggerPath);
         
-        // AllAffectedPaths.forEach(path => {
-        //     maxAffectedLevel = Math.max(maxAffectedLevel, pathToLevelMap.get(path) || 0);
-        // });
-
-        const queue: Array<{
-            target: T;
-            trigger: T;
-            isReleased: boolean;
-        }> = Array.from(initialNodes).map((p) => {
-            queueCountMap.set(p, (queueCountMap.get(p) || 0) + 1); // 记账
-            return {
-                target: p,
-                trigger: triggerPath,
-                isReleased: false,
-            };
-        });
-        // trace.pushExecution([...Array.from(initialNodes), triggerPath], true);
+   
         const startTime = performance.now();
         hooks.emit('flow:start',{path:triggerPath})
         // 打印任务启动
@@ -129,7 +106,7 @@ function useMeshTask<T extends string>(
 
       
 
-        const executorNodeCalculate = async (task: { target: T; trigger: T; isReleased: boolean; }) => {
+        const executorNodeCalculate = async (task: { target: T; trigger: T;  }) => {
  
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
             //reasontype -> 1:上游 ${targetPath} 值变了 2: 当上游值没有变但是下游节点已经在stagingArea的时候`上游 ${targetPath} 完成(穿透)`
@@ -139,10 +116,12 @@ function useMeshTask<T extends string>(
 
                 if (newResistance <= 0) {
                     // 检查忙碌状态
-                    const isAlreadyInQueue = queueCountMap.has(child);
+                    const isAlreadyInReadyBuffer = readyToRunBuffer.has(child);
                     const isAlreadyRunning = processingSet.has(child);
+                    // const isAlreadyInQueue = queueCountMap.has(child);
+                    // const isAlreadyRunning = processingSet.has(child);
 
-                    if (isAlreadyInQueue || isAlreadyRunning) {
+                    if (isAlreadyInReadyBuffer || isAlreadyRunning) {
                         
                         hooks.emit('node:intercept', { 
                             path: child, 
@@ -154,8 +133,12 @@ function useMeshTask<T extends string>(
 
                     // 入队操作
                     stagingArea.delete(child);
-                    queue.push({ target: child, trigger: targetPath, isReleased: true });
-                    queueCountMap.set(child, 1);
+
+                    //加入准备跑的集合,用来做batch
+                    readyToRunBuffer.add(child);
+
+                    // queue.push({ target: child, trigger: targetPath, isReleased: true });
+                    // queueCountMap.set(child, 1);
                     
                     hooks.emit('node:release', { path: child, type:reasonType ,detail:{path:targetPath} });
                 } else {
@@ -270,7 +253,7 @@ function useMeshTask<T extends string>(
                             continue; 
                         };
 
-                        if (processingSet.has(child) || queueCountMap.has(child)) {
+                        if (processingSet.has(child) || readyToRunBuffer.has(child)) {
                             // 这里可以选择 silent 跳过，或者打印一个 intercept
                             // 关键是：绝对不要操作 stagingArea/rescueArea
                              
@@ -293,7 +276,7 @@ function useMeshTask<T extends string>(
                             if (
                                 !stagingArea.has(child) && 
                                 !processed.has(child) && 
-                                !queueCountMap.has(child) &&
+                                !readyToRunBuffer.has(child) &&
                                 !processingSet.has(child)
                             ) {
                                 const effectParentsCount = dependency.GetPrevDependency(child)
@@ -322,7 +305,7 @@ function useMeshTask<T extends string>(
                                 }
                                 
                                 const levelSet = resureArea.get(level)!;
-                                if (!levelSet.has(child) && !processed.has(child) && !queueCountMap.has(child)) {
+                                if (!levelSet.has(child) && !processed.has(child) && !readyToRunBuffer.has(child)) {
                                     levelSet.add(child);
                                     hooks.emit('node:stagnate', { path: child,type:1 });
                                 }
@@ -359,7 +342,8 @@ function useMeshTask<T extends string>(
                 currentExecutionToken.set(triggerPath, abortToken);
           
                 // 2. 物理清空任务队列，让 flushQueue 的 while 循环立刻失去动力
-                queue.length = 0; 
+                // queue.length = 0; 
+                readyToRunBuffer.clear();
                 stagingArea.clear();
                 processingSet.clear(); // 强制清空正在处理的集合
                 // changedPaths.delete(targetPath);//标记路径为没有变化
@@ -371,10 +355,11 @@ function useMeshTask<T extends string>(
                
                 if (currentExecutionToken.get(triggerPath) === curToken) {
                  
-                    processingSet.delete(targetPath);
-                
-             
-               
+                    
+                processingSet.delete(targetPath);
+                    const activenums = processingSet.size;
+                    const pendingnums = readyToRunBuffer.size
+                    
                     // 关键点 2：点火！
                     // 当 A2 算完，它尝试去叫醒可能正在“休眠”的 flushQueue
                     // 由于你有 isLooping 锁，如果 while 还在转，这一句会被 return，不产生副作用
@@ -382,8 +367,8 @@ function useMeshTask<T extends string>(
                     
                     if (!isLooping ) {
                          
- 
-                        const remaining = processingSet.size||stagingArea.size||queueCountMap.size;
+                      
+                        // const remaining = processingSet.size + stagingArea.size + readyToRunBuffer.size;
                         // const fireReason = remaining > 0 
                         //     ? `[${targetPath}] 归航，剩余 ${remaining} 个任务在途，系统保持待机。`
                         //     : `[${targetPath}] 最终归航！所有任务已清空，重启调度检查收尾。`;
@@ -392,13 +377,15 @@ function useMeshTask<T extends string>(
                             'flow:fire',
                             {
                                 path:targetPath,
-                                type:remaining > 0?1:2,
+                                type:1,
                                 // reason:fireReason
                                 detail:{
-                                    remaining
+                                    active: activenums,    
+                                    pending:pendingnums,
+                                    blocked: stagingArea.size,  
                                 }
                             }
-                        )
+                        );
                         flushQueue();
                     }
 
@@ -425,289 +412,189 @@ function useMeshTask<T extends string>(
                 while (true) {
                     // 🛑 令牌检查
                     if (currentExecutionToken.get(triggerPath) !== curToken) break;
-                     
-                    // ==========================================================
-                    // 阶段一：消费队列 (Active Queue)
-                    // ==========================================================
-                    while (queue.length > 0) {
-                        // A. 并发控制
-                        if (processingSet.size >= MAX_CONCURRENT_TASKS) {
-                            isLooping = false;
-                            return; 
-                        }
-        
-                        // --- 🔥 核心改动：预读任务，进行水位安检 ---
-                        const task = queue[0]; // 先看一眼，不取出来
-                        const { target: targetPath } = task;
-                        const targetLevel = pathToLevelMap.get(targetPath) ?? 0;
-                        const staticParents = dependency.GetPrevDependency(targetPath);
-                        const isMergeNode = staticParents.length > 1;
-                       
-                        //如果不用贪婪模式并且当前节点的水位高于现在水位
-                        const shouldIntercept = (!isGreedy || isMergeNode) && (targetLevel > currentLevel);
-                         
-                        // 🛑 水位拦截逻辑
-                        // 如果当前任务层级 > 当前水位，说明它是“抢跑”的跨层级任务（例如 c3）
-                        // 必须把它拦截下来，退回 stagingArea 等待同层级的 b2 跑完
-                        if(shouldIntercept){
-                            // 1. 真正出队
-                            queue.shift();
-                                                        
-                            // 2. 修正队列计数
-                            const currentCount = queueCountMap.get(targetPath) || 0;
-                            if (currentCount <= 1) queueCountMap.delete(targetPath);
-                            else queueCountMap.set(targetPath, currentCount - 1);
 
-                            // 3. 只有当它不在暂存区时，才进行“回炉重造”
-                            // (防止重复添加导致阻力计算错误)
-                            if (!stagingArea.has(targetPath)) {
-                                // 计算它在本次受灾范围内的真实入度（阻力）
-                                // 比如 c3 依赖 a1, b2。此时 a1 跑完了，b2 没跑。
-                                // effectParentsCount 会算出来是 2 (如果 a1, b2 都在 AllAffectedPaths 里)
-                                // 但因为 a1 已经跑完了（processed），我们需要一个机制来减去已完成的阻力吗？
-                                // 💡 不用复杂化！直接扔进 stagingArea，设为最大阻力。
-                                // 等 b2 跑完 release 时减 1。
-                                // 那 a1 的那 1 点阻力怎么办？
-                                // 这是一个关键点：因为 a1 已经跑完了，它不会再触发 release 了。
-                                // 所以这里初始化的阻力，必须扣除掉“已完成的上游”！
-                                
-                                const directParents = dependency.GetPrevDependency(targetPath);
-                                const pendingParentsCount = directParents.filter(p => 
-                                    AllAffectedPaths.has(p) && !processed.has(p) // 只计算还没跑完的上游！
-                                ).length;
-
-                                if (pendingParentsCount > 0) {
-                                    stagingArea.set(targetPath, pendingParentsCount);
-                                    hooks.emit('node:intercept', {
-                                        path: targetPath,
-                                        // reason: `层级过高(L${targetLevel}>L${currentLevel})，退回暂存区等待上游(余${pendingParentsCount})`,
-                                        type: 4,
-                                        detail:{
-                                            targetLevel,
-                                            currentLevel,
-                                            pendingParentsCount
-                                        }
-                                    });
-                                } else {
-                                    // 极端情况：所有上游其实都跑完了？那说明水位线滞后了，或者可以直接跑
-                                    // 这种情况下放行，或者暂时挂起等水位推进
-                                    // 为了安全，如果层级真的高，还是先挂起，等阶段四推水位捞回来
-                                    stagingArea.set(targetPath, 0); 
-                                    hooks.emit('node:intercept', {
-                                        path: targetPath,
-                                        type: 5, // 🆕 Type 5: 暂时扣押 (Ready but Held)
-                                        detail: { 
-                                            targetLevel,
-                                            currentLevel
-                                        }
-                                    });
-                                }
-                            }
-                            // 拦截后，直接处理队列下一个，或者重新循环
-                            continue;
-                        }
-
-                         
-        
-                        // --- 任务合法(或贪婪放行)，正式出队执行 ---
-                        queue.shift(); // 刚才只是 peek，现在 shift
-                        
-                        // 记账逻辑 (保持不变)
-                        const currentCount = queueCountMap.get(targetPath) || 0;
-                        if (currentCount <= 1) queueCountMap.delete(targetPath);
-                        else queueCountMap.set(targetPath, currentCount - 1);
-        
-                        // 防重入 (保持不变)
-                        if (processed.has(targetPath)) {
-                            hooks.emit('node:intercept', { path: targetPath, type: 2 });
-                            continue;
-                        }
-        
-                        processingSet.add(targetPath);
-                        hooks.emit('node:processing', { path: targetPath });
-                        executorNodeCalculate(task);
-                        // continue;
+                    if (performance.now() - lastYieldTime > 16) {
+                        await new Promise(resolve => requestAnimationFrame(resolve));
+                        lastYieldTime = performance.now();
+                        if (currentExecutionToken.get(triggerPath) !== curToken) break;
                     }
-                    //当贪婪模式的时候才会在queue里没任务的时候来stagingArea里寻找是不是有入度为0的任务
-                    if ( isGreedy && stagingArea.size > 0) {
-                        const greedyCandidates = [];
-                       
-                        for (const [path, resistance] of stagingArea) {
-                            // 只要阻力归零，直接捞！
-                            if (resistance <= 0) {
-                                // 🔥🔥🔥 新增：汇聚点安全守卫 (Merge Node Guard) 🔥🔥🔥
-                              
-                                const level = pathToLevelMap.get(path) ?? 0;
+                     
+                    if (readyToRunBuffer.size > 0 && processingSet.size < MAX_CONCURRENT_TASKS) {
+                
+                        // 💡 关键：使用 for...of 遍历 Set 实现批量同步分发
+                        for (const targetPath of readyToRunBuffer) {
+                            if (processingSet.size >= MAX_CONCURRENT_TASKS) break;
+        
+                            const targetLevel = pathToLevelMap.get(targetPath) ?? 0;
+                            const staticParents = dependency.GetPrevDependency(targetPath);
+                            const isMergeNode = staticParents.length > 1;
+                            const shouldIntercept = (!isGreedy || isMergeNode) && (targetLevel > currentLevel);
+        
+                            // 🛑 水位/汇聚点拦截
+                            if (shouldIntercept) {
+                                readyToRunBuffer.delete(targetPath);
                                 
-                                // 如果这个节点是“越级”的（比当前水位深）
-                                if (level > currentLevel) {
-                                    // 检查它静态上有几个爹（这里必须用静态依赖 GetPrevDependency，不能用动态的）
-                                    const staticParents = dependency.GetPrevDependency(path);
-                                    
-                                    // 🛑 如果有多个爹，那就是“汇聚点”。
-                                    // 汇聚点绝对不能抢跑！必须等所有上游（包括慢的那条路）都跑完，
-                                    // 也就是必须等水位线（currentLevel）真正推到了 level 才能动。
-                                    if (staticParents.length > 1) {
-                                        // console.log(`🛡️ [Guard] ${path} 是汇聚节点，禁止贪婪越级 (L${level} > L${currentLevel})`);
-                                        continue; // 跳过，让它乖乖待在 stagingArea 等 Phase 4
-                                    }
-                                    
-                                    // 🛑 进阶守卫：如果有任何比当前节点层级“更浅”的节点还在跑，也尽量别抢跑
-                                    // 这是一个更保守的策略，防止 B2(L2) 还没触发 B3(L3)，结果 C4(L4) 抢跑了
-                                    // const hasRunningShallowerNode = Array.from(processingSet).some(p => (pathToLevelMap.get(p)||0) < level);
-                                    // if (hasRunningShallowerNode) continue;
-                                }
-
-                                // --- 通过安检，允许抢跑 ---
-                                greedyCandidates.push(path);
+                                const pendingParentsCount = staticParents.filter(p => 
+                                    AllAffectedPaths.has(p) && !processed.has(p)
+                                ).length;
+        
+                                stagingArea.set(targetPath, pendingParentsCount || 0);
+                                hooks.emit('node:intercept', {
+                                    path: targetPath,
+                                    type: pendingParentsCount > 0 ? 4 : 5,
+                                    detail: { targetLevel, currentLevel, pendingParentsCount }
+                                });
+                                continue; 
+                            }
+        
+                            // ✅ 通过安检，准备发车
+                            readyToRunBuffer.delete(targetPath);
+                            processingSet.add(targetPath);
+                            hooks.emit('node:processing', { path: targetPath });
+        
+                            // 🔥 核心优化：同步调用，不 await！
+                            // 这会让循环立刻进入下一个，瞬间填满 20 个并发位
+                            executorNodeCalculate({ 
+                                target: targetPath, 
+                                trigger: triggerPath, 
+                                // isReleased: true 
+                            });
+                        }
+                        
+                        // 批量发完一波后，重新循环检查是否有新产生的 ready 节点
+                        continue; 
+                    }
+        
+                    // ==========================================================
+                    // 阶段二：贪婪捞取 (Greedy Catch-up) 
+                    // ==========================================================
+                    if (isGreedy && stagingArea.size > 0 && processingSet.size < MAX_CONCURRENT_TASKS) {
+                        let foundGreedy = false;
+                        for (const [path, resistance] of stagingArea) {
+                            if (resistance <= 0) {
+                                const level = pathToLevelMap.get(path) ?? 0;
+                                const staticParents = dependency.GetPrevDependency(path);
+                                
+                                // 汇聚点守卫
+                                if (level > currentLevel && staticParents.length > 1) continue;
+        
+                                stagingArea.delete(path);
+                                readyToRunBuffer.add(path);
+                                foundGreedy = true;
+                                hooks.emit('node:release', { path, type: 4 });
                             }
                         }
+                        if (foundGreedy) continue; // 捞到了就回顶部批量发车
+                    }
         
-                        if (greedyCandidates.length > 0) {
-                            greedyCandidates.forEach(path => {
-                                stagingArea.delete(path);
-                                queue.push({ target: path, trigger: triggerPath, isReleased: true });
-                                // 记得记账
-                                queueCountMap.set(path, (queueCountMap.get(path) || 0) + 1);
+                    // ==========================================================
+                    // 阶段三：水位推进 (逻辑出口 A)
+                    // ==========================================================
+                    if (processingSet.size === 0 && readyToRunBuffer.size === 0) {
+                        // 找出最小的待处理层级
+                        const pendingLevels = new Set<number>();
+                        for (const lvl of resureArea.keys()) pendingLevels.add(lvl);
+                        for (const [path] of stagingArea) {
+                            const lvl = pathToLevelMap.get(path) ?? 0;
+                            if (lvl > currentLevel) pendingLevels.add(lvl);
+                        }
+        
+                        const sortedLevels = Array.from(pendingLevels).sort((a, b) => a - b);
+
+                        const nextLevel = sortedLevels[0];
+
+                        if (sortedLevels.length > 0 && nextLevel <= maxAffectedLevel) {
+                            const nextLevel = sortedLevels[0];
+                            if (nextLevel <= maxAffectedLevel) {
+                                currentLevel = nextLevel;
                                 
-                                hooks.emit('node:release', { 
-                                    path, 
-                                    type: 4, 
-                                    detail:{
-                                        path
+                                // 捞弱信号
+                                const rescueNodes = resureArea.get(nextLevel);
+                                if (rescueNodes) {
+                                    rescueNodes.forEach(p => readyToRunBuffer.add(p));
+                                    resureArea.delete(nextLevel);
+                                }
+        
+                                // 捞被水位拦截的强信号
+                                for (const [path] of stagingArea) {
+                                    if ((pathToLevelMap.get(path) ?? 0) === nextLevel) {
+                                        stagingArea.delete(path);
+                                        readyToRunBuffer.add(path);
+                                        hooks.emit('node:release', { path, type: 3, detail: { level: nextLevel } });
                                     }
+                                }
+                                continue; // 推进水位后，重新循环发车
+                            }
+                        }else{
+                            resureArea.forEach((set, level) => {
+                                set.forEach(p => {
+                                    processed.add(p);
+                                    hooks.emit('node:intercept', { 
+                                        path: p, 
+                                        type: 6, 
+                                  
+                                    });
                                 });
                             });
-                            
-                            // 🔥 核心修复：捞到任务了，立刻回到顶部去消费 Queue！
-                            // 不要往下走去判断 processingSet，也不要进 Phase 4
-                            continue; 
-                        }
-                    }
-
-                    // ==========================================================
-                    // 阶段二：熄火判定 (保持不变)
-                    // ==========================================================
-                    if (processingSet.size > 0) {
-                        hooks.emit('flow:wait', {  type:1, detail:{ nums:processingSet.size}});
-                        isLooping = false;
-                        return;
-                    }
-        
-                    // ==========================================================
-                    // 阶段三：入度等待判定 (保持不变)
-                    // ==========================================================
-                   
-                
-                    if (stagingArea.size > 0 && processingSet.size > 0) {
-                         return; // 让出主线程，等 processing 里的任务回调来减阻力
-                    }
-        
-                    // ==========================================================
-                    // 阶段四：水位推进与打捞 (Level Advancement) - 🔥 核心改动
-                    // ==========================================================
-                    // 走到这里，说明 Queue 空了，Processing 空了。
-                    // 此时 stagingArea 里可能躺着刚才被拦截的 c3 (Level 3)，
-                    // resureArea 里可能有挂起的弱信号节点。
+                            resureArea.clear();
                     
-                    // 1. 扫描所有待处理区域的最小层级 (合并 Staging 和 Rescue)
-                    const pendingLevels = new Set<number>();
-                    for (const lvl of resureArea.keys()) pendingLevels.add(lvl);
-                    
-                    // 也要看 StagingArea 里的层级！
-                    for (const [path] of stagingArea) {
-                        const lvl = pathToLevelMap.get(path) ?? 0;
-                        // 只关注大于当前水位的，因为小于等于的理应已经处理或正在处理
-                        if (lvl > currentLevel) pendingLevels.add(lvl);
-                    }
-        
-                    const sortedLevels = Array.from(pendingLevels).sort((a, b) => a - b);
-        
-                    if (sortedLevels.length === 0) {
-                        // 真的没事干了，stagingArea 剩余的可能是死锁或无需处理的
-                        break; 
-                    }
-        
-                    const nextLevel = sortedLevels[0];
-        
-                    // 2. 检查水位准入
-                    if (nextLevel <= maxAffectedLevel) {
-                        // 🌊 推进水位！
-                        currentLevel = nextLevel;
-        
-                        // --- A. 捞 RescueArea (弱信号) ---
-                        if (resureArea.has(nextLevel)) {
-                            const candidates = resureArea.get(nextLevel)!;
-                            candidates.forEach(path => {
-                                queue.push({ target: path, trigger: triggerPath, isReleased: true });
-                                queueCountMap.set(path, (queueCountMap.get(path) || 0) + 1);
-                            });
-                            resureArea.delete(nextLevel);
-                        }
-        
-                        // --- B. 捞 StagingArea (刚才被拦截的强信号) ---
-                        // 找出所有处于 nextLevel 的 staging 节点
-                        const stagingCandidates: T[] = [];
-                        for (const [path, resistance] of stagingArea) {
-                            if ((pathToLevelMap.get(path) ?? 0) === nextLevel) {
-                                // 只有阻力归零的才能捞？
-                                // 不！如果它是被“水位拦截”进去的，说明它的上游可能已经跑完了，
-                                // 或者它需要再次进 Queue 去接受 executor 的检查。
-                                // 这里最简单的策略是：只要水位到了，就把它扔回 Queue。
-                                // executor 会再次计算它的阻力，如果阻力未清，会再次把它放回 staging。
-                                stagingCandidates.push(path);
+                            // 2. 清除所有强信号 (StagingArea)
+                            for (const [path] of stagingArea) {
+                                processed.add(path);
+                                hooks.emit('node:intercept', { 
+                                    path: path, 
+                                    type: 6, 
+                             
+                                });
                             }
+                            stagingArea.clear();
+                    
+                            // 3. 彻底退出 while 循环，进入 finally 结算 flow:success
+                            break;
                         }
-        
-                        stagingCandidates.forEach(path => {
-                            stagingArea.delete(path); // 先移除
-                            queue.push({ target: path, trigger: triggerPath, isReleased: true });
-                            queueCountMap.set(path, (queueCountMap.get(path) || 0) + 1);
-                            hooks.emit('node:release', { path, type:3, detail:{level:nextLevel}});
-                        });
-        
-                        continue; // 回到 while 顶部处理 queue
-                    } else {
-                        // 截断逻辑...
-                        resureArea.forEach(set => set.forEach(p => {
-                            processed.add(p);
-                            hooks.emit('node:intercept', { 
-                                path: p, 
-                                type: 6, // 定义一个新类型：6 代表 "Auto-Pruned" (自动剪枝)
-                                // detail: { 
-                                //     reason: '上游静默，链路收敛',
-                                //     level: level 
-                                // } 
-                            })
-                        })); // 标记为处理过
-
-                        resureArea.clear();
-                         
-                        for(let [path,num] of stagingArea){
-                           
-                            hooks.emit('node:intercept', { 
-                                path: path, 
-                                type: 6, // 定义一个新类型：6 代表 "Auto-Pruned" (自动剪枝)
-                           
-                            })
-                        }
-
-                        stagingArea.clear();
-
-                        break;
                     }
+
+                    // ==========================================================
+                    // 阶段四：判定是否进入物理等待 (逻辑出口 B)
+                    // ==========================================================
+                    if (readyToRunBuffer.size > 0 && processingSet.size >= MAX_CONCURRENT_TASKS) {
+                        // 这种情况叫“并发限制等待”
+                        hooks.emit('flow:wait', { 
+                            type: 2, 
+                        });
+                    }
+                    // else if (processingSet.size > 0 && readyToRunBuffer.size === 0) {
+                    //     // 缓冲区空了，但还有 20 个异步任务在飞，正式进入挂起状态
+                    //     hooks.emit('flow:wait', { 
+                    //         type: 1, 
+                    //         detail: { nums: processingSet.size } 
+                    //     });
+                    // }
+        
+                    // 实在没活了，或者正在等异步任务返回
+                    break;
                 }
             } finally {
                 isLooping = false;
                 // 最终结算检查
-
-                // 只有当所有区域都空了，才算真的结束
-                if (queue.length === 0 && processingSet.size === 0 && resureArea.size === 0 ) {
+                const remaining = processingSet.size + stagingArea.size + readyToRunBuffer.size;
+                if (remaining === 0) {
                     if (currentExecutionToken.get(triggerPath) === curToken) {
+                        hooks.emit(
+                            'flow:end',
+                            {
+                                type:1
+                            }
+                        );
                         const endTime = performance.now();
                         hooks.emit('flow:success',{duration:(endTime-startTime).toFixed(2)+'ms'})
                         Promise.resolve().then(() => {hooks.callOnSuccess();});
                     }
+                }else{
+                    hooks.emit('flow:wait', { 
+                        type: 1, 
+                        detail: { nums: processingSet.size } 
+                    });
                 }
             }
         };

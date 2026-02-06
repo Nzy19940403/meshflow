@@ -400,12 +400,14 @@ export class SchemaBucket<P>{
 
         // 🔥🔥🔥 核心优化点：探测同步结果 🔥🔥🔥
         if (!(p instanceof Promise)) {
+            
             // 如果规则全是同步的，直接在这里结算并返回结果
             const { res, version } = p;
             return this.finalizeSync(res, version, api, curToken); 
         }
         this.pendingPromise = (async () => {
             try {
+                
                 const { res, version } = await p;
                 return this.finalizeSync(res, version, api, curToken);
             } catch (err: any) {
@@ -419,116 +421,7 @@ export class SchemaBucket<P>{
         })();
         return this.pendingPromise;
 
-        // this.pendingPromise = (async () => {
-
-        //     // const taskVersion = currentVersion;
-        //     try {
-
-        //         await Promise.resolve();
-        //         // const currentVersion = ++this.version;
-
-
-
-        //         let shouldSkipCalculate = false;
-
-        //         //当不是从notifyAll触发的时候
-        //         if (typeof api.triggerPath === 'string') {
-        //             shouldSkipCalculate = true;
-
-        //             // // 1. 打印触发源
-        //             // console.log(`%c [桶预检] ${this.path}`, "color: #e6a23c; font-weight: bold;", {
-        //             //     triggerPath: api.triggerPath,
-        //             //     curToken: curToken
-        //             // });
-
-        //             let oldVal = this.deps.get(api.triggerPath);
-        //             let curVal = api.GetValueByPath(api.triggerPath)
-
-        //             // 2. 打印直接触发者的对比
-        //             // console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
-
-        //             if (typeof oldVal === 'object' || typeof curVal === 'object') {
-        //                 shouldSkipCalculate = false;
-        //             } else {
-
-        //                 let paths = Array.from(this.deps.keys());
-        //                 for (let path of paths) {
-        //                     let oldVal = this.deps.get(path);
-        //                     let curVal = api.GetValueByPath(path);
-        //                     if (oldVal !== curVal) {
-        //                         // console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
-        //                         shouldSkipCalculate = false;
-
-        //                         break;
-        //                     }
-        //                 }
-        //             }
-
-        //         }
-
-
-        //         if (shouldSkipCalculate) {
-
-        //             // console.log(`%c [⚡️高速缓存] ${this.path} 命中! 缓存值:`, "color: #409EFF", this.cache);
-        //             return this.cache
-        //         }
-
-
-        //         //命中自己订阅的key值，它变更的时候需要重新计算
-
-        //         // let { res, version } = await this.strategy.evaluate(api, currentVersion);
-        //         const p = this.strategy.evaluate(api, currentVersion);
-
-        //         const { res, version } = (p instanceof Promise) ? await p : p;
-
-        //         if (curToken !== this.promiseToken) {
-        //             // console.warn(`[拦截幽灵] 桶版本已进化为 ${this.version}, 任务版本 ${version} 作废`);
-        //             // console.log(res,this.cache)
-        //             return this.cache
-        //         }
-
-
-        //         if (version < this.version) {
-        //             // console.log('过期任务');
-        //             return this.cache;
-        //         }
-
-        //         if (this.inferType(res) !== this.contract) {
-
-        //             console.error(`[类型泄露] 桶产出了非 ${this.contract} 类型的值:`, res);
-        //         }
-
-        //         this.cache = res;
-
-        //         if (curToken === this.promiseToken) {
-
-        //             // console.log(`${this.path}修改了cache:`,res)
-        //             let paths = Array.from(this.deps.keys());
-        //             for (let path of paths) {
-
-        //                 let curVal = api.GetValueByPath(path);
-        //                 this.deps.set(path, curVal)
-        //             }
-
-        //         }
-
-        //         return res;
-
-        //     } catch (err: any) {
-        //         const info = {
-        //             path: this.path,
-        //             error: err
-        //         }
-        //         throw info
-        //     } finally {
-        //         if (this.promiseToken === curToken) {
-        //             this.pendingPromise = null;
-        //             this.promiseToken = null;
-        //         }
-        //     }
-        // })();
-
-        // return this.pendingPromise;
+  
     }
 
     // 提取出的同步结算方法

@@ -10,7 +10,8 @@ interface LoggerInternalEvents {
     'node:processing': { path:string }
     'flow:wait':{type:number;detail?:any}
     'flow:fire': { path: string;type:number ; detail?:any };
-    'flow:success':{duration:string}
+    'flow:success':{duration:string};
+    'flow:end':{type:number}
 }
 type LoggerEventName = keyof LoggerInternalEvents
 
@@ -66,20 +67,29 @@ const NODE_INTERCEPT = {
 const FLOW_WAIT = {
     1:(detail:any)=>{
         return `调度挂起：尚有 ${detail.nums} 个异步任务在途...`
+    },
+    2:()=>{
+        return `并发达到上限，暂停发车`
     }
 }
 const FLOW_FIRE = {
     1:(detail:any)=>{
-        return `归航，剩余 ${detail.remaining} 个任务在途，系统保持待机。`
+        return `归航，活跃区: ${detail.active}个任务, 缓冲区: ${detail.pending}个任务,挂起区:${detail.blocked}个任务.`
     },
-    2:(detail:any)=>{
-        return `最终归航！所有任务已清空，重启调度检查收尾。`
-    }
+    // 2:(detail:any)=>{
+    //     return `最终归航！所有任务已清空，重启调度检查收尾。`
+    // }
 }
 
 const NODE_STAGNATE = {
     1:()=>{
         return '上游静默，候补挂起'
+    }
+}
+
+const FLOW_END = {
+    1:()=>{
+        return `最终归航！所有任务已清空，重启调度检查收尾。`
     }
 }
 
@@ -163,6 +173,15 @@ const useLogger = () => {
                 "background: #444; color: #ff9800; border-radius: 0 2px 2px 0;"
             );
         });
+
+        on('flow:end',({type})=>{
+            const reason = FLOW_END[type as keyof typeof FLOW_END]()
+            console.log(
+                `%c ${reason} `, 
+                "background: #ff9800; color: #000; font-weight: bold; border-radius: 2px 0 0 2px;", 
+              
+            );
+        })
 
         on('flow:success',({duration})=>{
              
