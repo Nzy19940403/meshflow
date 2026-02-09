@@ -113,8 +113,44 @@ function useMeshTask<T extends string>(
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
             //reasontype -> 1:上游 ${targetPath} 值变了 2: 当上游值没有变但是下游节点已经在stagingArea的时候`上游 ${targetPath} 完成(穿透)`
             const tryActivateChild = (child: T, reasonType: number) => {
-                const currentResistance = stagingArea.get(child) ?? 0;
-                const newResistance = Math.max(0, currentResistance - 1);
+                // 1. 如果已经处理过或正在处理，直接忽略
+                if (processed.has(child) || processingSet.has(child) || readyToRunBuffer.has(child)) {
+                    // 这里可以 emit 一个 intercept，但对于性能优化可以省略
+                    return;
+                }
+                let newResistance = 0;
+
+                // 2. 阻力计算策略：惰性初始化 vs 递减
+                if (!stagingArea.has(child)) {
+                    // 🌟 Case A: 第一次被触碰 (Lazy Init)
+                    // 我们不查 AllAffectedPaths，我们查“还有几个爸爸没死？”
+                    const parents = dependency.GetPrevDependency(child);
+                    
+                    let pendingCount = 0;
+                    for (const p of parents) {
+                        // 如果爸爸已经在已完成名单里，它就不是阻力
+                        if (processed.has(p)) continue;
+
+                        const pLevel = pathToLevelMap.get(p) ?? 0;
+                        
+                        // 🔥 核心逻辑：你的需求实现
+                        // 如果爸爸还没跑完，但爸爸的层级 <= 当前水位线，
+                        // 说明这个爸爸是“上一波”的人，它被跳过/剪枝了，不算阻力。
+                        // 只有那些层级比当前还高的（或者未来的）未完成节点，才是真正的阻力。
+                        if (pLevel > currentLevel) {
+                            pendingCount++;
+                        }
+                    }
+                    newResistance = pendingCount;
+                    
+                    // 注意：这里不需要 -1，因为调用 tryActivateChild 的那个 targetPath 
+                    // 已经在 finalizeExecution 里被 add 进 processed 了，
+                    // 上面的循环会自动排除它。
+                } else {
+                    // 🌟 Case B: 之前已经进过暂存区，直接递减
+                    const currentResistance = stagingArea.get(child)!;
+                    newResistance = currentResistance - 1;
+                }
 
                 if (newResistance <= 0) {
                     // 检查忙碌状态
@@ -190,7 +226,7 @@ function useMeshTask<T extends string>(
                             !readyToRunBuffer.has(child) && !processingSet.has(child)) {
                             // ... 计算阻力逻辑
                             const effectParentsCount = dependency.GetPrevDependency(child)
-                                .filter(p => AllAffectedPaths.has(p)).length;
+                                .filter(p => processed.has(p)).length;
                             stagingArea.set(child, effectParentsCount);
                             hooks.emit('node:pending', { path: child });
                         }
@@ -217,46 +253,7 @@ function useMeshTask<T extends string>(
 
                 // --- 4. 调度逻辑与 UI 点火 (嵌入在这里) ---
                 const scheduleNext = async () => {
-                    // 4.1 时间切片检查 (只有耗时过长才切片)
-                    // if (performance.now() - lastYieldTime > 16) {
-                    //     await new Promise((resolve) => requestAnimationFrame(resolve));
-                    //     lastYieldTime = performance.now();
-                    //     // 切片回来必须查令牌
-                    //     if (currentExecutionToken.get(triggerPath) !== curToken) return;
-                    // }
-
-                //   // 注意：不要多次调用 shouldYield，调用一次存下来
-                //     const shouldYield = scheduler.shouldYield();
-                //     const isFirstFrame = scheduler.getIsFirstFrame();
-
-                //     // 2. 渲染决策：什么时候触发 requestUpdate？
-                //     // A. 如果即将让出控制权 (shouldYield)，必须在让出前把手中的数据推出去
-                //     // B. 如果不是首帧 (稳定期)，允许每个节点都推 (或者你可以加个 taskCounter % N 的节流)
-                //     // C. 如果是首帧且还没到时间，坚决不推！(实现聚合)
-                //     const shouldRequestUpdate = shouldYield || !isFirstFrame;
-
-                //     if (shouldRequestUpdate) {
-                //         if (currentExecutionToken.get(triggerPath) === curToken) {
-                //             uitrigger.requestUpdate(); 
-                //         }
-                //     }
-
-                //     // 3. 调度决策：是否切片？
-                //     if (shouldYield) {
-                //         // hooks.emit('flow:yield', { path: targetPath }); // 可选调试
-
-                //         // 🚨 核心：在 yield 之前，requestUpdate 已经发出去了。
-                //         // 浏览器会在接下来的 MessageChannel 间隙中处理这个 Update。
-                //         await scheduler.yieldToMain();
-
-                //         // 醒来后查令牌
-                //         if (currentExecutionToken.get(triggerPath) !== curToken) return;
-
-                //         // 💡 补丁：切片回来后，通常不需要立即再次 requestUpdate，
-                //         // 因为新的计算还没开始。但如果你发现切片回来后画面没动，可以在这里补一个。
-                //         // 目前建议先注释掉，减少一次冗余刷新。
-                //         // uitrigger.requestUpdate(); 
-                //     }
+          
                     // 4.3 重启引擎 (Flush Queue)
                     if (!isLooping) {
                         const activenums = processingSet.size;
@@ -276,26 +273,6 @@ function useMeshTask<T extends string>(
                 // 如果上面没有 await (即没有切片)，这里是同步执行的
                 scheduleNext();
           
-                // // 再次检查令牌，防止在异步期间被废弃
-                // if (currentExecutionToken.get(triggerPath) === curToken) {
-                //     processingSet.delete(targetPath);
-                //     const activenums = processingSet.size;
-                //     const pendingnums = readyToRunBuffer.size;
-
-                //     // 关键点：点火！尝试重启 flushQueue
-                //     if (!isLooping) {
-                //         hooks.emit('flow:fire', {
-                //             path: targetPath,
-                //             type: 1,
-                //             detail: {
-                //                 active: activenums,
-                //                 pending: pendingnums,
-                //                 blocked: stagingArea.size,
-                //             }
-                //         });
-                //         flushQueue();
-                //     }
-                // }
             };
 
             // --- 4. 提取公共逻辑：错误处理 (对应原来的 catch 块) ---
@@ -409,249 +386,7 @@ function useMeshTask<T extends string>(
                 handleError(err);
             }
 
-            // try {
-            //     if (currentExecutionToken.get(triggerPath) !== curToken) return;
-            //     // trace.pushExecution([targetPath]);
-            //     let hasValueChanged = false;
-            //     let notifyNext = false;
-            //     const targetSchema = data.GetRenderSchemaByPath(targetPath);
-                
-               
-            //     hooks.emit('node:start', { 
-            //         path:targetPath, 
-            //     });
-            //     for (let bucketName in targetSchema.nodeBucket) {
-            //         const bucket = targetSchema.nodeBucket[bucketName] as SchemaBucket<T>;
-
-            //         // 桶内部会根据自己的 version 进行判断是否真正执行
-            //         const p = bucket.evaluate({
-            //             affectKey: bucketName,
-            //             triggerPath: currentTriggerPath,
-            //             // targetPath:targetPath,
-            //             GetRenderSchemaByPath: data.GetRenderSchemaByPath,
-            //             GetValueByPath: (p: T) => data.GetRenderSchemaByPath(p).defaultValue,
-            //             GetToken: () => curToken
-
-            //         });
-            //         let result:any = p;
-            //         if(p instanceof Promise){
-                       
-            //             result = await p;
-            //         } 
-
-            //         if (currentExecutionToken.get(triggerPath) !== curToken) {
-            //             hooks.emit(
-            //                 'node:intercept',
-            //                 {
-            //                     path:targetPath,
-            //                     // reason:`令牌过期，丢弃${targetPath}旧任务计算结果`,
-            //                     type:1
-            //                 }
-            //             )
-                         
-            //             // console.log(`🚫 令牌过期，丢弃${targetPath}旧任务计算结果`);
-            //             return; // 不要执行 processed.add，不要触发 hasValueChanged
-            //         }
-
-            //         // Options 合法性检查hooks.emit
-            //         if (bucketName === "options") {
-            //             const isLegal = result.some(
-            //                 (item: any) => item.value == targetSchema.defaultValue
-            //             );
-            //             if (!isLegal) {
-            //                 targetSchema["defaultValue"] = undefined;
-            //                 hasValueChanged = true;
-            //             }
-            //         }
-
-            //         // 数据更新检查
-            //         if (result !== targetSchema[bucketName]) {
-            //             targetSchema[bucketName] = result;
-            //             hasValueChanged = true;
-            //             //桶计算赋值成功打印
-            //             hooks.emit('node:bucket:success',{
-            //                 path:targetPath,
-            //                 key:bucketName,
-            //                 value:result
-            //             })
-            //         }
-  
-            //         if (bucket.isForceNotify()) {
-            //             notifyNext = true;
-            //         }
-            //         if (hasValueChanged) {
-            //             uitrigger.flushPathSet.add(targetPath as any);
-            //         }
-            //         // processed.add(targetPath);
-            //         const directChildren = dependency.GetNextDependency(targetPath);
-            //         // 1. 如果值变了，扩充疆域（这是为了让更深层的节点能正确进入暂存区）
-            //         if (hasValueChanged || notifyNext) {
-            //             const allNextOrder = dependency.GetAllNextDependency(targetPath);
-            //             allNextOrder.forEach((p: any) => AllAffectedPaths.add(p));
-            //             // changedPaths.add(targetPath); // 统计所有以及变化的节点路径
-
-            //             if(bucketName==='defaultValue'){
-                            
-            //                 updateWatermark(targetPath);
-                            
-            //             } 
-                        
-            //         }
-                   
-            //         for (const child of directChildren) {
-            //             if (processed.has(child)) {
-            //                 hooks.emit(
-            //                     'node:intercept',
-            //                     {
-            //                         path:child,
-            //                         // reason:` 下游 ${child} 已由其他路径处理`,
-            //                         type:2
-            //                     }
-            //                 )
-            //                 // console.log(`🧊 [拦截] 下游 ${child} 已由其他路径处理`);
-            //                 continue; 
-            //             };
-
-            //             if (processingSet.has(child) || readyToRunBuffer.has(child)) {
-            //                 // 这里可以选择 silent 跳过，或者打印一个 intercept
-            //                 // 关键是：绝对不要操作 stagingArea/rescueArea
-                             
-            //                 hooks.emit('node:intercept', { 
-            //                     path: child, 
-            //                     // reason: `节点正忙 (P:${processingSet.has(child)}/Q:${queueCountMap.has(child)})，忽略本次重复信号`, 
-            //                     type: processingSet.has(child)?3:3.1
-            //                 });
-            //                 continue; 
-            //             }
-      
-            //             const shouldFire = hasValueChanged || notifyNext 
-            //             // || dependency.GetAllPrevDependency(child).some(p => changedPaths.has(p));
-
-            //             // 2. 关键分歧点：看当前节点是否产生了“影响力”
-            //             if (shouldFire) { 
-            //                 // --- 【强影响】下游必须进入悲观区并尝试救赎 ---
-                          
-            //                 // 如果孩子不在悲观区，先送进去并计算它在波及名单内的阻力
-            //                 if (
-            //                     !stagingArea.has(child) && 
-            //                     !processed.has(child) && 
-            //                     !readyToRunBuffer.has(child) &&
-            //                     !processingSet.has(child)
-            //                 ) {
-            //                     const effectParentsCount = dependency.GetPrevDependency(child)
-            //                         .filter(p => AllAffectedPaths.has(p)).length;
-            //                     stagingArea.set(child, effectParentsCount);
-            //                     hooks.emit('node:pending',{path:child})
-            //                 }
-
-            //                 tryActivateChild(child, 1);
-
-                 
-            //             } else {
-            //                 if (stagingArea.has(child)){
-            //                     tryActivateChild(child, 2);
-            //                 }else{
-            //                     // --- 【弱影响】值没变，下游不入悲观区，不减阻力 ---
-            //                     // 它们现在只是 AllAffectedPaths 里的一个“标记”，
-            //                     // 等待 flushQueue 的水位线步进或者其他变动的路径来捞它们
-            //                     // console.log(`🧊 [弱关联] ${targetPath} 值未变，${child} 仅更新疆域，原地待命`);
-            //                     // hooks.emit('node:stagnate',{path:child,reason:` 上游${targetPath} 值未变`})
-
-            //                     const level = pathToLevelMap.get(child)!;
-            
-            //                     if (!resureArea.has(level)) {
-            //                         resureArea.set(level, new Set());
-            //                     }
-                                
-            //                     const levelSet = resureArea.get(level)!;
-            //                     if (!levelSet.has(child) && !processed.has(child) && !readyToRunBuffer.has(child)) {
-            //                         levelSet.add(child);
-            //                         hooks.emit('node:stagnate', { path: child,type:1 });
-            //                     }
-            //                 }
-                            
-
-            //             }
-            //         }
-
-            //     }
-
-            //     hooks.emit('node:success',{path:targetPath});
-            //     processed.add(targetPath);
-                
- 
-            //     if (performance.now() - lastYieldTime > 16) {
-            //         await new Promise((resolve) => requestAnimationFrame(resolve));
-            //         lastYieldTime = performance.now();
-            //         // 切片回来后再检查一次 token，防止在渲染期间有新任务抢占
-            //         if (currentExecutionToken.get(triggerPath) !== curToken) return;
-            //     }
-            //     if (currentExecutionToken.get(triggerPath) === curToken) {
-            //         uitrigger.requestUpdate();
-            //     }
-            // } catch (err) {
-            //     // console.error(`计算路径 ${targetPath} 时出错:`, err);
-
-            //     hooks.emit('node:error',{
-            //         path:targetPath,
-            //         error:err
-            //     })
-
-            //     const abortToken = Symbol("abort");
-            //     currentExecutionToken.set(triggerPath, abortToken);
-          
-            //     // 2. 物理清空任务队列，让 flushQueue 的 while 循环立刻失去动力
-            //     // queue.length = 0; 
-            //     readyToRunBuffer.clear();
-            //     stagingArea.clear();
-            //     processingSet.clear(); // 强制清空正在处理的集合
-            //     // changedPaths.delete(targetPath);//标记路径为没有变化
-                
-            //     // trace.markError(targetPath)
-
-            //     hooks.callOnError(err)
-            // } finally {
-               
-            //     if (currentExecutionToken.get(triggerPath) === curToken) {
-                 
-                    
-            //     processingSet.delete(targetPath);
-            //         const activenums = processingSet.size;
-            //         const pendingnums = readyToRunBuffer.size
-                    
-            //         // 关键点 2：点火！
-            //         // 当 A2 算完，它尝试去叫醒可能正在“休眠”的 flushQueue
-            //         // 由于你有 isLooping 锁，如果 while 还在转，这一句会被 return，不产生副作用
-            //         // 如果 while 已经退出了，这一句会重新激活循环，去处理 A3, B2 等下游
-                    
-            //         if (!isLooping ) {
-                         
-                      
-            //             // const remaining = processingSet.size + stagingArea.size + readyToRunBuffer.size;
-            //             // const fireReason = remaining > 0 
-            //             //     ? `[${targetPath}] 归航，剩余 ${remaining} 个任务在途，系统保持待机。`
-            //             //     : `[${targetPath}] 最终归航！所有任务已清空，重启调度检查收尾。`;
-                        
-            //             hooks.emit(
-            //                 'flow:fire',
-            //                 {
-            //                     path:targetPath,
-            //                     type:1,
-            //                     // reason:fireReason
-            //                     detail:{
-            //                         active: activenums,    
-            //                         pending:pendingnums,
-            //                         blocked: stagingArea.size,  
-            //                     }
-            //                 }
-            //             );
-            //             flushQueue();
-            //         }
-
-            //     }
-
-            // }
-
+   
 
 
         }
@@ -677,7 +412,7 @@ function useMeshTask<T extends string>(
                 // if (isPerformanceMode) return 100; 
 
                 // C. 普通贪婪模式，首帧严苛限流，后续稍微放开
-                return isFirstFrame ? 8 : Infinity; 
+                return isFirstFrame ? 30 : Infinity; 
             };
 
             // 🔥 新增：帧内计数器
@@ -778,7 +513,9 @@ function useMeshTask<T extends string>(
                         }
                         
                         // 如果是因为名额满了 break 出来的，这里 continue 回到顶部去 yield
-                        if (nodesProcessedInFrame >= NODE_QUOTA_PER_FRAME) continue;
+                        // if (nodesProcessedInFrame >= NODE_QUOTA_PER_FRAME || scheduler.shouldYield()) {
+                        //     continue; 
+                        // }
                         // 如果发了一波车后 buffer 还有货，或者是被 yield 打断的，
                         // continue 回到顶部再次检查 yield，而不是直接进贪婪捕捞
                         if (readyToRunBuffer.size > 0) continue;
@@ -790,8 +527,8 @@ function useMeshTask<T extends string>(
                     if (nodesProcessedInFrame < NODE_QUOTA_PER_FRAME && isGreedy && stagingArea.size > 0 && processingSet.size < MAX_CONCURRENT_TASKS) {
                         let foundGreedy = false;
                         let releasedCount = 0;
-                        const isFirstFrame = scheduler.getIsFirstFrame();
-                        const releaseQuota = isFirstFrame ? 5 : 15;
+                        // const isFirstFrame = scheduler.getIsFirstFrame();
+                        // const releaseQuota = isFirstFrame ? 5 : 15;
 
                         for (const [path, resistance] of stagingArea) {
                             if (resistance <= 0) {
@@ -807,7 +544,7 @@ function useMeshTask<T extends string>(
                                 foundGreedy = true;
                                 hooks.emit('node:release', { path, type: 4 });
 
-                                if (releasedCount >= releaseQuota) break;
+                                if (releasedCount >= NODE_QUOTA_PER_FRAME) break;
                             }
                         };
                         if (releasedCount > 0) continue;
@@ -936,10 +673,9 @@ function useMeshTask<T extends string>(
                 }
             }
         };
-        // await scheduler.yieldToMain();
-        // setTimeout(()=>{
+    
         flushQueue();
-        // },0)
+  
         
 
     }
