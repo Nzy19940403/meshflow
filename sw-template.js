@@ -2,7 +2,6 @@ import { clientsClaim } from 'workbox-core';
 import { precacheAndRoute } from 'workbox-precaching';
  
 
-console.log('BuildTime', __BUILD_TIME__);
 
 precacheAndRoute(self.__WB_MANIFEST || []); 
 

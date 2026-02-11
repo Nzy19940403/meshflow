@@ -2,14 +2,16 @@
     <template v-if="!renderSchema.hidden">
  
         <v-text-field
+        :key="dirtySignal.value"
         :color="renderSchema.theme"
         :base-color="renderSchema.theme"
         :rules="ValidatorList"
         :label="renderSchema.label"
         :required="renderSchema.required"
-        :model-value="renderSchema.defaultValue"
+        :model-value="renderSchema.value"
         @update:model-value="handleValueChange"
   
+   
         :disabled="renderSchema.disabled"
         :readonly="renderSchema.readonly"></v-text-field>
     </template>
@@ -56,12 +58,13 @@ function updateConfig<T extends RenderSchemaFn<InputField>>(data: T): T{
     }
 }
 
-const notify = async (newValue:any)=>{
-    await renderSchema.value.dependOn(()=>{
-        return newValue
-    })
+  
+const notify =  (newValue: any,)=>{
+   
+   renderSchema.value.dependOn(()=>{
+       return newValue
+   })
 }
-
 const debnounceCommit = useDebounce(notify,500)
 
 const handleValueChange = async (newValue:any)=>{
@@ -69,6 +72,8 @@ const handleValueChange = async (newValue:any)=>{
     debnounceCommit(newValue)
 //   notify(newValue);
 }
+
+ 
 
 watch(()=>props.dirtySignal.value,()=>{
     // console.log('监听到更新');

@@ -4,7 +4,7 @@
         <div class="flex items-center">
             <VCheckbox
             hide-details
-            :model-value="renderSchema.defaultValue"
+            :model-value="renderSchema.value"
             @update:model-value="handleValueChange"
             :rules="ValidatorList"
             :disabled="renderSchema.disabled">
@@ -64,15 +64,15 @@ function updateConfig<T extends RenderSchemaFn<CheckboxField>>(data: T): T {
     }
 }
 
-const handleValueChange = async (newValue: any) => {
-    await renderSchema.value.dependOn(() => {
+const handleValueChange =  (newValue: any) => {
+     renderSchema.value.dependOn(() => {
         return newValue
     })
 }
 const handleTest = async ()=>{
      
     await renderSchema.value.dependOn(() => {
-        return renderSchema.value.defaultValue
+        return renderSchema.value.value
     })
 }
 watch(() => props.dirtySignal.value, () => {

@@ -3,7 +3,7 @@
      
          
         <VSelect
-        :model-value="renderSchema.defaultValue"
+        :model-value="renderSchema.value"
         @update:model-value="handleValueChange"
         :items="renderSchema.options"
         item-title="label"
@@ -59,10 +59,10 @@ function updateConfig(data:RenderSchemaFn<SelectField> ):RenderSchemaFn<SelectFi
 }
  
 
-const handleValueChange = async (newValue:any)=>{
+const handleValueChange =  (newValue:any)=>{
  
-    //valuechange的时候通过dependOn去return 最新的值给桶，这样方便桶去计算这个值的影响
-    await renderSchema.value.dependOn((field)=>{
+
+     renderSchema.value.dependOn((field)=>{
         return newValue
     });
  

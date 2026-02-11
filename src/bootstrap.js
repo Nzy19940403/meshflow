@@ -6,7 +6,7 @@ import { createWebHistory, createRouter } from 'vue-router'
  
 import HomeComponet from './components/Home.vue'
 import ConfirmationService from 'primevue/confirmationservice';
-import UpdateServiceSingleton from '../sw.manager'
+// import UpdateServiceSingleton from '../sw.manager'
 import { createVuetify } from 'vuetify';
 import { aliases, mdi } from 'vuetify/iconsets/mdi';
 import "./styles/main.css"
@@ -21,9 +21,9 @@ export const RenderApp = (props = {}) => {
   
  
     if (reigsterSW) {
-        console.log('sw注册');
+        // console.log('sw注册');
        
-        UpdateServiceSingleton.registerServiceWorker()
+        // UpdateServiceSingleton.registerServiceWorker()
     }
 
     app = createApp(App);

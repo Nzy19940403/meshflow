@@ -356,32 +356,23 @@ function useMeshTask<T extends string>(
 
             // 提取公共的处理结果逻辑
             const handleSingleResult = (result: any, bucketName: string) => {
-                let isDefaultValueChanged = false;
+                let isValueChanged = false;
                 //这部分应该交给副作用处理
-                // Options 检查
-                // if (bucketName === "options") {
-                //     const isLegal = result.some((item: any) => item.value == targetSchema.defaultValue);
-                //     if (!isLegal) {
-                //         targetSchema["defaultValue"] = undefined;
-                //         hasValueChanged = true;
-                //         isDefaultValueChanged = true
-                //     }
-                // }
-
+ 
                 // 值更新检查
                 if (result !== targetSchema[bucketName]) {
                     targetSchema[bucketName] = result;
                     hasValueChanged = true;
                     hooks.emit('node:bucket:success', { path: targetPath, key: bucketName, value: result });
-                    if (bucketName === 'defaultValue') {
-                        isDefaultValueChanged = true;
+                    if (bucketName === 'value') {
+                        isValueChanged = true;
                     }
                 }
                 
                 const bucket = targetSchema.nodeBucket[bucketName];
                 if (bucket.isForceNotify()) notifyNext = true;
                 // if (hasValueChanged) trigger.flushPathSet.add(targetPath as any);
-                if(isDefaultValueChanged||notifyNext){
+                if(isValueChanged||notifyNext){
                     updateWatermark(targetPath)
                 }
             };
@@ -400,7 +391,7 @@ function useMeshTask<T extends string>(
                         affectKey: bucketName,
                         triggerPath: currentTriggerPath,
                         GetRenderSchemaByPath: data.GetRenderSchemaByPath,
-                        GetValueByPath: (p: T) => data.GetRenderSchemaByPath(p).defaultValue,
+                        GetValueByPath: (p: T) => data.GetRenderSchemaByPath(p).value,
                         GetToken: () => curToken
                     });
         

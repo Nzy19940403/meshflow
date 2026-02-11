@@ -78,7 +78,7 @@
               <v-col md="2">
                 <v-text-field
                   label="默认值"
-                  v-model="currentForm.defaultValue"
+                  v-model="currentForm.value"
                 ></v-text-field>
               </v-col>
               <v-col md="2">
@@ -295,7 +295,7 @@ const createInputForm = {
   disabled: false,
   readonly: false,
   required: false,
-  defaultValue: "",
+  value: "",
   maxLength: 20,
   validators: [],
 };
@@ -308,7 +308,7 @@ const createNumberForm = {
   disabled: false,
   readonly: false,
   required: false,
-  defaultValue: "",
+  value: "",
   min: 10,
   validators: [],
 };
@@ -321,7 +321,7 @@ const createCheckboxForm = {
   disabled: false,
   readonly: false,
   required: false,
-  defaultValue: false,
+  value: false,
   validators: [],
   description: "",
 };
@@ -334,7 +334,7 @@ const createSelectForm = {
   disabled: false,
   readonly: false,
   required: false,
-  defaultValue: "",
+  value: "",
   validators: [],
   options: [] as { label: string; value: any }[],
 };

@@ -1,15 +1,17 @@
 <template>
     <template v-if="!renderSchema.hidden">
  
-     
+      
         <v-number-input
+        :key="dirtySignal.value"
         :reverse="false"
-        :model-value="(renderSchema.defaultValue as number)"
+        :model-value="(renderSchema.value as number)"
         @update:model-value="handleValueChange"
         :rules="ValidatorList"
         :label="renderSchema.label"
         :required="renderSchema.required"
  
+        @blur="onBlurHandler"
         :disabled="renderSchema.disabled"
         :readonly="renderSchema.readonly"
         :hideInput="false"
@@ -45,12 +47,13 @@ const props = withDefaults(
     }
 );
 
+ 
 // const {fieldConfig} = toRefs(props);
 
 
-const notify = async (newValue: any,)=>{
+const notify = (newValue: any,)=>{
    
-    await renderSchema.value.dependOn(()=>{
+     renderSchema.value.dependOn(()=>{
         return newValue
     })
 }
@@ -77,7 +80,13 @@ function updateConfig<T extends RenderSchemaFn<InputField>>(data: T): T{
 }
 
  
-
+const onBlurHandler = ()=>{
+  
+ 
+    renderSchema.value
+   
+ 
+}
  
 
 const handleValueChange = async (newValue:any)=>{
@@ -86,7 +95,7 @@ const handleValueChange = async (newValue:any)=>{
 }
 
 watch(()=>props.dirtySignal.value,()=>{
-    // console.log('监听到更新');
+
     renderSchema.value = updateConfig(props.fieldConfig);
  
 },{

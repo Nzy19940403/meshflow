@@ -27,19 +27,22 @@ export type InputField = BaseField & {
   required: boolean;
   min?: number;
   maxLength: number;
-  defaultValue: string | number;
+ 
+  value:string|number
 };
 export type CheckboxField = BaseField & {
   type: "checkbox";
   description?: string;
   required: boolean;
-  defaultValue: boolean;
+ 
+  value:boolean
 };
 export type SelectField = BaseField & {
   type: "select";
   required: boolean;
   options: { label: string; value: any }[];
-  defaultValue: any;
+ 
+  value:any
 };
 
 // 注意这里：GroupField 必须定义为 type 才能在递归中正常分发
@@ -103,7 +106,7 @@ export type FormResultType<T> = T extends any
         ? FinalFlatten<CollapseChildren<C>>
         : { [K in N]: FinalFlatten<CollapseChildren<C>> }
       : FinalFlatten<CollapseChildren<C>>
-    : T extends { readonly name: infer N; readonly defaultValue: infer V }
+    : T extends { readonly name: infer N; readonly value: infer V }
     ? N extends string
       ? { [K in N]: FinalFlatten<V> } // 💡 这里使用了 Widen，将字面量转为基础类型
       : never
@@ -216,7 +219,7 @@ export function useForm<T, P extends string>(
           const lastkey = list[list.length - 1];
           parentNode[lastkey] = GetRenderSchemaByPath(
             list.join(".") as any
-          ).defaultValue;
+          ).value;
         }
         return;
       }
@@ -283,7 +286,7 @@ export function useForm<T, P extends string>(
                   triggerPath: undefined,
                   GetRenderSchemaByPath,
                   GetValueByPath: (p: P) =>
-                    GetRenderSchemaByPath(p).defaultValue,
+                    GetRenderSchemaByPath(p).value,
                   // 初始化通常拥有最高权限，建议这里设为 true，或者保持你原来的逻辑
                   isSameToken: () => true,
                 });
@@ -291,7 +294,7 @@ export function useForm<T, P extends string>(
                 // Options 校验逻辑 (原样保留)
                 if (bucketName === "options") {
                   let isLegal = false;
-                  let val = schema.defaultValue;
+                  let val = schema.value;
                   // 你的原始逻辑
                   for (let item of result) {
                     if (item.value == val) {
@@ -300,7 +303,7 @@ export function useForm<T, P extends string>(
                     }
                   }
                   if (!isLegal) {
-                    schema["defaultValue"] = undefined;
+                    schema["value"] = undefined;
                     nodeHasChanged = true; // 标记变更
                   }
                 }
@@ -416,12 +419,12 @@ export function useForm<T, P extends string>(
       Exclude<FormFieldSchema, GroupField>
     >;
 
-    //如果目标的defaultValue并没有被其他选项影响，那就不会创建input——value的默认rule
-    if (TargetSchema.nodeBucket.defaultValue) {
+    //如果目标的value并没有被其他选项影响，那就不会创建input——value的默认rule
+    if (TargetSchema.nodeBucket.value) {
       //更新__input-value__规则
 
-      TargetSchema.nodeBucket.defaultValue.updateInputValueRule(
-        TargetSchema.defaultValue
+      TargetSchema.nodeBucket.value.updateInputValueRule(
+        TargetSchema.value
       );
     }
   };
@@ -454,7 +457,7 @@ export function useForm<T, P extends string>(
         [
           {
             path: field.path,
-            value: schema.defaultValue,
+            value: schema.value,
           },
           {
             path: field.path,
@@ -463,13 +466,13 @@ export function useForm<T, P extends string>(
         ],
          (metadata: { path: P; value: any }) => {
           let data = GetRenderSchemaByPath(metadata.path);
-          data.defaultValue = metadata.value;
+          data.value = metadata.value;
           updateInputValueRuleManually(metadata.path);
            notify(metadata.path);
         }
       );
 
-      schema.defaultValue = newVal;
+      schema.value = newVal;
 
       //这边要把新的动作和旧的动作一起存入history
       history.pushIntoHistory(item);
@@ -559,7 +562,7 @@ export function initFormData<T>(data: T, res: any = {}): FormResultType<T> {
       return {
         key: data.name,
         isGroup: false,
-        val: data.defaultValue,
+        val: data.value,
       };
     }
 

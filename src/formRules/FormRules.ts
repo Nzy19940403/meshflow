@@ -3,6 +3,8 @@ import { DefaultStarategy } from "@/utils/core/engine/bucket";
 import { FormFieldSchema, GroupField, InputField,CheckboxField,SelectField } from "@/utils/core/schema/schema";
 import { logicApi } from "@/utils/core/schema/schema-rule";
 import { KeysOfUnion } from "@/utils/core/utils/util";
+ 
+ 
 
 export function setupBusinessRules(
     SetRule:(outDegreePath: AllPath, inDegreePath: AllPath, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options?: {
@@ -10,12 +12,16 @@ export function setupBusinessRules(
         priority?: number | undefined;
         subscribeKey?: KeysOfUnion<InputField | CheckboxField | SelectField>[] | undefined;
         logic: (api: logicApi) => any;
+        effect?:(args:any)=>any,
+        effectArgs?:Array<KeysOfUnion<Exclude<FormFieldSchema, GroupField>>>
     }) => void,
     SetRules:(outDegreePaths: AllPath[], inDegreePath: AllPath, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, options?: {
         value?: any;
         priority?: number | undefined;
         subscribeKey?: KeysOfUnion<InputField | CheckboxField | SelectField>[] | undefined;
         logic: (api: logicApi) => any;
+        effect?:(args:any)=>any,
+        effectArgs?:Array<KeysOfUnion<Exclude<FormFieldSchema, GroupField>>>
     }) => void,
     SetStrategy:(path: AllPath, key: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>, strategy: DefaultStarategy) => void,
     notifyAll:()=>void
@@ -57,7 +63,7 @@ export function setupBusinessRules(
         let StorageCost = capacity * unitPrice * encryptionFactor;
       
         let price = (BasePrice + SpecsPrice) * RegionFactor + StorageCost;
-      
+        console.log(capacity)
         return price;
       };
       
@@ -71,10 +77,15 @@ export function setupBusinessRules(
           "cloudConsole.security.encryption",
         ],
         "cloudConsole.billing.totalPrice",
-        "defaultValue",
+        "value",
         {
           logic: (api) => {
-            return calculatePrice(api);
+            return new Promise((resolve,reject)=>{
+              setTimeout(() => {
+                resolve(calculatePrice(api))
+              }, 2000);
+            })
+            // return  calculatePrice(api);
           },
         }
       );
@@ -85,7 +96,7 @@ export function setupBusinessRules(
       SetRule(
         "cloudConsole.environment.compliance",
         "cloudConsole.specs.storage.diskType",
-        "defaultValue", //副作用影响的键值对
+        "value", //副作用影响的键值对
         {
           logic: (api) => {
             const [value] = api.slot.triggerTargets;
@@ -113,7 +124,8 @@ export function setupBusinessRules(
             }
             return undefined;
           },
-        }
+          
+        },
       );
       
       //当合规性等级为金融级的时候修改全盘加密为开启加密
@@ -121,7 +133,7 @@ export function setupBusinessRules(
       SetRule(
         "cloudConsole.environment.compliance",
         "cloudConsole.security.encryption",
-        "defaultValue",
+        "value",
       
         {
           logic: (api) => {
@@ -191,7 +203,7 @@ export function setupBusinessRules(
       SetRule(
         "cloudConsole.billing.totalPrice",
         "cloudConsole.billing.priceDetail",
-        "defaultValue",
+        "value",
         {
           logic: (api) => {
             const [value] = api.slot.triggerTargets;
@@ -225,7 +237,7 @@ export function setupBusinessRules(
       SetRule(
         "cloudConsole.billing.totalPrice",
         "cloudConsole.billing.priceDetail",
-        "defaultValue",
+        "value",
         {
           logic: (api) => {
             const [value] = api.slot.triggerTargets;
@@ -259,6 +271,15 @@ export function setupBusinessRules(
       
             return undefined;
           },
+          effect:(args)=>{
+            const {options,value} = args;
+            let isLegal = options.some((item: any) => item.value == value);
+            
+            return isLegal?undefined:{
+              value:undefined
+            }
+          },
+          effectArgs:['options','value']
         }
       );
       
@@ -278,8 +299,21 @@ export function setupBusinessRules(
       
             return undefined;
           },
+          effect:(vals)=>{
+        
+            const {min,value} = vals;
+            const val = value<min?min:value;
+            
+            return {
+              value:val,
+            
+            }
+          },
+          effectArgs:['min','value']
         }
       );
+
+   
       
       // 设置影响自动扣费的disabled属性相关的字段
       SetRule(
@@ -334,7 +368,7 @@ export function setupBusinessRules(
           value: "金融级合规要求人工确认订单",
         }
       );
-      // 如果有订阅就不会走全量计算的路，只有对应的path下的defaultValue变更的时候才会触发logic计算
+      // 如果有订阅就不会走全量计算的路，只有对应的path下的value变更的时候才会触发logic计算
       SetRule(
         "cloudConsole.environment.region",
         "cloudConsole.billing.autoRenew",
@@ -360,3 +394,5 @@ export function setupBusinessRules(
   
       notifyAll();
 }
+
+ 

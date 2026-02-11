@@ -1,12 +1,12 @@
 <template>
   <VLayout>
-    <v-system-bar window>
+    <!-- <v-system-bar window>
       <v-icon icon="mdi-wifi-strength-4"></v-icon>
       <v-icon icon="mdi-signal" class="ms-2"></v-icon>
       <v-icon icon="mdi-battery" class="ms-2"></v-icon>
 
       <span class="ms-2">{{ currentTime }}</span>
-    </v-system-bar>
+    </v-system-bar> -->
     <VAppBar>
       <div class="w-10/12 max-w-[1440px] mx-auto flex justify-center items-center">
  
@@ -15,7 +15,10 @@
             
             主页</v-tab>
           <v-tab to="/Editor" value="/Editor">表单</v-tab>
-
+          <!-- <v-tab to="/" value="/">
+            
+            表单</v-tab> -->
+         
 
         </v-tabs>
       </div>
@@ -139,7 +142,7 @@ const updateTime = ()=>{
 
 onMounted(() => {
   if(__IS_PROD__){
-    UpdateServiceSingleton.setUpdateNotificationCallback(confirmSW)
+    // UpdateServiceSingleton.setUpdateNotificationCallback(confirmSW)
   };
 
   requestAnimationFrame(updateTime)

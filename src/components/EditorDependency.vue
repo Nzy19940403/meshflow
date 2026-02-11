@@ -21,6 +21,12 @@
         可以帮助你排查联动卡死或赋值逻辑错误。
       </template>
     </v-card>
+    <v-card>
+      <v-btn @click="handleTest"> 
+        测试:激活a1_val
+      </v-btn>
+    </v-card>
+
     <div class="flex flex-grow-1">
       <div class="flex-grow-1 relative" ref="containerRef"></div>
     </div>
@@ -211,6 +217,11 @@ const drawCanvas = () => {
   let data = prepareData();
   renderG6Graph(containerRef.value, data);
 };
+
+const handleTest = ()=>{
+  let val = engine.data.GetValue('mesh.a1_val');
+  engine.data.SetValue('mesh.a1_val',val+1)
+}
 
 const goBack = () => {
   router.back();

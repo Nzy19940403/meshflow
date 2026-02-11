@@ -12,3 +12,5 @@ tsup.config.ts
 
 lib-dist/
 lib-plugins/
+
+utils/test.ts

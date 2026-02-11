@@ -161,8 +161,8 @@ export class SchemaBucket<P>{
 
     private rules = new Map<string, Set<{ logic: () => any }>>();
 
-    //分辨绑定的key是否是defaultValue
-    private isDefaultValue = false;
+    //分辨绑定的key是否是value
+    private isValue = false;
 
     private id: number = 0;
 
@@ -186,14 +186,14 @@ export class SchemaBucket<P>{
         const getRule = () => this.rules
         this.strategy = new StrategyStore(getRule)
         this.path = path;
-        this.isDefaultValue = key === 'defaultValue';
+        this.isValue = key === 'value';
 
         this.contract = this.inferType(baseValue);
 
         this.cache = baseValue;
         //生成默认规则，在所有规则失效的时候兜底
 
-        //如果生成的是defaultValue的bucket，后面还需要加上user_input的rule，来实现回退
+        //如果生成的是value的bucket，后面还需要加上user_input的rule，来实现回退
         this.setRule({
             priority: 0,
             entityId: '__base__',
@@ -216,7 +216,7 @@ export class SchemaBucket<P>{
     }
 
     updateInputValueRule(newVal: any) {
-        if (!this.isDefaultValue) return;
+        if (!this.isValue) return;
         this.setRule({
             priority: 1,
             entityId: '__input_value__',
@@ -281,7 +281,7 @@ export class SchemaBucket<P>{
     setRule(value: any, DepsArray?: Array<[P, any]>) {
 
         //如果是内部调用，DepsArray是没有值的，那就按照默认的逻辑执行。如果传入DepsArray，就是外界注册setRule的时候传入的，需要记录一下
-        //当前的桶关联了哪些path，这些path的defaultValue会被记录下来当作依赖，变化了之后会执行计算，没有变化就返回cache
+        //当前的桶关联了哪些path，这些path的value会被记录下来当作依赖，变化了之后会执行计算，没有变化就返回cache
         if (DepsArray) {
             this.updateDeps(DepsArray)
         }

@@ -1,5 +1,7 @@
 <template>
   <div class="flex w-full h-full">
+    
+ 
     <router-view v-slot="{ Component }">
       <KeepAlive :include="['EditorForm']">
         <component :is="Component" />
@@ -11,32 +13,37 @@
 import { provide } from "vue";
 // import { Schema } from "@/devSchemaConfig/dev.form.Schema";
 // import { Schema } from "@/devSchemaConfig/test.form.Schema";
-import { useEngineManager, useEngine } from "@/utils/core/engine/useEngineManager";
+import { useMeshFlow, useEngine,deleteEngine } from "@/utils/core/engine/useEngineManager";
 
-// import { useEngineManager } from "@meshflow/core";
+// import { useMeshFlow } from "@meshflow/core";
 import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
-import {useLogger} from '@/utils/plugins/useLogger'
+import {useLogger} from '@/utils/plugins/logger/useLogger'
+// import {useLogger} from '@meshflow/logger'
+import { Schema } from "@/devSchemaConfig/dev.form.Schema";
+import {usePerfetto} from '@/utils/plugins/prefetto/usePrefetto'
+import { onUnmounted } from "vue";
+// import { deleteEngine } from "@meshflow/core";
 
-const maxCount = 2
+const maxCount = 3
 const generateHugeMesh = () => {
   const regions = ['a', 'b', 'c',  ]; // 5 个区域
   const nodesPerRegion = maxCount; // 每个区域 100 个节点
   const children = [];
 
   // 1. 全局开关
-  children.push({
-    type: "select",
-    name: "global_mode",
-    label: "⚡ 全厂运行模式",
-    defaultValue: "auto",
-    options: [
-    { "label": "手动模式 (停止联动)", "value": "manual" },
-    { "label": "自动生产 (全量联动)", "value": "auto" },
-    { "label": "紧急制动 (快速熔断)", "value": "emergency" }
-  ]
-  });
+  // children.push({
+  //   type: "select",
+  //   name: "global_mode",
+  //   label: "⚡ 全厂运行模式",
+  //   value: "auto",
+  //   options: [
+  //   { "label": "手动模式 (停止联动)", "value": "manual" },
+  //   { "label": "自动生产 (全量联动)", "value": "auto" },
+  //   { "label": "紧急制动 (快速熔断)", "value": "emergency" }
+  // ]
+  // });
 
 
   regions.forEach((region, rIdx) => {
@@ -48,7 +55,7 @@ const generateHugeMesh = () => {
         type: "number",
         name: name,
         label: `[${labelMap[region]}] ${i}号节点`,
-        defaultValue: 100
+        value: 1
       });
     }
   });
@@ -58,7 +65,7 @@ const generateHugeMesh = () => {
     type: "number",
     name: "total_index",
     label: "📊 全球实时效能总指数",
-    defaultValue: 0,
+    value: 0,
     readonly: true
   });
 
@@ -74,7 +81,7 @@ const TransformSchema = (data:any)=>{
       type: 'checkbox', // UI 对应 Vuetify 的 v-checkbox 或 v-switch
       name: 'autoRenew'+i,
       label: '开启自动续费'+i,
-      defaultValue: false, // 默认不开启
+      value: false, // 默认不开启
       disabled: i==0?false:true, 
       description: '暂不支持自动续费'
     }
@@ -88,7 +95,7 @@ const generateHugeMesh2 = (maxCount = 100) => {
     const children = [];
   
     // 全局开关
-    children.push({ type: "select", name: "global_mode", defaultValue: "auto" });
+    children.push({ type: "select", name: "global_mode", value: "auto" });
   
     // 区域节点生成
     regions.forEach((region) => {
@@ -96,13 +103,13 @@ const generateHugeMesh2 = (maxCount = 100) => {
         children.push({
           type: "number",
           name: `${region}${i}_val`,
-          defaultValue: 100
+          value: 100
         });
       }
     });
   
     // 总指数
-    children.push({ type: "number", name: "total_index", defaultValue: 0 });
+    children.push({ type: "number", name: "total_index", value: 0 });
   
     return { type: 'group', name: '', children };  
   };
@@ -110,16 +117,26 @@ const generateHugeMesh2 = (maxCount = 100) => {
 let newdata = generateHugeMesh();
 // let newdata2 = generateHugeMesh2(100)
 // let newdata = TransformSchema(Schema);
-// console.log(newdata)
-const engine = useEngineManager<Ref<number,number>,AllPath>('main-engine',newdata, {
-  signalCreateor: () => ref(0),
-  signalTrigger(signal) {
-    signal.value++;
+// console.log(Schema)
+const engine = useMeshFlow<Ref<number,number>,AllPath>('main-engine',Schema, {
+  config:{
+    useGreedy:true
   },
+  UITrigger:{
+    signalCreateor: () => ref(0),
+    signalTrigger(signal) {
+      signal.value++;
+    },
+  }
 });
 // const engine = useEngine('main-engine');
 const logger = useLogger()
-engine.config.usePlugin(logger)
+let cancel = engine.config.usePlugin(logger)
+const perfetto = usePerfetto()
+ 
+// engine.config.usePlugin(perfetto);
+
+ 
 
 console.log(engine.data.schema)
 
@@ -127,7 +144,7 @@ const setupfactoryformrule = ()=>{
   for (let i = 1; i < maxCount; i++) {
   let triggerPath = `mesh.a${i}_val` as any;
   let targetPath =  `mesh.a${i+1}_val` as any;
-  engine.config.SetRule(triggerPath, targetPath, 'defaultValue', {
+  engine.config.SetRule(triggerPath, targetPath, 'value', {
     logic: ({slot}) => {
       let [val] = slot.triggerTargets;
       return val+1
@@ -138,24 +155,21 @@ const setupfactoryformrule = ()=>{
 for (let i = 2; i <= maxCount; i++) {
   const parents=  [`mesh.b${i-1}_val`, `mesh.a${i}_val`] as any;
   let targetPath =  `mesh.b${i}_val` as any;
-  engine.config.SetRules(parents, targetPath, 'defaultValue', {
+  engine.config.SetRules(parents, targetPath, 'value', {
     logic: ({slot}) => {
       const [trigger1, trigger2] = slot.triggerTargets
 
-      if(targetPath==='mesh.b2_val'){
+      if(i%7==0){
         return new Promise((resolve,reject)=>{
           setTimeout(() => {
             resolve(Number(trigger1) + (Number(trigger2) || 0) );
-            console.log('等待5s再返回逻辑：'+[trigger1,trigger2])
-          }, 2000);
+            // console.log('等待0.2s再返回逻辑：'+[trigger1,trigger2])
+          }, 100);
         })
       }else{
         // trigger1 是上一个 b 的值，trigger2 是对应 a 的值
         return Number(trigger1) + (Number(trigger2) || 0);
       }
-        
-   
-      
     }
   });
 }
@@ -169,13 +183,11 @@ for (let i = 1; i <= maxCount; i++) {
     `mesh.a${maxCount+1 - i}_val`     // 远亲：镜像位置的 A
   ];
 
-  engine.config.SetRules(parents, target, 'defaultValue', {
+  engine.config.SetRules(parents, target, 'value', {
     logic:({slot}) => {
      
       const [bVal, aMirrorVal] = slot.triggerTargets;
-      if(target===`mesh.c${maxCount}_val`){
-        console.log([bVal, aMirrorVal])
-      }
+      // console.log(bVal,aMirrorVal)
        
       // 这里的入参就是你声明的两个触发源的值
       const res = (Number(bVal) || 0) + (Number(aMirrorVal) || 0);
@@ -184,12 +196,35 @@ for (let i = 1; i <= maxCount; i++) {
     }
   });
 }
+const allCPaths = new Array(maxCount).fill(0).map((item,index)=>{
+  return `mesh.c${index+1}_val`
+})
+engine.config.SetRules(
+  allCPaths as any,      // 依赖 C 区所有节点
+  'mesh.total_index',    // 目标节点
+  'value',
+  {
+    logic: ({ slot }) => {
+      // 获取所有 C 区当前计算出的值
+      const cValues = slot.triggerTargets as number[];
+      
+      // 执行求和逻辑
+      const sum = cValues.reduce((acc, val) => acc + (Number(val) || 0), 0);
+      
+      // 为了让数值更好看，可以做一个归一化或取平均值
+      const average = sum / maxCount;
+     
+      return average; // 保留两位小数
+    }
+  }
+);
+
 engine.config.notifyAll();
+ 
 }
-setupfactoryformrule();
+// setupfactoryformrule();
 
-
-
+ 
 const setrules = ()=>{
   for (let i = 1; i <= 100; i++) {
             const aNode = `a${i}_val`;
@@ -198,7 +233,7 @@ const setrules = ()=>{
       
             // 规则 1: B 依赖 A 和 Global Mode
             // 逻辑: 如果是 manual，B 不动；否则 B = A + 1
-            engine.config.SetRules([aNode, 'global_mode'], bNode, 'defaultValue', {
+            engine.config.SetRules([aNode, 'global_mode'], bNode, 'value', {
               logic: (api: any) => {
                 const [aVal,global_mode] = api.slot.triggerTargets;
            
@@ -208,7 +243,7 @@ const setrules = ()=>{
       
             // 规则 2: C 依赖 B (深度传导)
             // 逻辑: C = B * 2
-            engine.config.SetRule(bNode, cNode, 'defaultValue', {
+            engine.config.SetRule(bNode, cNode, 'value', {
               logic: (api: any) => {
                 const [val] = api.slot.triggerTargets
                  // 注意：这里 api.triggerTargets[bNode] 能拿到 B 的最新值
@@ -219,7 +254,7 @@ const setrules = ()=>{
               // // 规则: Total 依赖所有 C
               const allCNodes = Array.from({ length: 100 }, (_, i) => `c${i + 1}_val`);
 
-              engine.config.SetRules(allCNodes, 'total_index', 'defaultValue', {
+              engine.config.SetRules(allCNodes, 'total_index', 'value', {
               logic: (api: any) => {
                   // 1. 获取输入数组
                   // 根据你的新写法，api.slot.triggerTargets 是一个数组 [c1值, c2值, ... c100值]
@@ -239,14 +274,13 @@ const setrules = ()=>{
 // setrules()
 
 //设置rule连线
-// setupBusinessRules(
-//   engine.config.SetRule,
-//   engine.config.SetRules,
-//   engine.config.SetStrategy,
-//   engine.config.notifyAll
-// );
+setupBusinessRules(
+  engine.config.SetRule,
+  engine.config.SetRules,
+  engine.config.SetStrategy,
+  engine.config.notifyAll
+);
  
-
 const setupRules = ()=>{
   for(let i = 1;i<500;i++){
     let prevPath = 'cloudConsole.billing.autoRenew'+(i-1) as any;
@@ -269,7 +303,15 @@ const setupRules = ()=>{
     )
   }
 }
-
- 
 // setupRules()
+
+// setTimeout(() => {
+//   engine.data.SetValue('mesh.a1_val',10)
+// }, 10000);
+ 
+onUnmounted(()=>{
+  deleteEngine('main-engine')
+})
+
+
 </script>

@@ -206,7 +206,7 @@ export function useFlowScheduler<T, P extends string>(
         });
     };
 
-    const GetValue = (path: P, key = "defaultValue") => {
+    const GetValue = (path: P, key = "value") => {
         const node = GetRenderSchemaByPath(path);
         return node[key as keyof typeof node];
     };
@@ -221,7 +221,7 @@ export function useFlowScheduler<T, P extends string>(
         usePlugin,
         // CheckCycleInGraph,
 
-        SetValue, //设置节点的defaultValue
+        SetValue, //设置节点的value
         GetValue,
         GetFormData,
         GetGroupByPath,

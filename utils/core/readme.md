@@ -48,8 +48,8 @@ const schema = {
     name: 'billing',
     label: '计费与汇总',
     children: [
-        { type: 'number', name: 'totalPrice', label: '预估月度总价', defaultValue: 0, },
-        { type: 'input', name: 'priceDetail', label: '计费项说明', defaultValue: '基础配置费用'}
+        { type: 'number', name: 'totalPrice', label: '预估月度总价', value: 0, },
+        { type: 'input', name: 'priceDetail', label: '计费项说明', value: '基础配置费用'}
     ]
 };
  
@@ -68,7 +68,7 @@ const engine = useMeshFlow<Ref<number,number>,AllPath>('main',schema, {
 #### 添加联动依赖
 ```typescript
 //声明联动规则：当总价 > 2000 时，自动修改描述与主题
-engine.config.SetRule("billing.totalPrice", "billing.priceDetail", "defaultValue", {
+engine.config.SetRule("billing.totalPrice", "billing.priceDetail", "value", {
   logic: ({ slot }) => {
     const [total] = slot.triggerTargets; // 从触发目标中解构出 totalPrice
     return total > 2000 ? "大客户折扣" : undefined;

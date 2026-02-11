@@ -8,6 +8,10 @@
       :class="iconClass"
       v-if="!props.hide"
     ></v-icon>
+    <!-- <div  v-if="!props.hide">
+      {{ iconStatus }}
+    </div> -->
+     
   </div>
 </template>
 
@@ -59,7 +63,7 @@ onMounted(() => {
       error:"",
       canceled:""
     };
-
+     
     iconClass.value = baseAnimation[iconStatus.value];
     iconRef.value = baseIcon[iconStatus.value];
   });

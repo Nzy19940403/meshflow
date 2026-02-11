@@ -1,5 +1,5 @@
 <template>
-  <div class="flex w-full h-full">
+  <div class="flex w-full h-full"  >
     <VNavigationDrawer  :width="400" v-model="showDrawer">
       <div class="flex flex-col flex-grow">
         <Card class="mb-4">
@@ -9,6 +9,10 @@
             <VBtn @click="openBottomSheet"> 运行日志 </VBtn>
 
             <VBtn @click="goToDependency"> 依赖图 </VBtn>
+
+            <v-btn @click="downloadPrefetto">
+              download
+            </v-btn>
           </template>
         </Card>
 
@@ -52,11 +56,66 @@
 
     <VContainer>
       <div class="animate-fadeinup animate-duration-300 pt-4">
+        <!-- <v-stepper :items="['Step 1', 'Step 2', 'Step 3','Step 4','Step 5']">
+          <template v-slot:item.1>
+            <v-card title="Step One" flat class="pl-8 pr-8">
+              <CustomForm
+              :schema="groupdata1"
+              @submit="handleFormSubmit"
+              ></CustomForm>
+            </v-card>
+          </template>
+
+          <template v-slot:item.2>
+             
+              <v-card title="Step Two" flat class="pl-8 pr-8">
+                <CustomForm
+                :schema="groupdata2"
+                @submit="handleFormSubmit"
+                ></CustomForm>
+              </v-card>
+             
+              
+           
+            
+          </template>
+
+          <template v-slot:item.3>
+            <v-card title="Step Three" flat class="pl-8 pr-8">
+              <CustomForm
+              :schema="groupdata3"
+              @submit="handleFormSubmit"
+              ></CustomForm>
+            </v-card>
+          </template>
+
+          <template v-slot:item.4>
+            <v-card title="Step Four" flat class="pl-8 pr-8">
+              <CustomForm
+              :schema="groupdata4"
+              @submit="handleFormSubmit"
+              ></CustomForm>
+            </v-card>
+          </template>
+
+          <template v-slot:item.5>
+            <v-card title="Step Five" flat class="pl-8 pr-8">
+              <CustomForm
+              :schema="groupdata5"
+              @submit="handleFormSubmit"
+              ></CustomForm>
+            </v-card>
+          </template>
+      </v-stepper> -->
+        
+
         <CustomForm
           :schema="schema"
           @submit="handleFormSubmit"
-          :trace-data="true"
         ></CustomForm>
+      
+    
+
       </div>
     </VContainer>
   </div>
@@ -85,7 +144,7 @@
 <script setup lang="ts">
 import Card from "primevue/card";
 import CustomForm from "./CustomForm/CustomForm.vue";
-import { Schema } from "@/devSchemaConfig/dev.form.Schema";
+// import { Schema } from "@/devSchemaConfig/dev.form.Schema";
  
 import {
   AllPath,
@@ -122,8 +181,12 @@ const dialogContent = defineAsyncComponent(()=>import('./AddNewSchema.vue'))
 const engine = useEngine('main-engine');
 
 const schema = engine.data.schema;
-  
- 
+
+// const groupdata1 = engine.data.GetGroupByPath("cloudConsole.environment")
+// const groupdata2 = engine.data.GetGroupByPath("cloudConsole.specs")
+// const groupdata3 = engine.data.GetGroupByPath("cloudConsole.security")
+// const groupdata4 = engine.data.GetGroupByPath("cloudConsole.step_clusters")
+// const groupdata5 = engine.data.GetGroupByPath("cloudConsole.billing")
 
 const router = useRouter();
 
@@ -169,13 +232,17 @@ const openBottomSheet = ()=>{
 };
 
 let cancel = engine.hooks.onError((error)=>{
-  console.log(error.info)
+  console.log(error.error)
 })
+
+const downloadPrefetto = ()=>{
+  // @ts-ignore
+  window.downloadTrace()
+}
 
 engine.hooks.onStart((data)=>{
   console.log('触发变更:'+data.path)
 })
  
  
-
 </script>

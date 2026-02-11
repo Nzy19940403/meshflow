@@ -26,7 +26,6 @@ module.exports = (env, argv) => {
         new webpack.DefinePlugin({
             __IS_PROD__: JSON.stringify(isProd),
             // __ENV__: JSON.stringify('dev'),
-            __BUILD_TIME__: JSON.stringify(Date.now()),
             __VUE_OPTIONS_API__: JSON.stringify(true),  // 是否支持 Options API，默认 true
             __VUE_PROD_DEVTOOLS__: JSON.stringify(false), // 生产环境是否启用 devtools，默认 false
             __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: JSON.stringify(false), // 是否启用服务端渲染不匹配详情，默认 false

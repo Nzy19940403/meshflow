@@ -18,7 +18,7 @@
           type: 'select',
           name: 'region',
           label: '部署地域',
-          defaultValue: 'china',
+          value: 'china',
           required: true,
           options: [
             {
@@ -35,7 +35,7 @@
           type: 'select',
           name: 'compliance',
           label: '合规性分级',
-          defaultValue: 'standard',
+          value: 'standard',
           required: true,
           options: [
             {
@@ -64,7 +64,7 @@
           type: 'select',
           name: 'instanceFamily',
           label: '实例家族',
-          defaultValue: 'general',
+          value: 'general',
           required: true,
           options: [
             {
@@ -95,7 +95,7 @@
               type: 'select',
               name: 'diskType',
               label: '系统盘类型',
-              defaultValue: 'ssd',
+              value: 'ssd',
               required: true,
               options: [
                 {
@@ -116,7 +116,7 @@
               type: 'number',
               name: 'capacity',
               label: '系统盘容量 (GB)',
-              defaultValue: 40,
+              value: 40,
               min: 20,
               max: 32768,
               step: 10,
@@ -136,7 +136,7 @@
           type: 'select',
           name: 'encryption',
           label: '数据盘加密',
-          defaultValue: 'no',
+          value: 'no',
           required: true,
           options: [
             {
@@ -153,7 +153,7 @@
           type: 'input',
           name: 'kmsKey',
           label: 'KMS 密钥 ID',
-          defaultValue: '',
+          value: '',
           maxLength: 8,
           hidden: true,
           required: false,
@@ -170,7 +170,7 @@
           type: 'number',
           name: 'totalPrice',
           label: '预估月度总价',
-          defaultValue: 0,
+          value: 0,
           readonly: true,
           required: true,
           prefix: '￥'
@@ -179,7 +179,7 @@
           type: 'input',
           name: 'priceDetail',
           label: '计费项说明',
-          defaultValue: '基础配置费用',
+          value: '基础配置费用',
           readonly: true,
           required: false,
           hidden: false
@@ -188,7 +188,7 @@
           type: 'checkbox',
           name: 'autoRenew',
           label: '开启自动续费',
-          defaultValue: false,
+          value: false,
           disabled: false,
           description: '暂不支持自动续费'
         }

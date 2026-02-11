@@ -115,7 +115,7 @@ export const useSetRule = <P>(
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
         let newRule = CreateRule(inDegreePath, key, { ...options, triggerPaths: [outDegreePath] });
 
-        const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).defaultValue])
+        const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).value])
 
         // 维护图关系
         updateGraphRelation(outDegreePath, inDegreePath);
@@ -189,7 +189,7 @@ export const useSetRule = <P>(
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
         let newRule = CreateRule(inDegreePath, key, { ...options, triggerPaths: outDegreePaths });
 
-        const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).defaultValue])
+        const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).value])
 
         if (inDegree.nodeBucket[key]) {
 
