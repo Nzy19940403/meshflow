@@ -17,7 +17,7 @@ export const useSchemaValidators = <P>(Finder: any)=>{
         }
 
         if(!schema.validators){
-            throw Error('validator桶未初始化');
+            throw Error('validator init error');
         }
         schema.validators.setValidators({
             logic:(newVal:any)=>{

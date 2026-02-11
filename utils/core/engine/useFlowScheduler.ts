@@ -145,52 +145,44 @@ export function useFlowScheduler<T, P extends string>(
         pathToLevelMap = res.levelMap;
     };
 
+    const requestGraphUpdate = () => {
+        // 如果已经在检查中，直接跳过，等待当前的微任务完成
+        if (isCircleChecking) return;
+    
+        isCircleChecking = true;
+        
+        // 使用 Promise.resolve() 代替 new Promise，更简洁
+        Promise.resolve().then(() => {
+            // 1. 执行环检测
+            CheckCycleInGraph();
+    
+            // 2. 如果规则确实变了，重建直连依赖图
+            if (isRulesChanged) {
+                const { directNextMap, directPrevMap } = rebuildDirectDependencyMaps(
+                    dependencyOrder.flat()
+                );
+                directChildDependencyGraph = directNextMap;
+                directParentDependencyGraph = directPrevMap;
+            }
+        }).finally(() => {
+            // 重置状态
+            isCircleChecking = false;
+            isRulesChanged = false;
+        });
+    };
+
     const setRuleWrapper = (...args: Parameters<typeof SetRule>) => {
         SetRule.apply(null, args);
         isRulesChanged = true;
 
-        if (isCircleChecking) return;
-        new Promise<void>((resolve, reject) => {
-            isCircleChecking = true;
-            resolve();
-        })
-            .then(() => {
-                CheckCycleInGraph();
-                if (isRulesChanged) {
-                    let { directNextMap, directPrevMap } = rebuildDirectDependencyMaps(
-                        dependencyOrder.flat()
-                    );
-                    directChildDependencyGraph = directNextMap;
-                    directParentDependencyGraph = directPrevMap;
-                }
-            })
-            .finally(() => {
-                isCircleChecking = false;
-                isRulesChanged = false;
-            });
+        requestGraphUpdate();
+       
     };
     const setRulesWrapper = (...args: Parameters<typeof SetRules>) => {
         SetRules.apply(null, args);
         isRulesChanged = true;
-        if (isCircleChecking) return;
-        new Promise<void>((resolve, reject) => {
-            isCircleChecking = true;
-            resolve();
-        })
-            .then(() => {
-                CheckCycleInGraph();
-                if (isRulesChanged) {
-                    let { directNextMap, directPrevMap } = rebuildDirectDependencyMaps(
-                        dependencyOrder.flat()
-                    );
-                    directChildDependencyGraph = directNextMap;
-                    directParentDependencyGraph = directPrevMap;
-                }
-            })
-            .finally(() => {
-                isCircleChecking = false;
-                isRulesChanged = false;
-            });
+        
+        requestGraphUpdate();
     };
 
     const notifyAllWrapper = async () => {

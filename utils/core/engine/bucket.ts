@@ -474,7 +474,7 @@ export class ValidatorsBucket {
                 //如果是数值型，设置为0也不能返回required报错
                 if (typeof value === 'number') return true
 
-                return `${this.path}不能为空`
+                return `${this.path} undefined`
             },
             condition: (data) => {
                 return !!data.required
@@ -484,7 +484,7 @@ export class ValidatorsBucket {
         const maxLengthValidator: validatorItem = {
             logic: function (value) {
 
-                if (value.length > this.options.maxLength) return `超出最大长度，最大长度为${this.options.maxLength}`
+                if (value.length > this.options.maxLength) return `Too long:${this.options.maxLength}`
 
                 return true
             },

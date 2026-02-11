@@ -275,14 +275,7 @@ function useMeshTask<T extends string>(
 
                     if (shouldFire) {
                         // 强影响逻辑
-                        // if (!stagingArea.has(child) && !processed.has(child) && 
-                        //     !readyToRunBuffer.has(child) && !processingSet.has(child)) {
-                        //     // ... 计算阻力逻辑
-                        //     const effectParentsCount = dependency.GetPrevDependency(child)
-                        //         .filter(p => processed.has(p)).length;
-                        //     stagingArea.set(child, effectParentsCount);
-                        //     hooks.emit('node:pending', { path: child });
-                        // }
+ 
                         tryActivateChild(child, 1);
                     } else {
                         // 弱影响逻辑

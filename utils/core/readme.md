@@ -2,6 +2,9 @@
 
 **基于水位线调度（Watermark Scheduling）的轻量级拓扑逻辑引擎。**
 
+[![Documentation](https://img.shields.io/badge/docs-VitePress-blue.svg)](https://meshflow-docs.vercel.app/)
+[![Demo](https://img.shields.io/badge/demo-Vercel-orange.svg)](https://meshflow-factory-demo.vercel.app/)
+
 ## 🎯 它解决了什么问题？
 
 在复杂的**中后台表单**或**大型配置系统**中，数据的联动关系往往错综复杂。`@meshflow/core` 专门解决以下痛点：
@@ -29,7 +32,7 @@
 * **⚡ 惰性求值与记忆化**：引入“桶计算”缓存机制，在拓扑传播过程中自动比对输入特征，仅在依赖项发生实质性变更时才触发逻辑重算。
 * **⚡ 变更剪枝**：即使节点处于受影响路径上，若输入状态未通过有效性检查，引擎将自动截断该路径的后续传播，实现真正的计算最小化。
 * **🚨 循环依赖检测**：在节点定义阶段实时进行 $O(V+E)$ 的环检测，提前发现逻辑死循环。
-* **📦 极简轻量**：零依赖，体积仅 ~7kB(zipped)，适配任何 JavaScript 运行时。
+* **📦 极简轻量**：零依赖，体积仅 ~8kB(zipped)，适配任何 JavaScript 运行时。
 * **🔌 插件化架构 (New)**：支持生命周期拦截与监听（如官方调试插件 `@meshflow/logger`）。
 ---
  
@@ -94,3 +97,4 @@ engine.config.notifyAll();
 
 * **确定性**：无论异步耗时多久，最终状态始终保持一致。
 * **原子性**：一次输入变化，仅触发一次拓扑链路的完整更新。
+

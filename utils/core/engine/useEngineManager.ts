@@ -46,11 +46,11 @@ const useEngineManager = <T,P extends string>(id:string|symbol,Schema:any, optio
 }) => {
   try{
     if(typeof options.UITrigger.signalCreateor !== 'function' || typeof options.UITrigger.signalTrigger !== 'function'){
-      throw Error('需要定义signal来通知ui')
+      throw Error('ui trigger undefined')
     }
-  
+    
     if(engineMap.has(id)){
-      throw Error('engineID重复,修改id或者使用symbol');
+      throw Error('engineID repeated');
     }
     const scheduler = useFlowScheduler<T, P>(
       Schema, 
@@ -135,7 +135,7 @@ const useEngine = <T = any, P extends string = string>(id:string|symbol) => {
   if(engineMap.has(id)){
     return engineMap.get(id)! as Engine<SchedulerType<T, P>>;
   }
-  throw Error('不存在的id')
+  throw Error('id undefined')
 };
 
 

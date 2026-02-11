@@ -73,8 +73,6 @@ const usePluginManager = ()=>{
             cleanups.forEach(cancel => cancel());
             cleanups.clear();
             plugins.delete(plugin);
-           
-            console.log(`[Plugin] 插件已彻底卸载，并清理了所有事件监听`);
         };
     }
 

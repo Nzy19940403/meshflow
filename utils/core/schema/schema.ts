@@ -181,7 +181,7 @@ export function useForm<T, P extends string>(
   };
 
   const flushUpdate = async () => {
-    console.log("批处理开始刷新");
+    console.log("ui update");
 
     const paths = Array.from(flushPathSet);
 
@@ -377,7 +377,7 @@ export function useForm<T, P extends string>(
     let inDegree = GetRenderSchemaByPath(path);
 
     if (!inDegree) {
-      throw Error("路径错误，没有对应的节点");
+      throw Error("Node undefined");
     }
 
     const clickTime = performance.now();
@@ -412,7 +412,7 @@ export function useForm<T, P extends string>(
 
   const updateInputValueRuleManually = (path: P) => {
     if (!path) {
-      throw Error("没有路径");
+      throw Error("path error");
     }
 
     let TargetSchema = GetRenderSchemaByPath(path) as RenderSchemaFn<
@@ -566,7 +566,7 @@ export function initFormData<T>(data: T, res: any = {}): FormResultType<T> {
       };
     }
 
-    throw Error("未定义的类型:" + `${data.type}`);
+    throw Error("undefined type:" + `${data.type}`);
   };
 
   const merge = (target: any, obj: Record<"key" | "val" | "isGroup", any>) => {

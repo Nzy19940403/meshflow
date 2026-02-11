@@ -115,7 +115,7 @@ export function useCheckCycleInGraph<T>(
         }
 
         if (queue.length === 0 && len > 0) {
-            throw Error("初始入度没有为0的path, 依赖统计有误或存在环");
+            throw Error("Circular dependency detected");
         }
 
         // 2. 逐层剥离
@@ -150,7 +150,7 @@ export function useCheckCycleInGraph<T>(
         }
 
         if (processedCount < len) {
-            throw Error("检测到循环依赖！");
+            throw Error("Circular dependency detected");
         }
          
         return { 
