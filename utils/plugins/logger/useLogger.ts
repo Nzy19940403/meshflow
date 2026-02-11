@@ -62,6 +62,9 @@ const NODE_INTERCEPT = {
     },
     6:()=>{
         return `上游静默，链路收敛`
+    },
+    7:()=>{
+        return `背压拦截`
     }
 }
 const FLOW_WAIT = {

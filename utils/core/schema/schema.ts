@@ -269,7 +269,7 @@ export function useForm<T, P extends string>(
         // --- 分层遍历 ---
         for (let i = 0; i < levels.length; i++) {
           const currentLevelNodes = levels[i];
-
+      
           // ⚡️ 并发：同一层的节点同时计算
           await Promise.all(
             currentLevelNodes.map(async (path) => {
@@ -362,7 +362,7 @@ export function useForm<T, P extends string>(
   };
 
   //单个字段变化之后触发此函数，然后触发notifyChild来递归的渲染后续字段
-  const notify = async (path: P) => {
+  const notify = (path: P) => {
     //notifyAll完成之前不允许操作
     if(forbidUserNotify){
       return
@@ -377,17 +377,33 @@ export function useForm<T, P extends string>(
       throw Error("路径错误，没有对应的节点");
     }
 
+    const clickTime = performance.now();
+
     //更新的路径
     flushPathSet.add(path);
 
     requestUpdate();
 
+  
+   
     let nextOrder = dependency.GetNextDependency(path);
 
     runNotifyTask(nextOrder, path);
+    
+  //   requestAnimationFrame(() => {
+  //     // setTimeout(..., 0) 会在绘制完成后执行
+  //     setTimeout(() => {
+  //         const paintTime = performance.now();
+  //         const totalDelay = paintTime - clickTime;
+  //         console.log(
+  //             `%c ⏱️ 渲染延迟 | 总耗时: ${totalDelay.toFixed(2)}ms`,
+  //             totalDelay > 16.6 ? "color: red; font-weight: bold;" : "color: #67c23a;"
+  //         );
+  //     }, 0);
+  // });
   };
 
-  async function runNotifyTask(initialNodes: P[], triggerPath: P) {
+  function runNotifyTask(initialNodes: P[], triggerPath: P) {
     taskrunner(triggerPath, initialNodes);
   }
 
@@ -428,7 +444,7 @@ export function useForm<T, P extends string>(
       },
     };
 
-    let dependOnFn = async (cb: (data: any) => any, field: any) => {
+    let dependOnFn =  (cb: (data: any) => any, field: any) => {
       const newVal = cb(field);
 
       //首先更新最新的数据
@@ -445,11 +461,11 @@ export function useForm<T, P extends string>(
             value: newVal,
           },
         ],
-        async (metadata: { path: P; value: any }) => {
+         (metadata: { path: P; value: any }) => {
           let data = GetRenderSchemaByPath(metadata.path);
           data.defaultValue = metadata.value;
           updateInputValueRuleManually(metadata.path);
-          await notify(metadata.path);
+           notify(metadata.path);
         }
       );
 
@@ -460,7 +476,7 @@ export function useForm<T, P extends string>(
 
       updateInputValueRuleManually(field.path);
 
-      await notify(field.path);
+      notify(field.path);
     };
     // 这里的返回值断言为你写好的类型体操结果
     const newNode = {
@@ -476,8 +492,8 @@ export function useForm<T, P extends string>(
       // affectedArray: new Set(),
       validators: new ValidatorsBucket(currentPath), // 用来存放验证函数
       theme: "secondary",
-      dependOn: async (cb) => {
-        return await dependOnFn(cb, {
+      dependOn:  (cb) => {
+        return  dependOnFn(cb, {
           ...dependOnContext,
           path: currentPath,
         });

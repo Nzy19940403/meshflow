@@ -178,7 +178,9 @@ export class SchemaBucket<P>{
 
     promiseToken: any = null;
 
-    globalCalcCount = 0
+    // globalCalcCount = 0
+
+    private effectArray:{fn:(args:any)=>any,args:any[]}[] = []
 
     constructor(baseValue: any, key: string, path: P) {
         const getRule = () => this.rules
@@ -329,7 +331,12 @@ export class SchemaBucket<P>{
         };
 
     };
-
+    setSideEffect(data:{fn:(args:any[])=>any,args:any[]}){
+        this.effectArray.push(data);
+    };
+    getSideEffect(){
+        return [...this.effectArray]
+    }
 
     evaluate(api: any) {
 

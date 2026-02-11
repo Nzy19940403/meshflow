@@ -94,10 +94,21 @@ export const useSetRule = <P>(
         priority?: number,
         // subscribeKey?: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>[],
         forceNotify?:boolean,
-        logic: (api: logicApi) => any
+        logic: (api: logicApi) => any,
+
+        /**
+         * @beta 节点副作用钩子
+         * 用于执行原子化的 Patch 修正。注意：此功能尚在测试，仅建议执行同步逻辑。
+         */
+        effect?:(args:any)=>any,
+        /**
+         * @beta 节点副作用钩子指定入参
+         * 用于执行原子化的 Patch 修正。注意：此功能尚在测试，仅建议执行同步逻辑。
+         */
+        effectArgs?:Array<KeysOfUnion<Exclude<FormFieldSchema, GroupField>>>
     } = { logic: (api) => { } }) => {
         
-       
+         
         // let outDegree = GetByPath(outDegreePath);
         let inDegree = GetByPath(inDegreePath);
    
@@ -111,8 +122,14 @@ export const useSetRule = <P>(
        
         if (inDegree.nodeBucket[key]) {
            
-            inDegree.nodeBucket[key].setRule(newRule,DepsArray)
-
+            inDegree.nodeBucket[key].setRule(newRule,DepsArray);
+            //如果有副作用就加入副作用列表
+            if(options.effect){
+                inDegree.nodeBucket[key].setSideEffect({
+                    fn:options.effect,
+                    args:options.effectArgs?options.effectArgs:[key]
+                })
+            }
         } else {
        
             let newBucket = new SchemaBucket<P>(
@@ -121,8 +138,14 @@ export const useSetRule = <P>(
                 inDegreePath
             );
 
-            newBucket.setRule(newRule,DepsArray)
-
+            newBucket.setRule(newRule,DepsArray);
+            //如果有副作用就加入副作用列表
+            if(options.effect){
+                newBucket.setSideEffect({
+                    fn:options.effect,
+                    args:options.effectArgs?options.effectArgs:[key]
+                })
+            }
             inDegree.nodeBucket[key] = newBucket;
         }
 
@@ -142,7 +165,17 @@ export const useSetRule = <P>(
             priority?: number,
             // subscribeKey?: KeysOfUnion<Exclude<FormFieldSchema, GroupField>>[],
             forceNotify?:boolean,
-            logic: (api: logicApi) => any
+            logic: (api: logicApi) => any,
+            /**
+             * @beta 节点副作用钩子
+             * 用于执行原子化的 Patch 修正。注意：此功能尚在测试，仅建议执行同步逻辑。
+             */
+            effect?:(args:any)=>any,
+            /**
+             * @beta 节点副作用钩子指定入参
+             * 用于执行原子化的 Patch 修正。注意：此功能尚在测试，仅建议执行同步逻辑。
+             */
+            effectArgs?:Array<KeysOfUnion<Exclude<FormFieldSchema, GroupField>>>
         } = { logic: (api) => { } }) => {
         
         let inDegree = GetByPath(inDegreePath);
@@ -160,8 +193,14 @@ export const useSetRule = <P>(
 
         if (inDegree.nodeBucket[key]) {
 
-            inDegree.nodeBucket[key].setRules(newRule,DepsArray)
-
+            inDegree.nodeBucket[key].setRules(newRule,DepsArray);
+            //如果有副作用就加入副作用列表
+            if(options.effect){
+                inDegree.nodeBucket[key].setSideEffect({
+                    fn:options.effect,
+                    args:options.effectArgs?options.effectArgs:[key]
+                });
+            }
         }else{
 
             let newBucket = new SchemaBucket(
@@ -170,7 +209,14 @@ export const useSetRule = <P>(
                 inDegreePath
             );
 
-            newBucket.setRules(newRule,DepsArray)
+            newBucket.setRules(newRule,DepsArray);
+            //如果有副作用就加入副作用列表
+            if(options.effect){
+                newBucket.setSideEffect({
+                    fn:options.effect,
+                    args:options.effectArgs?options.effectArgs:[key]
+                })
+            }
 
             inDegree.nodeBucket[key] = newBucket;
         }

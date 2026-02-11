@@ -39,10 +39,8 @@ function useMeshTask<T extends string>(
         initialNodes: T[]
     ) => {
         //最大并发数
-        const MAX_CONCURRENT_TASKS = 1;
+        const MAX_CONCURRENT_TASKS = 5;
 
-       
-         
         const curToken = Symbol("token");
 
         currentExecutionToken.set(triggerPath, curToken);
@@ -67,13 +65,13 @@ function useMeshTask<T extends string>(
         // 等待捕捞区,上游没有变但是不好直接扔所以把这个先扔在这里等待捕捞
         const resureArea = new Map<number,Set<T>>();
 
-        let lastYieldTime = performance.now();
+        // let lastYieldTime = performance.now();
 
         // 🔥 优化 1：零阻力缓冲区 (Set 保证唯一性)
         const readyToRunBuffer = new Set<T>();
 
-        // 🔥 优化 2：预计算汇聚点和静态层级（避免在循环中高频调用函数）
-        const mergeNodeSet = new Set<T>();
+        // // 🔥 优化 2：预计算汇聚点和静态层级（避免在循环中高频调用函数）
+        // const mergeNodeSet = new Set<T>();
  
         // 获取初始水位线（触发点所在层级）
         const pathToLevelMap = dependency.GetPathToLevelMap();
@@ -106,10 +104,19 @@ function useMeshTask<T extends string>(
         }); 
 
         let isFlowFinished = false;
+
+        //背压参数
+        const BACKPRESSURE_LIMIT = 30;  
       
 
         const executorNodeCalculate =  (task: { target: T; trigger: T;  }) => {
             const { target: targetPath, trigger: currentTriggerPath } = task;
+            let hasValueChanged = false;
+            let notifyNext = false;
+            const targetSchema = data.GetRenderSchemaByPath(targetPath);
+
+            // 收集所有的异步 Promise
+            const pendingPromises: Promise<void>[] = [];
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
             //reasontype -> 1:上游 ${targetPath} 值变了 2: 当上游值没有变但是下游节点已经在stagingArea的时候`上游 ${targetPath} 完成(穿透)`
             const tryActivateChild = (child: T, reasonType: number) => {
@@ -119,9 +126,23 @@ function useMeshTask<T extends string>(
                     return;
                 }
                 let newResistance = 0;
-
+                const childLevel = pathToLevelMap.get(child) ?? 0;
                 // 2. 阻力计算策略：惰性初始化 vs 递减
                 if (!stagingArea.has(child)) {
+                   
+                    if (childLevel > currentLevel && stagingArea.size > BACKPRESSURE_LIMIT) {
+                        if (!resureArea.has(childLevel)) resureArea.set(childLevel, new Set());
+                        resureArea.get(childLevel)!.add(child);
+
+                      
+                        
+                        hooks.emit('node:intercept', { 
+                            path: child, 
+                            type: 7, // 自定义类型：背压拦截
+                            // detail: { stagingSize: stagingArea.size } 
+                        });
+                        return; 
+                    }
                     // 🌟 Case A: 第一次被触碰 (Lazy Init)
                     // 我们不查 AllAffectedPaths，我们查“还有几个爸爸没死？”
                     const parents = dependency.GetPrevDependency(child);
@@ -188,13 +209,45 @@ function useMeshTask<T extends string>(
 
             // --- 3. 提取公共逻辑：收尾工作 (对应原来的 finally 块) ---
             // 无论是同步跑完，还是异步 catch/then 跑完，最后都必须走这里
-            const finalizeExecution = () => {
+            const finalizeExecution = (effects:Array<{fn:(args:any[])=>any,args:Array<string>}>=[]) => {
                 // 再次检查令牌（防止异步期间被废弃）
                 if (currentExecutionToken.get(triggerPath) !== curToken) return;
-
+                
                 // 此时所有的 Bucket 都算完了（同步的已更新，异步的已 await）
                 // 开始处理下游激活逻辑 (Dependency Propagation)
+                
+
+                if(effects.length){
+                    let result:any = {};
+                    for (let effect of effects) {
+               
+                
+                        const argsObj = (effect.args || []).reduce((acc: any, key: string) => {
+                            acc[key] = targetSchema[key];
+                            return acc;
+                        }, {});
+                
+              
+                        try {
+                            const patch = effect.fn(argsObj);
+                            
+                            // 如果副作用返回了有效的对象，合并到总补丁中
+                            if (patch && typeof patch === 'object') {
+                                Object.assign(result, patch);
+                            }
+                        } catch (e) {
+                            console.warn(e);
+                        }
+                    }
+                    for(let key in result){
+                        targetSchema[key] = result[key]
+                    }
+                    //如果有副作用，不管怎么样都算值变更
+                    hasValueChanged = true;
+                }
+                 
                 if (hasValueChanged) uitrigger.flushPathSet.add(targetPath as any);
+
                 hooks.emit('node:success', { path: targetPath });
                 processed.add(targetPath);
 
@@ -222,14 +275,14 @@ function useMeshTask<T extends string>(
 
                     if (shouldFire) {
                         // 强影响逻辑
-                        if (!stagingArea.has(child) && !processed.has(child) && 
-                            !readyToRunBuffer.has(child) && !processingSet.has(child)) {
-                            // ... 计算阻力逻辑
-                            const effectParentsCount = dependency.GetPrevDependency(child)
-                                .filter(p => processed.has(p)).length;
-                            stagingArea.set(child, effectParentsCount);
-                            hooks.emit('node:pending', { path: child });
-                        }
+                        // if (!stagingArea.has(child) && !processed.has(child) && 
+                        //     !readyToRunBuffer.has(child) && !processingSet.has(child)) {
+                        //     // ... 计算阻力逻辑
+                        //     const effectParentsCount = dependency.GetPrevDependency(child)
+                        //         .filter(p => processed.has(p)).length;
+                        //     stagingArea.set(child, effectParentsCount);
+                        //     hooks.emit('node:pending', { path: child });
+                        // }
                         tryActivateChild(child, 1);
                     } else {
                         // 弱影响逻辑
@@ -290,29 +343,31 @@ function useMeshTask<T extends string>(
                 hooks.callOnError(err);
                 
                 // 错误发生后，依然要执行收尾（清理 processingSet 等）
-                finalizeExecution();     
+                  
             };
             // --- 5. 核心逻辑：处理单个桶的计算结果 ---
             // 这个函数囊括了原来循环体内的所有逻辑
-            let hasValueChanged = false;
-            let notifyNext = false;
-            const targetSchema = data.GetRenderSchemaByPath(targetPath);
+            // let hasValueChanged = false;
+            // let notifyNext = false;
+            // const targetSchema = data.GetRenderSchemaByPath(targetPath);
 
-            // 收集所有的异步 Promise
-            const pendingPromises: Promise<void>[] = [];
+            // // 收集所有的异步 Promise
+            // const pendingPromises: Promise<void>[] = [];
 
             // 提取公共的处理结果逻辑
             const handleSingleResult = (result: any, bucketName: string) => {
                 let isDefaultValueChanged = false;
+                //这部分应该交给副作用处理
                 // Options 检查
-                if (bucketName === "options") {
-                    const isLegal = result.some((item: any) => item.value == targetSchema.defaultValue);
-                    if (!isLegal) {
-                        targetSchema["defaultValue"] = undefined;
-                        hasValueChanged = true;
-                        isDefaultValueChanged = true
-                    }
-                }
+                // if (bucketName === "options") {
+                //     const isLegal = result.some((item: any) => item.value == targetSchema.defaultValue);
+                //     if (!isLegal) {
+                //         targetSchema["defaultValue"] = undefined;
+                //         hasValueChanged = true;
+                //         isDefaultValueChanged = true
+                //     }
+                // }
+
                 // 值更新检查
                 if (result !== targetSchema[bucketName]) {
                     targetSchema[bucketName] = result;
@@ -335,9 +390,11 @@ function useMeshTask<T extends string>(
             
             try {
                 // --- 循环遍历开始 ---
+                //副作用列表
+                const effectsToRun:Array<{fn:()=>any,args:Array<string>}> = [];
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = targetSchema.nodeBucket[bucketName];
-        
+                    effectsToRun.push(...bucket.getSideEffect());
                     // 1. 启动计算
                     const resultOrPromise = bucket.evaluate({
                         affectKey: bucketName,
@@ -371,13 +428,13 @@ function useMeshTask<T extends string>(
                     return Promise.all(pendingPromises)
                         .then(() => {
                             // 全部异步桶都回来了，开始收尾
-                            finalizeExecution();
+                            finalizeExecution(effectsToRun);
                         })
                         .catch(handleError);
                 } else {
                     // -> 同步路径：极速穿透！
                     // 没有任何异步桶，直接收尾，无需微任务延迟
-                    finalizeExecution();
+                    finalizeExecution(effectsToRun);
                     // 返回 void，这在 flushQueue 的 while 循环里意味着可以立即跑下一个
                     return; 
                 }
@@ -525,6 +582,7 @@ function useMeshTask<T extends string>(
                     // 阶段二：贪婪捞取 (Greedy Catch-up) 
                     // ==========================================================
                     if (nodesProcessedInFrame < NODE_QUOTA_PER_FRAME && isGreedy && stagingArea.size > 0 && processingSet.size < MAX_CONCURRENT_TASKS) {
+                        
                         let foundGreedy = false;
                         let releasedCount = 0;
                         // const isFirstFrame = scheduler.getIsFirstFrame();
@@ -558,6 +616,9 @@ function useMeshTask<T extends string>(
                             }
                             continue; 
                         }
+                    
+
+                        
                     }
         
                     // ==========================================================
@@ -651,6 +712,7 @@ function useMeshTask<T extends string>(
                 isLooping = false;
                 // 最终结算检查
                 const remaining = processingSet.size + stagingArea.size + readyToRunBuffer.size;
+              
                 if (remaining === 0) {
                     if (currentExecutionToken.get(triggerPath) === curToken && !isFlowFinished)  {
                         isFlowFinished = true;
