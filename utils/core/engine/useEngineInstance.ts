@@ -10,21 +10,28 @@ import { useSetRule, useSetStrategy } from "../schema/schema-rule";
 import { useSchemaValidators } from "../schema/schema-validators";
 import { useExecutionTrace } from "../plugins/useExecutionTrace";
 import { useDependency, useCheckCycleInGraph } from "../schema/useDepenency";
-import { useHistory } from "../plugins/useHistory";
+ 
 import { useOnError } from "../hooks/useOnError";
 import { useOnSuccess } from "../hooks/useOnSuccess";
 import { usePluginManager } from "../plugins/usePlugin";
 import { useOnStart } from "../hooks/useOnStart";
+import { MeshFlowHistory, MeshPath } from "../types/types";
 
 //入口函数,传入符合格式的json
-export function useFlowScheduler<T, P extends string>(
+export function useFlowScheduler<T, P extends MeshPath>(
     data: any,
-    config: {
-        useGreedy: boolean;
-    },
-    UITrigger: {
-        signalCreateor: () => T;
-        signalTrigger: (signal: T) => void;
+    options:{
+        config: {
+            useGreedy: boolean;
+        },
+        UITrigger: {
+            signalCreateor: () => T;
+            signalTrigger: (signal: T) => void;
+        },
+        modules:{
+            useHistory?:()=>MeshFlowHistory
+        },
+        plugins:{}
     }
 ) {
     let isRulesChanged: boolean = false;
@@ -57,14 +64,42 @@ export function useFlowScheduler<T, P extends string>(
         () => directChildDependencyGraph //传入直接子路径map集合
     );
 
-    const {
-        Undo,
-        Redo,
-        PushIntoHistory,
-        CreateHistoryAction,
-        initCanUndo,
-        initCanRedo,
-    } = useHistory();
+    // const {
+    //     Undo,
+    //     Redo,
+    //     PushIntoHistory,
+    //     CreateHistoryAction,
+    //     initCanUndo,
+    //     initCanRedo,
+    // } = useHistory();
+
+    const historyInternalModule: {
+        pushIntoHistory?: MeshFlowHistory['PushIntoHistory'];
+        createHistoryAction?: MeshFlowHistory['CreateHistoryAction'];
+    } = {};
+    let historyExports:Partial<Exclude<MeshFlowHistory,'pushIntoHistory'|'createHistoryAction'>> = {}
+
+    if(options.modules.useHistory){
+        const {
+            Undo,
+            Redo,
+            PushIntoHistory,
+            CreateHistoryAction,
+            initCanUndo,
+            initCanRedo,
+        } = options.modules.useHistory();
+
+        historyInternalModule.pushIntoHistory = PushIntoHistory;
+        historyInternalModule.createHistoryAction = CreateHistoryAction;
+
+        historyExports = {
+            Undo,
+            Redo,
+            initCanUndo,
+            initCanRedo
+        };
+
+    }
 
     //钩子代码
     const { onError, callOnError } = useOnError();
@@ -90,7 +125,7 @@ export function useFlowScheduler<T, P extends string>(
     } = useForm<T, P>(
         data,
         {
-            useGreedy: config.useGreedy,
+            useGreedy: options.config.useGreedy,
         },
         {
             GetDependencyOrder: () => dependencyOrder,
@@ -100,18 +135,14 @@ export function useFlowScheduler<T, P extends string>(
             GetAllPrevDependency,
             GetPathToLevelMap: () => pathToLevelMap,
         },
-
-        {
-            pushIntoHistory: PushIntoHistory,
-            createHistoryAction: CreateHistoryAction,
-        },
+        historyInternalModule,
         {
             callOnError,
             callOnSuccess,
             callOnStart,
             emit,
         },
-        UITrigger
+        options.UITrigger
     );
 
     const AddNewSchema = (path: string, data: any) => {
@@ -223,10 +254,11 @@ export function useFlowScheduler<T, P extends string>(
         GetAllDependency: () => dependencyGraph,
         GetDependencyOrder: () => dependencyOrder,
 
-        Undo,
-        Redo,
-        initCanUndo,
-        initCanRedo,
+        // Undo,
+        // Redo,
+        // initCanUndo,
+        // initCanRedo,
+        historyExports,
 
         onError,
         onSuccess,

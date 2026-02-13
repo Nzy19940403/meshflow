@@ -4,9 +4,10 @@ import { SchemaBucket, ValidatorsBucket } from "../engine/bucket";
 
 import { MeshEmit } from "../plugins/usePlugin";
 
-import { HistoryActionItem } from "../plugins/useHistory";
+ 
 
 import { useMeshTask } from "../engine/useMeshTask";
+import { MeshPath } from "../types/types";
 
 export type FormItemValidationFn = (value: any) => boolean | string;
 export type FormItemValidationFns = readonly FormItemValidationFn[];
@@ -82,13 +83,13 @@ export type RenderSchemaFn<T> = FinalFlatten<
 
 export type RenderSchema = RenderSchemaFn<FormFieldSchema>;
 
-type Widen<T> = T extends string
-  ? string
-  : T extends number
-  ? number
-  : T extends boolean
-  ? boolean
-  : T;
+// type Widen<T> = T extends string
+//   ? string
+//   : T extends number
+//   ? number
+//   : T extends boolean
+//   ? boolean
+//   : T;
 
 type CollapseChildren<T> = T extends readonly [infer First, ...infer Rest]
   ? FormResultType<First> & CollapseChildren<Rest>
@@ -116,7 +117,7 @@ export type FormResultType<T> = T extends any
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------------------------------*/
-export function useForm<T, P extends string>(
+export function useForm<T, P extends MeshPath>(
   schema: FormFieldSchema,
   config:{
     useGreedy:boolean
@@ -130,10 +131,10 @@ export function useForm<T, P extends string>(
     GetPathToLevelMap: () => Map<P, number>;
   },
 
-  history: {
+  history: Partial<{
     pushIntoHistory: any;
     createHistoryAction: any;
-  },
+  }>,
   hooks: {
     callOnError: any;
     callOnSuccess: any;
@@ -153,7 +154,7 @@ export function useForm<T, P extends string>(
   let uid: number = 0;
   const PathToUid = new Map<P, number>();
   const UidToSchemaMap = new Map<number, RenderSchema>();
-  const GroupsMap = new Map<string, RenderSchema>();
+  const GroupsMap = new Map<MeshPath, RenderSchema>();
 
   let isPending = false;
   const flushPathSet = new Set<P>();
@@ -175,7 +176,7 @@ export function useForm<T, P extends string>(
 
     return targetSchema;
   };
-  const GetGroupByPath = (path: string) => {
+  const GetGroupByPath = (path: MeshPath) => {
     let groupData = GroupsMap.get(path);
     return groupData;
   };
@@ -410,24 +411,24 @@ export function useForm<T, P extends string>(
     taskrunner(triggerPath, initialNodes);
   }
 
-  const updateInputValueRuleManually = (path: P) => {
-    if (!path) {
-      throw Error("path error");
-    }
+  // const updateInputValueRuleManually = (path: P) => {
+  //   if (!path) {
+  //     throw Error("path error");
+  //   }
 
-    let TargetSchema = GetRenderSchemaByPath(path) as RenderSchemaFn<
-      Exclude<FormFieldSchema, GroupField>
-    >;
+  //   let TargetSchema = GetRenderSchemaByPath(path) as RenderSchemaFn<
+  //     Exclude<FormFieldSchema, GroupField>
+  //   >;
 
-    //如果目标的value并没有被其他选项影响，那就不会创建input——value的默认rule
-    if (TargetSchema.nodeBucket.value) {
-      //更新__input-value__规则
+  //   //如果目标的value并没有被其他选项影响，那就不会创建input——value的默认rule
+  //   if (TargetSchema.nodeBucket.value) {
+  //     //更新__input-value__规则
 
-      TargetSchema.nodeBucket.value.updateInputValueRule(
-        TargetSchema.value
-      );
-    }
-  };
+  //     TargetSchema.nodeBucket.value.updateInputValueRule(
+  //       TargetSchema.value
+  //     );
+  //   }
+  // };
 
   const convertToRenderSchema = <T extends FormFieldSchema>(
     data: T,
@@ -467,7 +468,7 @@ export function useForm<T, P extends string>(
          (metadata: { path: P; value: any }) => {
           let data = GetRenderSchemaByPath(metadata.path);
           data.value = metadata.value;
-          updateInputValueRuleManually(metadata.path);
+          // updateInputValueRuleManually(metadata.path);
            notify(metadata.path);
         }
       );
@@ -477,7 +478,7 @@ export function useForm<T, P extends string>(
       //这边要把新的动作和旧的动作一起存入history
       history.pushIntoHistory(item);
 
-      updateInputValueRuleManually(field.path);
+      // updateInputValueRuleManually(field.path);
 
       notify(field.path);
     };

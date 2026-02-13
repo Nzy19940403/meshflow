@@ -36,9 +36,10 @@ export class StrategyStore {
                     return (async () => {
                         let val = await p;
                         
+                        
                         // 处理当前这个异步规则的结果
                         if (rule.entityId === '__base__') { baseValue = val; }
-                        else if (val) { res = rule.value; }
+                        else if (val) { res = val; }
         
                         // 如果还没出结果，继续跑剩下的规则
                         if (typeof res === 'undefined') {
@@ -83,9 +84,8 @@ export class StrategyStore {
             return { res, version }
         },
         'PRIORITY': (api: any, version: number) => {
-            let res = null;
+            let res = undefined;
             const allRules = this.computedRules
-
 
             for (let i = 0; i < allRules.length; i++) {
                 const rule = allRules[i];
@@ -215,14 +215,14 @@ export class SchemaBucket<P>{
         this.strategy.setStrategy(type)
     }
 
-    updateInputValueRule(newVal: any) {
-        if (!this.isValue) return;
-        this.setRule({
-            priority: 1,
-            entityId: '__input_value__',
-            logic: () => newVal
-        });
-    }
+    // updateInputValueRule(newVal: any) {
+    //     if (!this.isValue) return;
+    //     this.setRule({
+    //         priority: 1,
+    //         entityId: '__input_value__',
+    //         logic: () => newVal
+    //     });
+    // }
 
     setDefaultRule(value: any) {
         const rules = new Set<{ logic: () => any }>();
@@ -404,7 +404,7 @@ export class SchemaBucket<P>{
         const currentVersion = ++this.version;
 
         const p = this.strategy.evaluate(api, currentVersion)
-
+        
         // 🔥🔥🔥 核心优化点：探测同步结果 🔥🔥🔥
         if (!(p instanceof Promise)) {
             
@@ -414,8 +414,9 @@ export class SchemaBucket<P>{
         }
         this.pendingPromise = (async () => {
             try {
-                
+                 
                 const { res, version } = await p;
+                 
                 return this.finalizeSync(res, version, api, curToken);
             } catch (err: any) {
                 throw { path: this.path, error: err };

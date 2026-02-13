@@ -1,22 +1,24 @@
+import { MeshPath } from "../types/types";
+
  
 
 export interface MeshEvents {
-    'node:start': { path: string };
-    'node:success': { path: string;};
-    'node:bucket:success':{path:string,key:string,value:any}
+    'node:start': { path: MeshPath };
+    'node:success': { path: MeshPath;};
+    'node:bucket:success':{path:MeshPath,key:string,value:any}
  
-    'node:error': { path: string; error: any };
-    'node:intercept': { path: string;  type:number,detail?:any };
-    'node:release': { path: string; type:number,detail?:any}
-    'node:stagnate': { path: string;type:number }
-    'node:processing': { path:string }
+    'node:error': { path: MeshPath; error: any };
+    'node:intercept': { path: MeshPath;  type:number,detail?:any };
+    'node:release': { path: MeshPath; type:number,detail?:any}
+    'node:stagnate': { path: MeshPath;type:number }
+    'node:processing': { path:MeshPath }
     'flow:wait':{type:number;detail?:any}
-    'flow:fire': { path: string;type:number ; detail?:any };
-    'flow:start':{path:string}
+    'flow:fire': { path: MeshPath;type:number ; detail?:any };
+    'flow:start':{path:MeshPath}
     'flow:success':{duration:string}
     'flow:end':{type:number}
 
-    'node:pending':{path:string}
+    'node:pending':{path:MeshPath}
 
 };
 /*

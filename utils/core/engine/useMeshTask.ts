@@ -1,20 +1,21 @@
 import { MeshEmit } from "../plugins/usePlugin";
 // import { SchemaBucket } from "./bucket";
 import {createScheduler} from '../utils/util'
-function useMeshTask<T extends string>(
+import {  MeshPath } from "../types/types"
+function useMeshTask<P extends MeshPath>(
     config:{
         useGreedy:boolean
     },
     dependency: {
-        GetAllNextDependency: (p: T) => T[],
-        GetAllPrevDependency: (p: T) => T[],
-        GetPrevDependency: (p: T) => T[],
-        GetNextDependency: (p: T) => T[],
-        GetDependencyOrder: () => T[][],
-        GetPathToLevelMap: () => Map<T, number>
+        GetAllNextDependency: (p: P) => P[],
+        GetAllPrevDependency: (p: P) => P[],
+        GetPrevDependency: (p: P) => P[],
+        GetNextDependency: (p: P) => P[],
+        GetDependencyOrder: () => P[][],
+        GetPathToLevelMap: () => Map<P, number>
     },
     data: {
-        GetRenderSchemaByPath: (p: T) => any
+        GetRenderSchemaByPath: (p: P) => any
     },
     hooks:{
         callOnError:any,
@@ -24,10 +25,10 @@ function useMeshTask<T extends string>(
     },
     uitrigger: {
         requestUpdate: () => void,
-        flushPathSet: Set<T>
+        flushPathSet: Set<P>
     }
 ) {
-    const currentExecutionToken: Map<T, symbol> = new Map();
+    const currentExecutionToken: Map<P, symbol> = new Map();
 
     const isGreedy = config.useGreedy;
     
@@ -35,8 +36,8 @@ function useMeshTask<T extends string>(
 
     //运行调用入口
     const TaskRunner = async (
-        triggerPath: T,
-        initialNodes: T[]
+        triggerPath: P,
+        initialNodes: P[]
     ) => {
         //最大并发数
         const MAX_CONCURRENT_TASKS = 5;
@@ -50,35 +51,35 @@ function useMeshTask<T extends string>(
         //scheduler重置
         scheduler.reset();
 
-        // const changedPaths = new Set<T>() //所有产生变化的或者是设置notifyNext的路径
-        const processed = new Set<T>();
-        const processingSet = new Set<T>();
-        const AllAffectedPaths = new Set<T>(
+        // const changedPaths = new Set<P>() //所有产生变化的或者是设置notifyNext的路径
+        const processed = new Set<P>();
+        const processingSet = new Set<P>();
+        const AllAffectedPaths = new Set<P>(
             dependency.GetAllNextDependency(triggerPath)
         );
         AllAffectedPaths.add(triggerPath);
         // changedPaths.add(triggerPath);
 
-        // const queueCountMap = new Map<T, number>();
+        // const queueCountMap = new Map<P, number>();
          //等待执行区,直接上游发生变化了会把节点加入这里
-        const stagingArea = new Map<T, number>();
+        const stagingArea = new Map<P, number>();
         // 等待捕捞区,上游没有变但是不好直接扔所以把这个先扔在这里等待捕捞
-        const resureArea = new Map<number,Set<T>>();
+        const resureArea = new Map<number,Set<P>>();
 
         // let lastYieldTime = performance.now();
 
         // 🔥 优化 1：零阻力缓冲区 (Set 保证唯一性)
-        const readyToRunBuffer = new Set<T>();
+        const readyToRunBuffer = new Set<P>();
 
         // // 🔥 优化 2：预计算汇聚点和静态层级（避免在循环中高频调用函数）
-        // const mergeNodeSet = new Set<T>();
+        // const mergeNodeSet = new Set<P>();
  
         // 获取初始水位线（触发点所在层级）
         const pathToLevelMap = dependency.GetPathToLevelMap();
         const triggerLevel = pathToLevelMap.get(triggerPath) ?? 0;
         let currentLevel = triggerLevel;
         let maxAffectedLevel = 0;
-        const updateWatermark = (path: T) => {
+        const updateWatermark = (path: P) => {
             const descendants = dependency.GetAllNextDependency(path);
             descendants.forEach(p => {
                 const level = pathToLevelMap.get(p) || 0;
@@ -109,7 +110,7 @@ function useMeshTask<T extends string>(
         const BACKPRESSURE_LIMIT = 30;  
       
 
-        const executorNodeCalculate =  (task: { target: T; trigger: T;  }) => {
+        const executorNodeCalculate =  (task: { target: P; trigger: P;  }) => {
             const { target: targetPath, trigger: currentTriggerPath } = task;
             let hasValueChanged = false;
             let notifyNext = false;
@@ -119,7 +120,7 @@ function useMeshTask<T extends string>(
             const pendingPromises: Promise<void>[] = [];
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
             //reasontype -> 1:上游 ${targetPath} 值变了 2: 当上游值没有变但是下游节点已经在stagingArea的时候`上游 ${targetPath} 完成(穿透)`
-            const tryActivateChild = (child: T, reasonType: number) => {
+            const tryActivateChild = (child: P, reasonType: number) => {
                 // 1. 如果已经处理过或正在处理，直接忽略
                 if (processed.has(child) || processingSet.has(child) || readyToRunBuffer.has(child)) {
                     // 这里可以 emit 一个 intercept，但对于性能优化可以省略
@@ -384,7 +385,7 @@ function useMeshTask<T extends string>(
                         affectKey: bucketName,
                         triggerPath: currentTriggerPath,
                         GetRenderSchemaByPath: data.GetRenderSchemaByPath,
-                        GetValueByPath: (p: T) => data.GetRenderSchemaByPath(p).value,
+                        GetValueByPath: (p: P) => data.GetRenderSchemaByPath(p).value,
                         GetToken: () => curToken
                     });
         

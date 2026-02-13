@@ -17,13 +17,50 @@ export type DeepWriteable<T> = T extends (...args: any[]) => any
       ? { readonly [P in keyof T]: DeepReadonly<T[P]> }
       : T;
 
-  export type ForceIdentity<T> = T extends object 
-  ? { [K in keyof T]: T[K] } 
-  : T;
+ 
 
  
 export type FinalFlatten<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 
+
+type Unwrap<T> = T extends ReadonlyArray<infer U> ? U : T;
+
+// 2. 核心推导
+export type InferPath<T, Prefix extends string = ""> = 
+  Unwrap<T> extends infer Node
+    ? Node extends { readonly name: infer N }
+      
+      // === 分支 A: Name 是字符串 ===
+      ? N extends string
+        ? N extends ""
+          // A1: 空名 (匿名组) -> 透传 Prefix，不加层级
+          ? Node extends { readonly children: infer C } 
+            ? InferPath<C, Prefix> 
+            : never
+          // A2: 正常名 -> (当前路径) | (递归孩子路径)
+          : (
+              // 1. 当前路径 (如果 Prefix 为空则直接显示 N，否则拼接)
+              (Prefix extends "" ? N : `${Prefix}.${N}`)
+              |
+              // 2. 递归孩子 (如果有 children)
+              (Node extends { readonly children: infer C }
+                // 🌟 修复点在这里：
+                // 传递给孩子的 Prefix 应该是干净的路径，不要加尾随的点！
+                // 比如：传 "user" 而不是 "user."
+                ? InferPath<C, Prefix extends "" ? N : `${Prefix}.${N}`>
+                : never)
+            )
+
+      // === 分支 B: Name 是数字或 Symbol ===
+      : N extends number | symbol
+        ? N 
+
+      // === 分支 C: 其他类型 ===
+      : never
+
+    // 🔍 没有 name 属性
+    : never
+  : never;
 
 export type GetAllPath<T,Path = ''> = T extends object
 ?{
@@ -31,6 +68,39 @@ export type GetAllPath<T,Path = ''> = T extends object
 }[keyof T]
 :Path;
 
+
+export type InferLeafPath<T, Prefix extends string = ""> = 
+  Unwrap<T> extends infer Node
+    ? Node extends { readonly name: infer N }
+      
+      // === Name 是字符串 ===
+      ? N extends string
+        ? N extends ""
+          // A1: 匿名组 -> 穿透递归 (只管孩子)
+          ? Node extends { readonly children: infer C } 
+            ? InferLeafPath<C, Prefix> 
+            : never
+          // A2: 具名节点
+          : (
+              // 🌟 核心判断：是否有 children？
+              Node extends { readonly children: infer C }
+                // 有孩子 -> 它是 Group，自己不返回，只递归孩子
+                // (注意：这里依然要正确维护 Prefix，防止双点问题)
+                ? InferLeafPath<C, Prefix extends "" ? N : `${Prefix}.${N}`>
+                // 没孩子 -> 它是 Leaf，返回完整路径
+                : (Prefix extends "" ? N : `${Prefix}.${N}`)
+            )
+
+      // === Name 是数字或 Symbol ===
+      : N extends number | symbol
+        // 同样逻辑：没孩子才返回自己
+        ? Node extends { readonly children: infer C }
+          ? InferLeafPath<C, Prefix> // 数字/Symbol通常断开前缀，这里假设透传
+          : N
+
+      : never
+    : never
+  : never;
 
 export type KeysOfUnion<T> = T extends any ? keyof T : never;
 
