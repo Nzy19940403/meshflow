@@ -206,7 +206,7 @@ provide("GetFormData",  engine.data.GetFormData);
 
 provide("SetTrace", engine.config.SetTrace);
 
-provide('AddNewSchema',engine.data.AddNewSchema);
+provide('AddNewSchema',()=>{});
 
 provide('undoAction',engine.history.Undo);
 

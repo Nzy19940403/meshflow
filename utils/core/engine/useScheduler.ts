@@ -6,9 +6,9 @@ import { useMeshTask } from "./useMeshTask";
 export function useScheduler<
     T, //ui trigger中定义的类型
     P extends MeshPath, // 路径类型
-    S   //业务叶子节点元数据类型
+    S = any  //业务叶子节点元数据类型
 >(
-    schema: any,
+    schema: S,
     config: {
         useGreedy: boolean
     },
@@ -31,7 +31,7 @@ export function useScheduler<
         emit: MeshEmit;
     },
     UITrigger: {
-        signalCreateor: () => T;
+        signalCreator: () => T;
         signalTrigger: (signal: T) => void;
     }
 
@@ -135,7 +135,12 @@ export function useScheduler<
             // updateInputValueRuleManually(field.path);
       
             notify(field.path);
-          };
+        };
+        node.dependOn = (cb) => {
+            return  dependOnFn(cb, {
+              ...dependOnContext,
+            });
+        }
     }
     
     const registerNode = (nodeMeta: MeshFlowTaskNode<P,S>) => {
@@ -225,7 +230,8 @@ export function useScheduler<
         registerGroupNode,
         GetNodeByPath,
         GetGroupByPath,
-        notify
+        notify,
+        UITrigger
     }
 
 }

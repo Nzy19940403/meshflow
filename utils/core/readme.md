@@ -61,7 +61,7 @@ const engine = useMeshFlow<Ref<number,number>,AllPath>('main',schema, {
   //   useGreedy:true
   // },
   UITrigger:{//以vue为例
-    signalCreateor: () => ref(0),
+    signalCreator: () => ref(0),
     signalTrigger(signal) {
       signal.value++;
     },

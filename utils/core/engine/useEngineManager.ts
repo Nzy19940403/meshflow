@@ -11,7 +11,7 @@ type GetType<T, P> = P extends keyof T ? T[P] : never;
 
 type BaseEngine<T> = {
   data: {
-    [K in "schema" | "GetFormData" | "AddNewSchema" | 'SetValue' | 'GetValue' | 'GetGroupByPath']: GetType<T, K>;
+    [K in "schema" | "GetFormData"  | 'SetValue' | 'GetValue' | 'GetGroupByPath']: GetType<T, K>;
   };
   config: {
     [K in "SetRule" | "SetRules" | "SetStrategy" | "SetValidators" | "notifyAll" | "SetTrace" | "usePlugin"]: GetType<T, K>;
@@ -58,20 +58,20 @@ const useEngineManager = <
     },
     modules?:M,
     UITrigger:{
-      signalCreateor:()=>T,
+      signalCreator:()=>T,
       signalTrigger:(signal:T)=>void
     }
   }
 ) => {
   try{
-    if(typeof options.UITrigger.signalCreateor !== 'function' || typeof options.UITrigger.signalTrigger !== 'function'){
+    if(typeof options.UITrigger.signalCreator !== 'function' || typeof options.UITrigger.signalTrigger !== 'function'){
       throw Error('ui trigger undefined')
     }
     
     if(engineMap.has(id)){
       throw Error('engineID repeated');
     }
-    const scheduler = useEngineInstance<T, P>(
+    const scheduler = useEngineInstance<T, P, S>(
       Schema, 
       {
         config:options.config||{useGreedy:false},
@@ -97,7 +97,7 @@ const useEngineManager = <
       SetTrace,
       GetAllDependency,
       GetDependencyOrder,
-      AddNewSchema,
+      // AddNewSchema,
 
       // Undo,
       // Redo,
@@ -112,7 +112,7 @@ const useEngineManager = <
   
     const baseEngine: BaseEngine<SchedulerType<T,P>> = {
       config: { SetRule, SetRules, SetStrategy, SetValidators, notifyAll, SetTrace, usePlugin },
-      data: { schema, GetFormData, AddNewSchema, SetValue, GetValue, GetGroupByPath },
+      data: { schema, GetFormData,  SetValue, GetValue, GetGroupByPath },
       dependency: { GetAllDependency, GetDependencyOrder },
       hooks: { onError, onSuccess, onStart }
     };
@@ -162,7 +162,7 @@ const useMeshFlowDefiner = <P extends string>() => {
     id: MeshPath, 
     schema: any, 
     options: {
-        UITrigger: { signalCreateor: () => T, signalTrigger: (s: T) => void },
+        UITrigger: { signalCreator: () => T, signalTrigger: (s: T) => void },
         modules?: M,
         config?: any
     }

@@ -17,16 +17,24 @@ import { useOnSuccess } from "../hooks/useOnSuccess";
 import { usePluginManager } from "../plugins/usePlugin";
 import { useOnStart } from "../hooks/useOnStart";
 import { MeshFlowHistory, MeshPath } from "./useEngineManager";
+import { useScheduler } from "./useScheduler";
+import { useInternalForm } from "@/utils/forms/useForm";
 
-//入口函数,传入符合格式的json
-export function useEngineInstance<T, P extends MeshPath>(
-    data: any,
+ 
+/**
+ * 🌟 入口函数
+ * @template T - UI 信号类型 (Signal)
+ * @template P - 路径联合类型 ("user.name" | "user.age") 也支持number或者symbol
+ * @template S - 业务元数据类型 (默认使用表单的 Meta，但也允许传入 any)
+ */
+export function useEngineInstance<T, P extends MeshPath,S = any>(
+    data:S,
     options:{
         config: {
             useGreedy: boolean;
         },
         UITrigger: {
-            signalCreateor: () => T;
+            signalCreator: () => T;
             signalTrigger: (signal: T) => void;
         },
         modules:{
@@ -104,17 +112,10 @@ export function useEngineInstance<T, P extends MeshPath>(
 
     const { SetTrace, useTrace } = useExecutionTrace<P>();
 
-    const cancelTrace = useTrace();
-    usePlugin(cancelTrace);
+    const Trace = useTrace();
+    usePlugin(Trace);
 
-    const {
-        schema,
-        GetFormData,
-        GetRenderSchemaByPath,
-        GetGroupByPath,
-        notifyAll,
-        convertToRenderSchema,
-    } = useForm<T, P>(
+    const scheduler = useScheduler<T,P,S>(
         data,
         {
             useGreedy: options.config.useGreedy,
@@ -136,16 +137,51 @@ export function useEngineInstance<T, P extends MeshPath>(
         },
         options.UITrigger
     );
+    useInternalForm<T,P>(
+        scheduler,
+        data
+    )
 
-    const AddNewSchema = (path: string, data: any) => {
-        let groupData = GetGroupByPath(path) as RenderSchemaFn<GroupField>;
 
-        let newNode = convertToRenderSchema(data, path);
+    const {
+        schema,
+        GetFormData,
+        GetRenderSchemaByPath,
+        GetGroupByPath,
+        notifyAll,
+        // convertToRenderSchema,
+    } = useForm<T, P>(
+        data as any,
+        {
+            useGreedy: options.config.useGreedy,
+        },
+        {
+            GetDependencyOrder: () => dependencyOrder,
+            GetAllNextDependency,
+            GetNextDependency,
+            GetPrevDependency,
+            GetAllPrevDependency,
+            GetPathToLevelMap: () => pathToLevelMap,
+        },
+        historyInternalModule,
+        {
+            callOnError,
+            callOnSuccess,
+            callOnStart,
+            emit,
+        },
+        options.UITrigger
+    );
 
-        groupData.children.push(newNode);
-        groupData.dirtySignal.value++;
-        return newNode;
-    };
+    // const AddNewSchema = (path: string, data: any) => {
+    //     let groupData = GetGroupByPath(path) as RenderSchemaFn<GroupField>;
+
+    //     let newNode = convertToRenderSchema(data, path);
+
+    //     groupData.children.push(newNode);
+    //     groupData.dirtySignal.value++;
+    //     return newNode;
+    // };
 
     const { SetRule, SetRules } = useSetRule<P>(
         GetRenderSchemaByPath,
@@ -241,7 +277,7 @@ export function useEngineInstance<T, P extends MeshPath>(
         GetFormData,
         GetGroupByPath,
         notifyAll: notifyAllWrapper,
-        AddNewSchema,
+        // AddNewSchema,
 
         GetAllDependency: () => dependencyGraph,
         GetDependencyOrder: () => dependencyOrder,

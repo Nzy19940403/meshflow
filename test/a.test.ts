@@ -4,7 +4,7 @@ import { useMeshFlow, deleteEngine } from "../utils/core/engine/useEngineManager
  
 const createMockTrigger = () => ({
   UITrigger:{
-    signalCreateor: () => 0,
+    signalCreator: () => 0,
     signalTrigger: (s: any) => { s++ }
   }
 });

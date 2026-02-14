@@ -131,7 +131,7 @@ let newdata = generateHugeMesh();
 //     useGreedy:false
 //   },
 //   UITrigger:{
-//     signalCreateor: () => ref(0),
+//     signalCreator: () => ref(0),
 //     signalTrigger(signal) {
 //       signal.value++;
 //     },
@@ -146,7 +146,7 @@ const engine = useMeshFlow('main-engine',clonedschema, {
     useGreedy:false
   },
   UITrigger:{
-    signalCreateor: () => ref(0),
+    signalCreator: () => ref(0),
     signalTrigger(signal) {
       signal.value++;
     },

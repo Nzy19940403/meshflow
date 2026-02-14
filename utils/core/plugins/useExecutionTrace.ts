@@ -139,8 +139,10 @@ export function useExecutionTrace<T>(
     onUpdate(currentStatus);
 
     // 3. 返回卸载函数
-    return () => {
-      callbackMap.delete(myPath);
+    return {
+      cancel:() => {
+        callbackMap.delete(myPath);
+      }
     };
   };
 

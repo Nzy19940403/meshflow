@@ -20,7 +20,7 @@ export type DeepWriteable<T> = T extends (...args: any[]) => any
  
 
  
-export type FinalFlatten<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
+export type FinalFlatten<T> = T extends infer O ? { [K in keyof O]: O[K] } : never; //展开
 
 
 type Unwrap<T> = T extends ReadonlyArray<infer U> ? U : T;

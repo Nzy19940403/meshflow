@@ -132,7 +132,7 @@ export function useForm<T, P extends MeshPath>(
     emit: MeshEmit;
   },
   UITrigger: {
-    signalCreateor: () => T;
+    signalCreator: () => T;
     signalTrigger: (signal: T) => void;
   }
 ) {
@@ -427,7 +427,7 @@ export function useForm<T, P extends MeshPath>(
     const name = "name" in data ? (data as any).name : undefined;
     const currentPath = name ? (path === "" ? name : `${path}.${name}`) : path;
     // const dirtySignal = ref(0);
-    const dirtySignal = UITrigger.signalCreateor();
+    const dirtySignal = UITrigger.signalCreator();
 
     let _uid: number = uid++;
 
