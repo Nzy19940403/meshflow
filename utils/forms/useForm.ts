@@ -169,14 +169,16 @@ export function useInternalForm<T, P extends MeshPath>(
         // === 分支 B: 处理 Task (Input, Select...) ===
 
         // 1. 准备 Buckets
-        const buckets: Record<string, any> = {};
+        const buckets: Record<string, any> = {
+            // _debug_id: Math.random().toString(36).slice(2)
+        };
 
 
         // 2. 准备 State (这是数据源头)
         const state = {
             value: data.value
         };
-
+       
         // 3. 向 Scheduler 注册
         // 注意：scheduler.registerNode 返回的是引擎内部的 Node 对象
         // 这个对象里包含了 dependOn, notifyKeys 等逻辑
@@ -186,7 +188,7 @@ export function useInternalForm<T, P extends MeshPath>(
             uid: 0,
             state: state, // 引用传递
             meta: data,
-            buckets: buckets,
+            nodeBucket: buckets,
             notifyKeys: new Set(['value']),
             dirtySignal,
             dependOn: null as any // Scheduler 会填充
@@ -213,7 +215,7 @@ export function useInternalForm<T, P extends MeshPath>(
             set value(v) { registeredNode.state.value = v }, // ⚠️ UI 直接赋值不会触发 notify，必须走 dependOn
 
             // 注入 buckets 以便 UI 或插件访问
-            nodeBucket: registeredNode.buckets,
+            nodeBucket: registeredNode.nodeBucket,
 
             // 🌟 把 Scheduler 注入的 dependOn 暴露给 UI (如果有需要)
             dependOn: registeredNode.dependOn,
@@ -221,7 +223,7 @@ export function useInternalForm<T, P extends MeshPath>(
             // 绑定 meta
             meta: registeredNode.meta
         };
-
+        console.log(uiNode)
         return uiNode as RenderSchema;
     };
 

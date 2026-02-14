@@ -86,7 +86,7 @@ export class StrategyStore {
         'PRIORITY': (api: any, version: number) => {
             let res = undefined;
             const allRules = this.computedRules
-
+            
             for (let i = 0; i < allRules.length; i++) {
                 const rule = allRules[i];
                 const p = rule.logic(api);
@@ -147,6 +147,7 @@ export class StrategyStore {
     }
 
     evaluate(api: any, currentVersion: number) {
+        
         return this.CurrentStrategy(api, currentVersion)
     }
 }

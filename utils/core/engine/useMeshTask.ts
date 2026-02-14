@@ -115,7 +115,7 @@ function useMeshTask<P extends MeshPath>(
             let hasValueChanged = false;
             let notifyNext = false;
             const targetSchema = data.GetNodeByPath(targetPath);
-
+      
             // 收集所有的异步 Promise
             const pendingPromises: Promise<void>[] = [];
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
@@ -356,13 +356,15 @@ function useMeshTask<P extends MeshPath>(
                 // 值更新检查
                 if (result !== targetSchema[bucketName]) {
                     targetSchema[bucketName] = result;
+                    targetSchema.state[bucketName] = result;
                     hasValueChanged = true;
                     hooks.emit('node:bucket:success', { path: targetPath, key: bucketName, value: result });
                     if (bucketName === 'value') {
+                     
                         isValueChanged = true;
                     }
                 }
-                
+                 
                 const bucket = targetSchema.nodeBucket[bucketName];
                 if (bucket.isForceNotify()) notifyNext = true;
                 // if (hasValueChanged) trigger.flushPathSet.add(targetPath as any);
@@ -379,13 +381,13 @@ function useMeshTask<P extends MeshPath>(
                 const effectsToRun:Array<{fn:()=>any,args:Array<string>}> = [];
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = targetSchema.nodeBucket[bucketName];
-                    effectsToRun.push(...bucket.getSideEffect());
+                    // effectsToRun.push(...bucket.getSideEffect());
                     // 1. 启动计算
                     const resultOrPromise = bucket.evaluate({
                         affectKey: bucketName,
                         triggerPath: currentTriggerPath,
                         GetRenderSchemaByPath: data.GetNodeByPath,
-                        GetValueByPath: (p: P) => data.GetNodeByPath(p).value,
+                        GetValueByPath: (p: P) => data.GetNodeByPath(p).state,
                         GetToken: () => curToken
                     });
         

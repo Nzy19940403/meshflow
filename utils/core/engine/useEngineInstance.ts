@@ -137,41 +137,51 @@ export function useEngineInstance<T, P extends MeshPath,S = any>(
         },
         options.UITrigger
     );
-    useInternalForm<T,P>(
+
+    const {
+        GetGroupByPath,
+        GetNodeByPath,
+        notifyAll
+    } = scheduler;
+
+    const {
+        uiSchema,
+        GetFormData
+    } = useInternalForm<T,P>(
         scheduler,
         data
     )
 
 
-    const {
-        schema,
-        GetFormData,
-        GetRenderSchemaByPath,
-        GetGroupByPath,
-        notifyAll,
-        // convertToRenderSchema,
-    } = useForm<T, P>(
-        data as any,
-        {
-            useGreedy: options.config.useGreedy,
-        },
-        {
-            GetDependencyOrder: () => dependencyOrder,
-            GetAllNextDependency,
-            GetNextDependency,
-            GetPrevDependency,
-            GetAllPrevDependency,
-            GetPathToLevelMap: () => pathToLevelMap,
-        },
-        historyInternalModule,
-        {
-            callOnError,
-            callOnSuccess,
-            callOnStart,
-            emit,
-        },
-        options.UITrigger
-    );
+    // const {
+    //     schema,
+    //     GetFormData,
+    //     GetRenderSchemaByPath,
+    //     GetGroupByPath,
+    //     notifyAll,
+    //     // convertToRenderSchema,
+    // } = useForm<T, P>(
+    //     data as any,
+    //     {
+    //         useGreedy: options.config.useGreedy,
+    //     },
+    //     {
+    //         GetDependencyOrder: () => dependencyOrder,
+    //         GetAllNextDependency,
+    //         GetNextDependency,
+    //         GetPrevDependency,
+    //         GetAllPrevDependency,
+    //         GetPathToLevelMap: () => pathToLevelMap,
+    //     },
+    //     historyInternalModule,
+    //     {
+    //         callOnError,
+    //         callOnSuccess,
+    //         callOnStart,
+    //         emit,
+    //     },
+    //     options.UITrigger
+    // );
 
     // const AddNewSchema = (path: string, data: any) => {
     //     let groupData = GetGroupByPath(path) as RenderSchemaFn<GroupField>;
@@ -184,14 +194,15 @@ export function useEngineInstance<T, P extends MeshPath,S = any>(
     // };
 
     const { SetRule, SetRules } = useSetRule<P>(
-        GetRenderSchemaByPath,
+        GetNodeByPath,
         dependencyGraph,
-        predecessorGraph
+        predecessorGraph,
+        scheduler
     );
 
-    const { SetStrategy } = useSetStrategy(GetRenderSchemaByPath);
+    const { SetStrategy } = useSetStrategy(GetNodeByPath);
 
-    const { SetValidators } = useSchemaValidators<P>(GetRenderSchemaByPath);
+    const { SetValidators } = useSchemaValidators<P>(GetNodeByPath);
 
     const check = useCheckCycleInGraph<P>(dependencyGraph);
 
@@ -251,19 +262,20 @@ export function useEngineInstance<T, P extends MeshPath,S = any>(
     };
 
     const SetValue = (path: P, value: any) => {
-        let node = GetRenderSchemaByPath(path);
+        let node = GetNodeByPath(path);
         node.dependOn(() => {
             return value;
         });
     };
 
     const GetValue = (path: P, key = "value") => {
-        const node = GetRenderSchemaByPath(path);
+        const node = GetNodeByPath(path);
         return node[key as keyof typeof node];
     };
 
     return {
-        schema,
+        // schema,
+        schema:uiSchema,
         SetRule: setRuleWrapper,
         SetRules: setRulesWrapper,
         SetStrategy,

@@ -94,7 +94,7 @@ const handleValueChange = async (newValue:any)=>{
 watch(()=>props.dirtySignal.value,()=>{
 
     renderSchema.value = updateConfig(props.fieldConfig);
- 
+   
 },{
     deep:false
 })

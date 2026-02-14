@@ -66,7 +66,9 @@ export function useScheduler<
             UITrigger.signalTrigger(target.dirtySignal);
         }
     };
-
+    setTimeout(() => {
+        console.log(UidToNodeMap)
+    }, 5000);
     const requestUpdate = () => {
         if (isPending) return;
         isPending = true;
@@ -104,7 +106,7 @@ export function useScheduler<
 
         let dependOnFn =  (cb: (data: any) => any, field: any) => {
             const newVal = cb(field);
-      
+           
             //首先更新最新的数据
             const schema = GetNodeByPath(field.path);
             //历史操作
@@ -152,9 +154,10 @@ export function useScheduler<
 
         const node: MeshFlowTaskNode<P,S> = {
             ...nodeMeta,
+            nodeBucket:nodeMeta.nodeBucket,
             uid: currentId
         };
-
+        
         createNodeDependOnFn(node);
 
         PathToUidMap.set(node.path, currentId);
@@ -188,7 +191,6 @@ export function useScheduler<
         if(!targetSchema){
             throw Error('wrong ID')
         }
-
         return targetSchema;
     };
 
@@ -200,13 +202,13 @@ export function useScheduler<
 
     const notify = (path: P) => {
         //notifyAll完成之前不允许操作
-        if (forbidUserNotify) {
-            return
-        }
+        // if (forbidUserNotify) {
+        //     return
+        // }
 
 
         let inDegree = GetNodeByPath(path);
-
+         
         if (!inDegree) {
             throw Error("Node undefined");
         }
@@ -225,13 +227,19 @@ export function useScheduler<
         taskrunner(triggerPath, initialNodes);
     };
 
+    const notifyAll = async () => {
+
+    }
+
     return {
         registerNode,
         registerGroupNode,
         GetNodeByPath,
         GetGroupByPath,
         notify,
-        UITrigger
+        notifyAll,
+        UITrigger,
+        UidToNodeMap
     }
 
 }

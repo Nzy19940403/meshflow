@@ -3,6 +3,7 @@
  
 import { DefaultStarategy, SchemaBucket } from "../engine/bucket";
 import { FormFieldSchema, GroupField, RenderSchema, RenderSchemaFn } from "../schema/schema";
+import { MeshFlowTaskNode } from "../types/types";
 import { KeysOfUnion } from '../utils/util';
 
 export interface logicApi {
@@ -30,8 +31,11 @@ const CreateRule = <P>(targetPath: P, targetKey: KeysOfUnion<Exclude<FormFieldSc
     //这里的参数就是调用evaluate的时候传入的参数
     const logic = (api: any) => {
 
-        const currentDeps = options.triggerPaths.map(path => api.GetValueByPath(path));
-
+        const currentDeps = options.triggerPaths.map(path =>{
+            return api.GetValueByPath(path).value 
+             
+        });
+        
         // if (lastDeps && currentDeps.every((val, i) => val === lastDeps![i])) {
         //     return cache; 
         // }
@@ -66,9 +70,11 @@ const CreateRule = <P>(targetPath: P, targetKey: KeysOfUnion<Exclude<FormFieldSc
 }
 
 export const useSetRule = <P>(
-    Finder: (path: P) => RenderSchemaFn<Exclude<FormFieldSchema,GroupField>>, 
+    // Finder: (path: P) => RenderSchemaFn<Exclude<FormFieldSchema,GroupField>>, 
+    Finder: (path: P) => MeshFlowTaskNode,
     dependencyGraph: Map<P, Set<P>>,
-    predecessorGraph: Map<P, Set<P>>
+    predecessorGraph: Map<P, Set<P>>,
+    scheduler:any
 ) => {
     if (!Finder) {
         throw Error('')
@@ -108,18 +114,19 @@ export const useSetRule = <P>(
         effectArgs?:Array<KeysOfUnion<Exclude<FormFieldSchema, GroupField>>>
     } = { logic: (api) => { } }) => {
         
-         
+       
         // let outDegree = GetByPath(outDegreePath);
         let inDegree = GetByPath(inDegreePath);
    
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
         let newRule = CreateRule(inDegreePath, key, { ...options, triggerPaths: [outDegreePath] });
 
-        const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).value])
-
+        // const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).value])
+        const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).state.value])
         // 维护图关系
         updateGraphRelation(outDegreePath, inDegreePath);
-       
+        console.log(`[SetRule] 操作的 Bucket ID:`, inDegree.nodeBucket?._debug_id ,`indegree path`,inDegree.path);
+
         if (inDegree.nodeBucket[key]) {
            
             inDegree.nodeBucket[key].setRule(newRule,DepsArray);
@@ -147,8 +154,10 @@ export const useSetRule = <P>(
                 })
             }
             inDegree.nodeBucket[key] = newBucket;
+            
         }
-
+       
+     
         if(options.forceNotify){
             //如果设置了强制刷新就给桶设置成强制刷新，一个桶里面只要有
             inDegree.nodeBucket[key].forceNotify(); 
@@ -189,8 +198,10 @@ export const useSetRule = <P>(
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
         let newRule = CreateRule(inDegreePath, key, { ...options, triggerPaths: outDegreePaths });
 
-        const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).value])
+        // const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).value])
+        const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).state.value])
 
+        
         if (inDegree.nodeBucket[key]) {
 
             inDegree.nodeBucket[key].setRules(newRule,DepsArray);
@@ -219,6 +230,7 @@ export const useSetRule = <P>(
             }
 
             inDegree.nodeBucket[key] = newBucket;
+
         }
 
         if(options.forceNotify){
