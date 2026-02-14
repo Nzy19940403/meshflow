@@ -6,19 +6,20 @@ import {
     initFormData,
     useForm,
 } from "../schema/schema";
-import { useSetRule, useSetStrategy } from "../schema/schema-rule";
+import { useSetRule } from "../dependency/useSetRule";
+import { useSetStrategy } from '../dependency/useStrategy';
 import { useSchemaValidators } from "../schema/schema-validators";
 import { useExecutionTrace } from "../plugins/useExecutionTrace";
-import { useDependency, useCheckCycleInGraph } from "../schema/useDepenency";
+import { useDependency, useCheckCycleInGraph } from "../dependency/useDepenency";
  
 import { useOnError } from "../hooks/useOnError";
 import { useOnSuccess } from "../hooks/useOnSuccess";
 import { usePluginManager } from "../plugins/usePlugin";
 import { useOnStart } from "../hooks/useOnStart";
-import { MeshFlowHistory, MeshPath } from "../types/types";
+import { MeshFlowHistory, MeshPath } from "./useEngineManager";
 
 //入口函数,传入符合格式的json
-export function useFlowScheduler<T, P extends MeshPath>(
+export function useEngineInstance<T, P extends MeshPath>(
     data: any,
     options:{
         config: {
@@ -63,15 +64,6 @@ export function useFlowScheduler<T, P extends MeshPath>(
         () => directParentDependencyGraph, //传入直接父路径map集合
         () => directChildDependencyGraph //传入直接子路径map集合
     );
-
-    // const {
-    //     Undo,
-    //     Redo,
-    //     PushIntoHistory,
-    //     CreateHistoryAction,
-    //     initCanUndo,
-    //     initCanRedo,
-    // } = useHistory();
 
     const historyInternalModule: {
         pushIntoHistory?: MeshFlowHistory['PushIntoHistory'];

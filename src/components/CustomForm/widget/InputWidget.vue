@@ -2,16 +2,17 @@
     <template v-if="!renderSchema.hidden">
  
         <v-text-field
+        ref="inputref"
         :key="dirtySignal.value"
         :color="renderSchema.theme"
         :base-color="renderSchema.theme"
         :rules="ValidatorList"
         :label="renderSchema.label"
         :required="renderSchema.required"
-        :model-value="renderSchema.value"
+        :model-value="_value"
         @update:model-value="handleValueChange"
-  
-   
+        validate-on="lazy"
+        @blur="handleBlur"
         :disabled="renderSchema.disabled"
         :readonly="renderSchema.readonly"></v-text-field>
     </template>
@@ -21,7 +22,7 @@
 
 
 <script setup lang="ts">
-import { shallowRef,Ref,watch} from 'vue';
+import { shallowRef,Ref,watch,ref,nextTick} from 'vue';
 import { VTextField } from 'vuetify/components';
 import type {RenderSchemaFn,InputField} from '@/utils/core/schema/schema';
 import { ValidatorsBucket } from '@/utils/core/engine/bucket';
@@ -57,7 +58,9 @@ function updateConfig<T extends RenderSchemaFn<InputField>>(data: T): T{
         ...data,
     }
 }
-
+const inputref:Ref<any> = ref(null);
+const _value = shallowRef(renderSchema.value.value);
+const allowToCommit = shallowRef(false)
   
 const notify =  (newValue: any,)=>{
    
@@ -65,19 +68,38 @@ const notify =  (newValue: any,)=>{
        return newValue
    })
 }
-const debnounceCommit = useDebounce(notify,500)
+const changeValue = (val:any)=>{
+    _value.value = val;
+    nextTick(async()=>{
+        const valid = await inputref.value.validate();
+        //没错就允许提交
+        if(valid.length===0){
+            allowToCommit.value = true;
+        }
+    })
+    
+   
+}
+const debnounceCommit = useDebounce(changeValue,800)
 
 const handleValueChange = async (newValue:any)=>{
-
+    allowToCommit.value = false;
     debnounceCommit(newValue)
-//   notify(newValue);
+     
 }
-
+const handleBlur = ()=>{
+     
+    if(allowToCommit.value){
+        notify(_value.value)
+    }
+    
+}
  
 
 watch(()=>props.dirtySignal.value,()=>{
-    // console.log('监听到更新');
+    
     renderSchema.value = updateConfig(props.fieldConfig);
+    _value.value =  renderSchema.value.value
 },{
     deep:false
 });

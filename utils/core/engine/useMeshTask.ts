@@ -1,7 +1,7 @@
-import { MeshEmit } from "../plugins/usePlugin";
+ 
 // import { SchemaBucket } from "./bucket";
 import {createScheduler} from '../utils/util'
-import {  MeshPath } from "../types/types"
+import {  MeshPath,MeshEmit } from "./useEngineManager"
 function useMeshTask<P extends MeshPath>(
     config:{
         useGreedy:boolean
@@ -15,7 +15,7 @@ function useMeshTask<P extends MeshPath>(
         GetPathToLevelMap: () => Map<P, number>
     },
     data: {
-        GetRenderSchemaByPath: (p: P) => any
+        GetNodeByPath: (p: P) => any
     },
     hooks:{
         callOnError:any,
@@ -114,7 +114,7 @@ function useMeshTask<P extends MeshPath>(
             const { target: targetPath, trigger: currentTriggerPath } = task;
             let hasValueChanged = false;
             let notifyNext = false;
-            const targetSchema = data.GetRenderSchemaByPath(targetPath);
+            const targetSchema = data.GetNodeByPath(targetPath);
 
             // 收集所有的异步 Promise
             const pendingPromises: Promise<void>[] = [];
@@ -384,8 +384,8 @@ function useMeshTask<P extends MeshPath>(
                     const resultOrPromise = bucket.evaluate({
                         affectKey: bucketName,
                         triggerPath: currentTriggerPath,
-                        GetRenderSchemaByPath: data.GetRenderSchemaByPath,
-                        GetValueByPath: (p: P) => data.GetRenderSchemaByPath(p).value,
+                        GetRenderSchemaByPath: data.GetNodeByPath,
+                        GetValueByPath: (p: P) => data.GetNodeByPath(p).value,
                         GetToken: () => curToken
                     });
         

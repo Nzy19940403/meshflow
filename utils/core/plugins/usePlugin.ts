@@ -1,26 +1,4 @@
-import { MeshPath } from "../types/types";
 
- 
-
-export interface MeshEvents {
-    'node:start': { path: MeshPath };
-    'node:success': { path: MeshPath;};
-    'node:bucket:success':{path:MeshPath,key:string,value:any}
- 
-    'node:error': { path: MeshPath; error: any };
-    'node:intercept': { path: MeshPath;  type:number,detail?:any };
-    'node:release': { path: MeshPath; type:number,detail?:any}
-    'node:stagnate': { path: MeshPath;type:number }
-    'node:processing': { path:MeshPath }
-    'flow:wait':{type:number;detail?:any}
-    'flow:fire': { path: MeshPath;type:number ; detail?:any };
-    'flow:start':{path:MeshPath}
-    'flow:success':{duration:string}
-    'flow:end':{type:number}
-
-    'node:pending':{path:MeshPath}
-
-};
 /*
    给node:intercept加入几个状态
     1:token过期的拦截
@@ -31,12 +9,9 @@ export interface MeshEvents {
     5,整体水位进度还没到路径层级,但是入度已经减到0了,在非贪婪模式下暂时扣押,
     6:最后的截流,清空resureArea,这是静默的信号,
 */
-export type MeshEventName = keyof MeshEvents;
 
-export type MeshEmit = <K extends MeshEventName>(
-    event: K, 
-    data: MeshEvents[K]
-  ) => void;
+import { MeshEmit, MeshEventName } from "../engine/useEngineManager";
+
 
 const usePluginManager = ()=>{
     const plugins = new Set();

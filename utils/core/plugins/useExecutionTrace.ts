@@ -21,7 +21,8 @@ interface TraceInternalEvents {
 
   'flow:fire': { path: string;type:number ; detail?:any };
 }
-type TraceEventName = keyof TraceInternalEvents
+type TraceEventName = keyof TraceInternalEvents;
+
 export function useExecutionTrace<T>(
 
 ) {

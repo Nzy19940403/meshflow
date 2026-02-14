@@ -57,7 +57,7 @@ const notify = (newValue: any,)=>{
         return newValue
     })
 }
-const debouncedCommit = useDebounce(notify, 500);
+const debouncedCommit = useDebounce(notify,1000);
 
 const renderSchema = shallowRef<RenderSchemaFn<InputField>>(updateConfig(props.fieldConfig));
 const ValidatorList:any = [
@@ -81,17 +81,14 @@ function updateConfig<T extends RenderSchemaFn<InputField>>(data: T): T{
 
  
 const onBlurHandler = ()=>{
-  
- 
     renderSchema.value
-   
- 
 }
  
 
 const handleValueChange = async (newValue:any)=>{
    
     notify(newValue)
+    // debouncedCommit(newValue)
 }
 
 watch(()=>props.dirtySignal.value,()=>{

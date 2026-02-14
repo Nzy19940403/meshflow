@@ -123,9 +123,7 @@
     <v-card class="text-center" height="200">
         <v-card-text>
           <div>
-            <v-btn @click="handleTest">
-              测试
-            </v-btn>
+        
             This is a bottom sheet that is using the inset prop
           </div>
         </v-card-text>
@@ -166,6 +164,7 @@ import { shallowRef,defineAsyncComponent } from "vue";
 import {setupBusinessRules} from '../formRules/FormRules';
 import {  useRouter } from "vue-router";
 import { useEngine } from "@/utils/core/engine/useEngineManager";
+import { useHistory } from "@/utils/plugins/history/useHistory";
 // import { useEngine } from "@meshflow/core";
 
 defineOptions({
@@ -178,7 +177,12 @@ const showDrawer = shallowRef(true)
 
 const dialogContent = defineAsyncComponent(()=>import('./AddNewSchema.vue'))
 
-const engine = useEngine('main-engine');
+const engine = useEngine<{
+  history: typeof useHistory,
+}>('main-engine');
+
+ 
+ 
 
 const schema = engine.data.schema;
 
@@ -216,11 +220,7 @@ provide('historyStatus',{
 const handleFormSubmit = (data: FormDataModel) => {
   console.log(data);
 };
-
-const handleTest = ()=>{
-   
-  engine.data.SetValue('mesh.a1_val',50)
-}
+ 
 
 const openDialog = () => {
   showDialog.value = !showDialog.value

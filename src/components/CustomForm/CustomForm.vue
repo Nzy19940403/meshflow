@@ -6,11 +6,11 @@
     ></CustomFormNode>
   </v-form>
 
-  <!-- <div class="flex flex-row-reverse">
+  <div class="flex flex-row-reverse">
     <v-btn variant="tonal" color="secondary" @click="handleSubmit" size="large">
       提交
     </v-btn>
-  </div> -->
+  </div>
 
   <v-fab size="large" icon="mdi-history" location="top right" :absolute="true">
     <v-icon icon="mdi-history"></v-icon>
@@ -58,6 +58,8 @@ const undoSize = shallowRef(0);
 const redoSize = shallowRef(0);
 
 const formRef = ref();
+
+
 
 let internalSchema = shallowRef<RenderSchema>(props.schema);
 

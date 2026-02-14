@@ -51,6 +51,7 @@ export const RenderApp = (props = {}) => {
             path: '/Editor', 
             component: ()=>import('@/src/components/EditorLayout.vue'),
             children:[
+       
                 {
                     path:'',
                     name: 'EditorForm',

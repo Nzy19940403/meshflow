@@ -2,12 +2,8 @@ import { FinalFlatten } from "../utils/util";
 
 import { SchemaBucket, ValidatorsBucket } from "../engine/bucket";
 
-import { MeshEmit } from "../plugins/usePlugin";
-
- 
-
 import { useMeshTask } from "../engine/useMeshTask";
-import { MeshPath } from "../types/types";
+import { MeshPath,MeshEmit } from "../engine/useEngineManager";
 
 export type FormItemValidationFn = (value: any) => boolean | string;
 export type FormItemValidationFns = readonly FormItemValidationFn[];
@@ -83,13 +79,7 @@ export type RenderSchemaFn<T> = FinalFlatten<
 
 export type RenderSchema = RenderSchemaFn<FormFieldSchema>;
 
-// type Widen<T> = T extends string
-//   ? string
-//   : T extends number
-//   ? number
-//   : T extends boolean
-//   ? boolean
-//   : T;
+ 
 
 type CollapseChildren<T> = T extends readonly [infer First, ...infer Rest]
   ? FormResultType<First> & CollapseChildren<Rest>
@@ -245,7 +235,7 @@ export function useForm<T, P extends MeshPath>(
     },
     dependency,
     {
-      GetRenderSchemaByPath,
+      GetNodeByPath:GetRenderSchemaByPath,
     },
     hooks,
     //UITrigger

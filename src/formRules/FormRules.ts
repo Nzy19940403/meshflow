@@ -1,7 +1,7 @@
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
 import { DefaultStarategy } from "@/utils/core/engine/bucket";
 import { FormFieldSchema, GroupField, InputField,CheckboxField,SelectField } from "@/utils/core/schema/schema";
-import { logicApi } from "@/utils/core/schema/schema-rule";
+import { logicApi } from "@/utils/core/dependency/useSetRule";
 import { KeysOfUnion } from "@/utils/core/utils/util";
  
  
@@ -83,7 +83,7 @@ export function setupBusinessRules(
             return new Promise((resolve,reject)=>{
               setTimeout(() => {
                 resolve(calculatePrice(api))
-              }, 2000);
+              }, 1000);
             })
             // return  calculatePrice(api);
           },
@@ -250,6 +250,8 @@ export function setupBusinessRules(
         }
       );
       
+       
+
       // 强约束：当处于“中国区 + 标准合规”时，为了备案或资源调度策略，禁用 GPU 实例选项。
       
       SetRules(
@@ -330,6 +332,14 @@ export function setupBusinessRules(
             return undefined;
           },
           value: true,
+          effect:(args)=>{
+            const {disabled} = args;
+            if(disabled){
+              return {
+                value:false
+              }
+            }
+          },
         }
       );
       
@@ -346,6 +356,14 @@ export function setupBusinessRules(
             return undefined;
           },
           value: true,
+          effect:(args)=>{
+            const {disabled} = args;
+            if(disabled){
+              return {
+                value:false
+              }
+            }
+          },
         }
       );
       
@@ -354,42 +372,47 @@ export function setupBusinessRules(
       //设置影响自动扣费的description属性相关的字段
       // 目前的问题是，descript受地区和合规性的影响，所以比如我修改合规性的时候，触发了description的桶计算，但是triggerPath应该是合规性，
       // 不应该会触发地区设置的rule的检测，目前这一块需要调整
-      SetRule(
-        "cloudConsole.environment.compliance",
-        "cloudConsole.billing.autoRenew",
-        "description",
-        {
-          logic: (api) => {
-            const [value] = api.slot.triggerTargets;
+      // SetRule(
+      //   "cloudConsole.environment.compliance",
+      //   "cloudConsole.billing.autoRenew",
+      //   "description",
+      //   {
+      //     logic: (api) => {
+      //       const [value] = api.slot.triggerTargets;
              
-            if (value === "financial") return true;
-            return undefined;
-          },
-          value: "金融级合规要求人工确认订单",
-        }
-      );
+      //       if (value === "financial") return true;
+      //       return undefined;
+      //     },
+      //     value: "金融级合规要求人工确认订单",
+      //   }
+      // );
       // 如果有订阅就不会走全量计算的路，只有对应的path下的value变更的时候才会触发logic计算
-      SetRule(
-        "cloudConsole.environment.region",
+      SetRules(
+        ["cloudConsole.environment.region","cloudConsole.environment.compliance"],
         "cloudConsole.billing.autoRenew",
         "description",
         {
           logic: async (api) => {
-            const [value] = api.slot.triggerTargets;
+            const [region,compliance] = api.slot.triggerTargets;
             
-            if (value === "global") return true;
-      
-            return undefined;
+            if(region=='global'&&compliance==='financial') return '跨境金融场景：需人工确认订单且不支持自动扣款'
+
+            if (region === "global") return "海外机房暂不支持自动扣款";
+
+            if(compliance==='financial') return "金融级合规要求人工确认订单"
+
+            return undefined
+            
           },
-          value: "海外机房暂不支持自动扣款",
+          // value: "海外机房暂不支持自动扣款",
         }
       );
       
-      SetStrategy(
-        "cloudConsole.billing.autoRenew",
-        "description",
-        DefaultStarategy.OR
-      );
+      // SetStrategy(
+      //   "cloudConsole.billing.autoRenew",
+      //   "description",
+      //   DefaultStarategy.OR
+      // );
       // 设置完rule之后设置是否有环
   
       notifyAll();

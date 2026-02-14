@@ -13,18 +13,24 @@
 import { provide } from "vue";
 // import { Schema } from "@/devSchemaConfig/dev.form.Schema";
 // import { Schema } from "@/devSchemaConfig/test.form.Schema";
-import { useMeshFlow, useEngine,deleteEngine } from "@/utils/core/engine/useEngineManager";
 
-// import { useMeshFlow } from "@meshflow/core";
+import { useMeshFlow, useEngine,deleteEngine,useMeshFlowDefiner } from "@/utils/core/engine/useEngineManager";
+import {useLogger} from '@/utils/plugins/logger/useLogger'
+
+// import {useLogger} from '@meshflow/logger'
+// import { useMeshFlow ,deleteEngine} from "@meshflow/core";
+
 import { ref, Ref } from "vue";
 import { setupBusinessRules } from "@/src/formRules/FormRules";
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
-import {useLogger} from '@/utils/plugins/logger/useLogger'
-// import {useLogger} from '@meshflow/logger'
+ 
 import { Schema } from "@/devSchemaConfig/dev.form.Schema";
 import {usePerfetto} from '@/utils/plugins/prefetto/usePrefetto'
 import { onUnmounted } from "vue";
-// import { deleteEngine } from "@meshflow/core";
+import {useHistory} from '@/utils/plugins/history/useHistory'
+import { MeshFlowHistory } from "@/utils/core/types/types";
+import { en } from "zod/v4/locales";
+import { clonedschema } from "@/devSchemaConfig/dev.form.Schema.data";
 
 const maxCount = 3
 const generateHugeMesh = () => {
@@ -117,18 +123,42 @@ const generateHugeMesh2 = (maxCount = 100) => {
 let newdata = generateHugeMesh();
 // let newdata2 = generateHugeMesh2(100)
 // let newdata = TransformSchema(Schema);
-// console.log(Schema)
-const engine = useMeshFlow<Ref<number,number>,AllPath>('main-engine',Schema, {
+
+// const meshflowDefiner = useMeshFlowDefiner<AllPath>();
+
+// const engine = meshflowDefiner('main-engine',Schema, {
+//   config:{
+//     useGreedy:false
+//   },
+//   UITrigger:{
+//     signalCreateor: () => ref(0),
+//     signalTrigger(signal) {
+//       signal.value++;
+//     },
+//   },
+//   modules:{
+//     useHistory
+//   }
+// });
+ 
+const engine = useMeshFlow('main-engine',clonedschema, {
   config:{
-    useGreedy:true
+    useGreedy:false
   },
   UITrigger:{
     signalCreateor: () => ref(0),
     signalTrigger(signal) {
       signal.value++;
     },
+  },
+  modules:{
+    useHistory
   }
 });
+ 
+ 
+ 
+ 
 // const engine = useEngine('main-engine');
 const logger = useLogger()
 let cancel = engine.config.usePlugin(logger)
@@ -140,139 +170,91 @@ const perfetto = usePerfetto()
 
 console.log(engine.data.schema)
 
-const setupfactoryformrule = ()=>{
-  for (let i = 1; i < maxCount; i++) {
-  let triggerPath = `mesh.a${i}_val` as any;
-  let targetPath =  `mesh.a${i+1}_val` as any;
-  engine.config.SetRule(triggerPath, targetPath, 'value', {
-    logic: ({slot}) => {
-      let [val] = slot.triggerTargets;
-      return val+1
-    } 
-  });
-};
+// const setupfactoryformrule = ()=>{
+//   for (let i = 1; i < maxCount; i++) {
+//   let triggerPath = `mesh.a${i}_val` as any;
+//   let targetPath =  `mesh.a${i+1}_val` as any;
+//   engine.config.SetRule(triggerPath, targetPath, 'value', {
+//     logic: ({slot}) => {
+//       let [val] = slot.triggerTargets;
+//       return val+1
+//     } 
+//   });
+// };
 
-for (let i = 2; i <= maxCount; i++) {
-  const parents=  [`mesh.b${i-1}_val`, `mesh.a${i}_val`] as any;
-  let targetPath =  `mesh.b${i}_val` as any;
-  engine.config.SetRules(parents, targetPath, 'value', {
-    logic: ({slot}) => {
-      const [trigger1, trigger2] = slot.triggerTargets
+// for (let i = 2; i <= maxCount; i++) {
+//   const parents=  [`mesh.b${i-1}_val`, `mesh.a${i}_val`] as any;
+//   let targetPath =  `mesh.b${i}_val` as any;
+//   engine.config.SetRules(parents, targetPath, 'value', {
+//     logic: ({slot}) => {
+//       const [trigger1, trigger2] = slot.triggerTargets
 
-      if(i%7==0){
-        return new Promise((resolve,reject)=>{
-          setTimeout(() => {
-            resolve(Number(trigger1) + (Number(trigger2) || 0) );
-            // console.log('等待0.2s再返回逻辑：'+[trigger1,trigger2])
-          }, 100);
-        })
-      }else{
-        // trigger1 是上一个 b 的值，trigger2 是对应 a 的值
-        return Number(trigger1) + (Number(trigger2) || 0);
-      }
-    }
-  });
-}
+//       if(i%7==0){
+//         return new Promise((resolve,reject)=>{
+//           setTimeout(() => {
+//             resolve(Number(trigger1) + (Number(trigger2) || 0) );
+//             // console.log('等待0.2s再返回逻辑：'+[trigger1,trigger2])
+//           }, 100);
+//         })
+//       }else{
+//         // trigger1 是上一个 b 的值，trigger2 是对应 a 的值
+//         return Number(trigger1) + (Number(trigger2) || 0);
+//       }
+//     }
+//   });
+// }
 
  
 
-for (let i = 1; i <= maxCount; i++) {
-  const target:any = `mesh.c${i}_val`;
-  const parents:any = [
-    `mesh.b${i}_val`,          // 近亲：同序号的 B
-    `mesh.a${maxCount+1 - i}_val`     // 远亲：镜像位置的 A
-  ];
+// for (let i = 1; i <= maxCount; i++) {
+//   const target:any = `mesh.c${i}_val`;
+//   const parents:any = [
+//     `mesh.b${i}_val`,          // 近亲：同序号的 B
+//     `mesh.a${maxCount+1 - i}_val`     // 远亲：镜像位置的 A
+//   ];
 
-  engine.config.SetRules(parents, target, 'value', {
-    logic:({slot}) => {
+//   engine.config.SetRules(parents, target, 'value', {
+//     logic:({slot}) => {
      
-      const [bVal, aMirrorVal] = slot.triggerTargets;
-      // console.log(bVal,aMirrorVal)
+//       const [bVal, aMirrorVal] = slot.triggerTargets;
+//       // console.log(bVal,aMirrorVal)
        
-      // 这里的入参就是你声明的两个触发源的值
-      const res = (Number(bVal) || 0) + (Number(aMirrorVal) || 0);
-      // console.log(`[C区计算] ${target} 汇聚了 B 区当前值和 A 区镜像值:`, res);
-      return res;
-    }
-  });
-}
-const allCPaths = new Array(maxCount).fill(0).map((item,index)=>{
-  return `mesh.c${index+1}_val`
-})
-engine.config.SetRules(
-  allCPaths as any,      // 依赖 C 区所有节点
-  'mesh.total_index',    // 目标节点
-  'value',
-  {
-    logic: ({ slot }) => {
-      // 获取所有 C 区当前计算出的值
-      const cValues = slot.triggerTargets as number[];
+//       // 这里的入参就是你声明的两个触发源的值
+//       const res = (Number(bVal) || 0) + (Number(aMirrorVal) || 0);
+//       // console.log(`[C区计算] ${target} 汇聚了 B 区当前值和 A 区镜像值:`, res);
+//       return res;
+//     }
+//   });
+// }
+// const allCPaths = new Array(maxCount).fill(0).map((item,index)=>{
+//   return `mesh.c${index+1}_val`
+// })
+// engine.config.SetRules(
+//   allCPaths as any,      // 依赖 C 区所有节点
+//   'mesh.total_index',    // 目标节点
+//   'value',
+//   {
+//     logic: ({ slot }) => {
+//       // 获取所有 C 区当前计算出的值
+//       const cValues = slot.triggerTargets as number[];
       
-      // 执行求和逻辑
-      const sum = cValues.reduce((acc, val) => acc + (Number(val) || 0), 0);
+//       // 执行求和逻辑
+//       const sum = cValues.reduce((acc, val) => acc + (Number(val) || 0), 0);
       
-      // 为了让数值更好看，可以做一个归一化或取平均值
-      const average = sum / maxCount;
+//       // 为了让数值更好看，可以做一个归一化或取平均值
+//       const average = sum / maxCount;
      
-      return average; // 保留两位小数
-    }
-  }
-);
+//       return average; // 保留两位小数
+//     }
+//   }
+// );
 
-engine.config.notifyAll();
+// engine.config.notifyAll();
  
-}
+// }
 // setupfactoryformrule();
-
  
-const setrules = ()=>{
-  for (let i = 1; i <= 100; i++) {
-            const aNode = `a${i}_val`;
-            const bNode = `b${i}_val`;
-            const cNode = `c${i}_val`;
-      
-            // 规则 1: B 依赖 A 和 Global Mode
-            // 逻辑: 如果是 manual，B 不动；否则 B = A + 1
-            engine.config.SetRules([aNode, 'global_mode'], bNode, 'value', {
-              logic: (api: any) => {
-                const [aVal,global_mode] = api.slot.triggerTargets;
-           
-                return aVal + 1;
-              }
-            });
-      
-            // 规则 2: C 依赖 B (深度传导)
-            // 逻辑: C = B * 2
-            engine.config.SetRule(bNode, cNode, 'value', {
-              logic: (api: any) => {
-                const [val] = api.slot.triggerTargets
-                 // 注意：这里 api.triggerTargets[bNode] 能拿到 B 的最新值
-                 return val * 2;
-              }
-            });
-
-              // // 规则: Total 依赖所有 C
-              const allCNodes = Array.from({ length: 100 }, (_, i) => `c${i + 1}_val`);
-
-              engine.config.SetRules(allCNodes, 'total_index', 'value', {
-              logic: (api: any) => {
-                  // 1. 获取输入数组
-                  // 根据你的新写法，api.slot.triggerTargets 是一个数组 [c1值, c2值, ... c100值]
-                  const allCValues = api.slot.triggerTargets;
-
-                  // 2. 数组求和
-                  // 建议转一下 Number 防止字符串拼接，并处理可能的 undefined
-                  return allCValues.reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
-              }
-            });
-        
-      
-          }
-         
-          engine.config.notifyAll()
-}
-// setrules()
-
+ 
 //设置rule连线
 setupBusinessRules(
   engine.config.SetRule,

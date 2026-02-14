@@ -1,11 +1,11 @@
  
  
-import { MeshFlowHistory,MeshFlowEngineMap, MeshPath } from "../types/types";
+import { MeshFlowEngineMap, MeshPath } from "../types/types";
 import { InferLeafPath } from "../utils/util";
-import { useFlowScheduler } from "./useEngineInstance";
+import { useEngineInstance } from "./useEngineInstance";
  
  
-type SchedulerType<T, P extends MeshPath> = ReturnType<typeof useFlowScheduler<T, P>>;
+type SchedulerType<T, P extends MeshPath> = ReturnType<typeof useEngineInstance<T, P>>;
 
 type GetType<T, P> = P extends keyof T ? T[P] : never;
 
@@ -32,7 +32,9 @@ type EngineModules<M> = {
   // 使用 as 语法重命名 key
   [K in keyof M as TransformKey<string & K>]: 
     // 提取函数返回值
-    M[K] extends (...args: any) => infer R ? R : never;
+    M[K] extends (...args: any) => infer R 
+    ? R 
+    : M[K] extends infer R ? R: never;
 };
 
 type Engine<T,M> =  BaseEngine<T> & EngineModules<M>;
@@ -69,7 +71,7 @@ const useEngineManager = <
     if(engineMap.has(id)){
       throw Error('engineID repeated');
     }
-    const scheduler = useFlowScheduler<T, P>(
+    const scheduler = useEngineInstance<T, P>(
       Schema, 
       {
         config:options.config||{useGreedy:false},
@@ -78,9 +80,6 @@ const useEngineManager = <
         plugins:{}
       }
     );
-
-    // type ConcreteScheduler = typeof scheduler;
-    // type SchedulerType<T, P extends string> = ReturnType<typeof useFlowScheduler<T, P>>;
     
     const {
       schema,
@@ -169,7 +168,7 @@ const useMeshFlowDefiner = <P extends string>() => {
     }
   ) => {
     // 内部直接调用真正的 useMeshFlow，并利用类型断言
-    return useMeshFlow(id, schema, options as any) as Engine<ReturnType<typeof useFlowScheduler<T, P>>, M>;
+    return useMeshFlow(id, schema, options as any) as Engine<ReturnType<typeof useEngineInstance<T, P>>, M>;
   }
 }
 
@@ -187,12 +186,12 @@ const useMeshFlowDefiner = <P extends string>() => {
  * @template K ID 类型 (支持 string | number | symbol)
  */
 const useEngine = <
-  M = never,
-  K extends keyof MeshFlowEngineMap | (MeshPath & {}) = MeshPath
+  M ,
+  ID extends keyof MeshFlowEngineMap | (MeshPath & {}) = MeshPath
 >(
-  id: K
+  id: ID
 ): [M] extends [never]
-  ? (K extends keyof MeshFlowEngineMap ? MeshFlowEngineMap[K] : Engine<SchedulerType<any, any>, {}>)
+  ? (ID extends keyof MeshFlowEngineMap ? MeshFlowEngineMap[ID] : Engine<SchedulerType<any, any>, {}>)
   : Engine<SchedulerType<any, any>, M> => { // 🌟 核心：手动注入时，强制合并 BaseEngine
   
   const instance = engineMap.get(id);

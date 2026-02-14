@@ -18,9 +18,7 @@
                 </template>
                 <span>{{ (renderSchema as any).description }}</span>
             </VTooltip>
-            <v-btn @click="handleTest">
-                test
-            </v-btn>
+
         </div>
     </template>
 </template>
@@ -69,12 +67,7 @@ const handleValueChange =  (newValue: any) => {
         return newValue
     })
 }
-const handleTest = async ()=>{
-     
-    await renderSchema.value.dependOn(() => {
-        return renderSchema.value.value
-    })
-}
+
 watch(() => props.dirtySignal.value, () => {
     // console.log('监听到更新');
     renderSchema.value = updateConfig(props.fieldConfig);
