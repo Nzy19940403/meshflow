@@ -1,0 +1,26 @@
+{
+  "name": "@meshflow/history",
+  "version": "0.1.5",
+  "description": "The official history plugin for MeshFlow",
+  "main": "./index.js",
+  "module": "./index.mjs",
+  "types": "./index.d.ts",
+  "author": "nzy",
+  "peerDependencies": {
+    "@meshflow/core": ">=0.3.5"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "license": "MIT",
+  "keywords": [
+    "meshflow",
+    "undo",
+    "redo",
+    "history",
+    "form-engine",
+    "logic-engine",
+    "state-management"
+  ]
+}

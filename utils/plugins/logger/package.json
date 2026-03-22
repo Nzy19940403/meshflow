@@ -1,0 +1,28 @@
+{
+    "name": "@meshflow/logger",
+    "version": "0.1.8",
+    "description": "The official logger plugin for MeshFlow",
+    "main": "./index.js",
+    "module": "./index.mjs",
+    "types": "./index.d.ts",
+    "author": "nzy",
+    "peerDependencies": {
+      "@meshflow/core": ">=0.3.6",
+      "consola": ">=3.0.0"
+    },
+    "publishConfig": {
+      "access": "public",
+      "registry": "https://registry.npmjs.org/"
+    },
+    "license": "MIT",
+    "keywords": [
+        "form",
+        "form-engine",
+        "logic-engine",
+        "topology",
+        "async-linkage",
+        "watermark",
+        "dag",
+        "reactive"
+    ]
+  }
