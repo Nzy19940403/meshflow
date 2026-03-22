@@ -2,19 +2,19 @@
 
 > **逻辑如力场，坍缩至势能最低处。**
 
-[English](./README.md) | [中文] 
+[English](./readme.md) | [中文] 
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-red.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Docs](https://img.shields.io/badge/docs-meshflow--docs-blue)](https://meshflow-docs.nzyhave.fun/)
 
-**MeshFlow** 是一款基于 **“逻辑力场 (Logic Force Field)”** 模型的响应式拓扑调度引擎。
+**MeshFlow** 是一款基于 **“逻辑力场 (Logic Force Field)”** 的响应式拓扑调度引擎。
 
 它不依赖复杂的黑盒算法，而是通过朴素的物理直觉——**将逻辑连动的深度抽象为物理高度**。利用核心的 **“水位线闸门 (Waterline Gate)”** 调度策略，MeshFlow 能让复杂的异步联动像水往低处流一样自发收敛，从结构上彻底解决异步竞态、钻石依赖与循环约束难题。
  
 
 ## 🌌 核心设计：什么是“逻辑力场”？
 
-“逻辑力场”并非虚构的理论，而是一套将**逻辑抽象为物理位能**的设计模型。MeshFlow 通过以下三个维度模拟物理世界的自发收敛：
+“逻辑力场”并非虚构的理论，而是一套将逻辑**抽象为物理位能**的设计模型。MeshFlow 通过以下三个维度模拟物理世界的自发收敛：
 
 ### 1. 逻辑深度 = 物理高度 (Topological Gradient)
 在 MeshFlow 中，每一个节点都处在不同的“海拔”上。

@@ -2,12 +2,12 @@
 
 > **Logic as a Force Field, collapsing to the lowest potential.**
 
-[English] | [中文](./README_zh.md) 
+[English] | [中文](./readme_zh.md) 
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-red.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Docs](https://img.shields.io/badge/docs-meshflow--docs-blue)](https://meshflow-docs.nzyhave.fun/)
 
-**MeshFlow** is a reactive topology scheduling engine based on the **"Logic Force Field"** model.
+**MeshFlow** is a reactive topology scheduling engine based on the **"Logic Force Field"** .
 
 Instead of relying on complex black-box algorithms, it builds on a simple physical intuition: **abstracting logical dependency depth as physical altitude**. By utilizing the core **"Waterline Gate"** scheduling strategy, MeshFlow allows complex asynchronous interactions to spontaneously converge—like water flowing downhill—structurally eliminating asynchronous race conditions, diamond dependencies, and cyclic constraints.
  
