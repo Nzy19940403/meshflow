@@ -9,30 +9,32 @@ const CreateRule = <
 P,
 K,
 NM,
-TKeys extends KeysOfUnion<NM>  
+TKeys extends KeysOfUnion<NM>  ,
+ 
 >(targetPath: P, targetKey: K , options: {
     value?: any
     priority?: number,
-    logic: (api: logicApi<NM,TKeys>) => any,
+    logic: (api: logicApi<TKeys>) => any,
     triggerPaths: P[],
-    triggerKeys:Array<KeysOfUnion<NM> | TKeys | (string & {})>;
+    triggerKeys:Array<TKeys>;
+ 
 }) => {
 
     const basePriority = 10;
-
+    // type newKey = TKeys;
     // let lastDeps: any[] | undefined = undefined;
     // let cache: any = undefined;
 
     //这里的参数就是调用evaluate的时候传入的参数
-    const logic = (api: any) => {
+    const logic = (api:any) => {
      
         const currentDeps = options.triggerPaths.map(path => {
             const node = api.GetRenderSchemaByPath(path);
             
             
-            type newKey = KeysOfUnion<NM> | TKeys | (string & {});
-
-            const triggerSnapshot = {} as Record<newKey,any>;
+            if(options.triggerKeys.length===0) return node;
+ 
+            const triggerSnapshot = {} as Record<TKeys,any>;
     
             // 依然只摘取用户关心的 Keys，保持数据量最轻
             options.triggerKeys.forEach((key) => {
@@ -40,6 +42,7 @@ TKeys extends KeysOfUnion<NM>
                
                 triggerSnapshot[key] = node[key];
             });
+
     
             return triggerSnapshot;
         });
@@ -77,11 +80,11 @@ TKeys extends KeysOfUnion<NM>
 }
 
 export const useSetRule = <P extends MeshPath,NM>(
-    // Finder: (path: P) => RenderSchemaFn<Exclude<FormFieldSchema,GroupField>>, 
+ 
     Finder: (path: P) => MeshFlowTaskNode<P,any,NM>,
     dependencyGraph: Map<P, Set<P>>,
     predecessorGraph: Map<P, Set<P>>,
-    // scheduler:any
+ 
 ) => {
     if (!Finder) {
         throw Error('')
@@ -104,19 +107,19 @@ export const useSetRule = <P extends MeshPath,NM>(
 
     const SetRule = <
     K extends KeysOfUnion<NM>,
-    TKeys extends KeysOfUnion<NM>  
+    TKeys extends KeysOfUnion<NM>  ,
     >(outDegreePath: P, inDegreePath: P, key: K , options: SetRuleOptions<NM,TKeys>) => {
         
        
         // let outDegree = GetByPath(outDegreePath);
         let inDegree = GetByPath(inDegreePath);
         
-        const triggerKeys = options.triggerKeys || [];
-        if(triggerKeys.length==0){
-            triggerKeys.push('value' as any)
-        }
+        const triggerKeys = options.triggerKeys || [] ;
+    
+ 
+
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
-        let newRule = CreateRule<P,K,NM,TKeys>(inDegreePath, key, { ...options, triggerPaths: [outDegreePath],triggerKeys });
+        let newRule = CreateRule<P,K,NM,TKeys>(inDegreePath, key, { ...options, triggerPaths: [outDegreePath],triggerKeys  });
 
         // const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).value])
         const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).state.value])
@@ -187,9 +190,7 @@ export const useSetRule = <P extends MeshPath,NM>(
         }
 
         const triggerKeys = options.triggerKeys || [];
-        if(triggerKeys.length==0){
-            triggerKeys.push('value' as any)
-        }
+ 
 
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
         let newRule = CreateRule<P,K,NM,TKeys>(inDegreePath, key, { ...options, triggerPaths: outDegreePaths,triggerKeys });

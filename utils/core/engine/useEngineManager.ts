@@ -115,12 +115,7 @@ const useEngineManager = <
   }
 ) => {
   try {
-    // if (
-    //   typeof options.UITrigger.signalCreator !== "function" ||
-    //   typeof options.UITrigger.signalTrigger !== "function"
-    // ) {
-    //   throw Error("ui trigger undefined");
-    // }
+ 
 
     if (engineMap.has(id)) {
       throw Error("engineID repeated");

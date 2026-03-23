@@ -140,22 +140,24 @@ export interface DependOnContext<P extends MeshPath> {
   // 你可以根据需要扩展，比如 getValue, emit 等
 }
 
-export interface logicApi<NM, TKeys extends KeysOfUnion<NM>> {
+export interface logicApi<TKeys extends MeshPath> {
   slot: {
-    triggerTargets: Array<Record<KeysOfUnion<NM> | TKeys | (string & {}), any>>;
+    triggerTargets: Array<Record<TKeys , any>>;
     affectedTatget: any;
   };
 }
+
+ 
 
 export interface SetRuleOptions<NM, TKeys extends KeysOfUnion<NM>> {
   value?: any;
   priority?: number;
   forceNotify?: boolean;
-  logic: (api: logicApi<NM, TKeys>) => any;
+  logic: (api: logicApi<TKeys>) => any;
   effect?: (args: any) => any;
-  effectArgs?: Array<KeysOfUnion<NM> | TKeys | (string & {})>;
+  effectArgs?: Array<KeysOfUnion<NM>>;
   cacheStrategy?: "none" | "shallow";
-  triggerKeys?: Array<KeysOfUnion<NM> | TKeys | (string & {})>;
+  triggerKeys?: Array<TKeys>;
 }
 
  
