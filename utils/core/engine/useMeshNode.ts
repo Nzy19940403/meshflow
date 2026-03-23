@@ -45,14 +45,11 @@ export function createMeshNode<
                 return Reflect.get(target, prop);
             },
             set(target, prop, value) {
-           
-                const key = prop as string;
-                if (key in config.state) {
-                    config.state[key] = value;
-                    // triggerUI();
-                    return true;
-                }
-                return Reflect.set(target, prop, value);
+                console.warn(
+                    `[MeshFlow] Mutation Blocked: Direct assignment to "${String(prop)}" is forbidden.\n` +
+                    `👉 Action Required: Return a proposal { key, value } from the emit function instead.`
+                  );
+                  return false;
             },
 
             // 🌟 核心修复 1: 让外界知道我们有哪些键
