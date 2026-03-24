@@ -101,7 +101,8 @@ export interface MeshFlowTaskNode<
 
   state: V;
 
-  nodeBucket: Record<keyof NM, SchemaBucket<P>>;
+  // nodeBucket: Record<keyof NM, SchemaBucket<P>>;
+  nodeBucket: Record<keyof NM, number>;
   notifyKeys: Set<keyof NM>;
   // --- 响应式信号 ---
   // 用于通知 UI 组件重绘 (对应 Vue Ref 或 React State)

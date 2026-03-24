@@ -199,6 +199,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     );
 
     const {
+        SetBucket,
+        GetBucket,
         GetGroupByPath,
         GetNodeByPath,
         notifyAll,
@@ -240,14 +242,16 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
  
     const { SetRule, SetRules } = useSetRule<P,NM>(
         GetNodeByPath,
+        SetBucket,
+        GetBucket,
         dependencyGraph,
         predecessorGraph,
-        // scheduler
+    
     );
 
-    const { SetStrategy } = useSetStrategy<P,NM>(GetNodeByPath);
+    const { SetStrategy } = useSetStrategy<P,NM>(GetNodeByPath,GetBucket);
 
-    // const { SetValidators } = useSchemaValidators<P>(GetNodeByPath);
+ 
 
     const check = useCheckCycleInGraph<P>(dependencyGraph);
 

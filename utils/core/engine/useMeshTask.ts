@@ -5,8 +5,9 @@ import {
     MeshFlowTaskNode,
     TriggerCause,
 } from "../types/types";
+import { SchemaBucket } from "./bucket";
 
-function useMeshTask<P extends MeshPath, S>(
+function useMeshTask<P extends MeshPath, NM>(
     config: {
         useGreedy: boolean;
     },
@@ -19,7 +20,8 @@ function useMeshTask<P extends MeshPath, S>(
         GetPathToLevelMap: () => Map<P, number>;
     },
     data: {
-        GetNodeByPath: (p: P) => MeshFlowTaskNode<P, any, S>;
+        GetNodeByPath: (p: P) => MeshFlowTaskNode<P, any, NM>;
+        GetBucket:(bucketId:number)=>SchemaBucket<P>
         Turnstile: any; // 引入旋转门接口
     },
     hooks: {
@@ -731,7 +733,7 @@ function useMeshTask<P extends MeshPath, S>(
             // 这个函数囊括了原来循环体内的所有逻辑
 
             // 提取公共的处理结果逻辑
-            const handleSingleResult = <K extends keyof S>(
+            const handleSingleResult = <K extends keyof NM>(
                 result: any,
                 bucketName: K
             ) => {
@@ -758,7 +760,7 @@ function useMeshTask<P extends MeshPath, S>(
                     }
                 }
 
-                const bucket = targetSchema.nodeBucket[bucketName];
+                const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName]);
                 if (bucket.isForceNotify()) notifyNext = true;
 
                 if (hasNotifyKeyTriggered || notifyNext) {
@@ -777,7 +779,7 @@ function useMeshTask<P extends MeshPath, S>(
                 const effectsToRun: Array<{ fn: (args: any) => any; args: any[] }> = [];
 
                 for (let bucketName in targetSchema.nodeBucket) {
-                    const bucket = targetSchema.nodeBucket[bucketName];
+                    const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName]);
 
                     effectsToRun.push(...bucket.getSideEffect());
 

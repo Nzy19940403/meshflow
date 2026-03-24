@@ -82,6 +82,8 @@ TKeys extends KeysOfUnion<NM>  ,
 export const useSetRule = <P extends MeshPath,NM>(
  
     Finder: (path: P) => MeshFlowTaskNode<P,any,NM>,
+    SetBucket:(newBucket: SchemaBucket<P>) => number,
+    GetBucket: (bucketId: number) => SchemaBucket<P>,
     dependencyGraph: Map<P, Set<P>>,
     predecessorGraph: Map<P, Set<P>>,
  
@@ -125,14 +127,17 @@ export const useSetRule = <P extends MeshPath,NM>(
         const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).state.value])
         // 维护图关系
         updateGraphRelation(outDegreePath, inDegreePath);
-    
+        
+     
 
-        if (inDegree.nodeBucket[key]) {
-           
-            inDegree.nodeBucket[key].setRule(newRule,DepsArray);
+        if (typeof inDegree.nodeBucket[key] === 'number') {
+
+           const node = GetBucket(inDegree.nodeBucket[key])
+
+           node.setRule(newRule,DepsArray);
             //如果有副作用就加入副作用列表
             if(options.effect){
-                inDegree.nodeBucket[key].setSideEffect({
+                node.setSideEffect({
                     fn:options.effect,
                     args:options.effectArgs?options.effectArgs:[key]
                 })
@@ -155,20 +160,23 @@ export const useSetRule = <P extends MeshPath,NM>(
                     fn:options.effect,
                     args:options.effectArgs?options.effectArgs:[key]
                 })
-            }
-            inDegree.nodeBucket[key] = newBucket;
+            };
+
+            inDegree.nodeBucket[key] = SetBucket(newBucket);
             
         }
         
         (inDegree.state as any)[key] = inDegree.meta[key]
-       
+        
+        const bucket = GetBucket(inDegree.nodeBucket[key])
+
         if(options.forceNotify){
             //如果设置了强制刷新就给桶设置成强制刷新，一个桶里面只要有
-            inDegree.nodeBucket[key].forceNotify(); 
+            bucket.forceNotify(); 
         }
 
         if(options.cacheStrategy =='none'){
-            inDegree.nodeBucket[key].setUseCache(false)
+            bucket.setUseCache(false)
         }
 
     }
@@ -199,12 +207,13 @@ export const useSetRule = <P extends MeshPath,NM>(
         const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).state.value])
 
         
-        if (inDegree.nodeBucket[key]) {
+        if (typeof inDegree.nodeBucket[key] ==='number' ) {
+            const node = GetBucket(inDegree.nodeBucket[key]);
 
-            inDegree.nodeBucket[key].setRules(newRule,DepsArray);
+            node.setRules(newRule,DepsArray);
             //如果有副作用就加入副作用列表
             if(options.effect){
-                inDegree.nodeBucket[key].setSideEffect({
+                node.setSideEffect({
                     fn:options.effect,
                     args:options.effectArgs?options.effectArgs:[key]
                 });
@@ -227,19 +236,21 @@ export const useSetRule = <P extends MeshPath,NM>(
                 })
             }
 
-            inDegree.nodeBucket[key] = newBucket;
+            inDegree.nodeBucket[key] = SetBucket(newBucket);
 
         }
 
         (inDegree.state as any)[key] = inDegree.meta[key]
 
+        const bucket = GetBucket(inDegree.nodeBucket[key])
+
         if(options.forceNotify){
             //如果设置了强制刷新就给桶设置成强制刷新，一个桶里面只要有
-            inDegree.nodeBucket[key].forceNotify(); 
+            bucket.forceNotify(); 
         }
 
         if(options.cacheStrategy =='none'){
-            inDegree.nodeBucket[key].setUseCache(false)
+            bucket.setUseCache(false)
         }
 
     }

@@ -3,6 +3,7 @@ import { useMeshTask } from "./useMeshTask";
 import { createMeshNode } from './useMeshNode';
 import { KeysOfUnion, createScheduler } from "../utils/util";
 import { UseSetEntangle } from "../dependency/useSetEntangle";
+import { SchemaBucket } from "./bucket";
 
 export function useScheduler<
     T, //ui trigger中定义的类型
@@ -40,23 +41,19 @@ export function useScheduler<
 
     let uid: number = 0;
     const PathToUidMap = new Map<MeshPath, number>();
-    // const UidToNodeMap = new Map<number, MeshFlowTaskNode<P, any, NM>>();
-    // const UidToGroupMap = new Map<number, MeshFlowGroupNode>();
+ 
 
     const UidToNodeMap: MeshFlowTaskNode<P, any, NM>[] = [];
     const UidToGroupMap: MeshFlowGroupNode[] = [];
 
+    const AllBuckets:Array<SchemaBucket<P>> = []
 
     let isPending = false;
     const flushPathSet = new Set<P>();
  
-    let isInitializing = false;
+    let isInitializing:boolean = false;
 
-    // let forbidUserNotify = true;
-
-    // 锁：初始化的 Promise，外部如果想 await 可以用这个
-    // let initializationPromise: Promise<void> | null = null;
-
+ 
     const flushUpdate = async () => {
         // console.log("ui update");
 
@@ -113,6 +110,7 @@ export function useScheduler<
         dependency,
         {
             GetNodeByPath,
+            GetBucket,
             Turnstile 
         },
         hooks,
@@ -241,13 +239,23 @@ export function useScheduler<
         return groupData;
     };
 
+    function SetBucket(newBucket:SchemaBucket<P>){
+        const bucketId = AllBuckets.push(newBucket) - 1;
+        return bucketId;
+    }
+
+    function GetBucket(bucketId:number){
+
+        const bucket = AllBuckets[bucketId];
+        if(!bucket){
+            throw Error('WrongID')
+        }
+        return bucket;
+    }
+
+
     const notify = (path: P) => {
-        //notifyAll完成之前不允许操作
-        // if (forbidUserNotify) {
-        //     return
-        // }
-
-
+ 
         let inDegree = GetNodeByPath(path);
 
         if (!inDegree) {
@@ -372,6 +380,10 @@ export function useScheduler<
         batchNotify,
         useEntangle,
         updateEntangleLevel,
+
+        SetBucket,
+        GetBucket,
+
         UITrigger,
         UidToNodeMap
     }

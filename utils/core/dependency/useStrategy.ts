@@ -2,7 +2,7 @@ import { DefaultStrategy, SchemaBucket } from "../engine/bucket";
 
 import { KeysOfUnion } from '../utils/util';
 
-export const useSetStrategy = <P,NM>(Finder: any) => {
+export const useSetStrategy = <P,NM>(Finder: any,GetBucket:any) => {
     let GetByPath = Finder ? Finder : undefined;
 
     if (!GetByPath) {
@@ -11,8 +11,8 @@ export const useSetStrategy = <P,NM>(Finder: any) => {
 
     const SetStrategy = (path: P, key: KeysOfUnion<NM>, strategy: DefaultStrategy) => {
         let degree = GetByPath(path);
-
-        (degree.nodeBucket[key] as SchemaBucket<P>).setStrategy(strategy);
+        const bucket = GetBucket(degree.nodeBucket[key])
+        bucket.setStrategy(strategy);
     }
 
     return { SetStrategy }
