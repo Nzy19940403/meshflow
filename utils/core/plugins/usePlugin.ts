@@ -9,11 +9,11 @@
     6:最后的截流,清空resureArea,这是静默的信号,
 */
 
-import { MeshEmit, MeshEventName } from "../types/types";
+import { MeshEmit, MeshEventName, MeshPath } from "../types/types";
 
 const usePluginManager = () => {
     const plugins = new Set();
-    const eventGroups = new Map<string, Set<Function>>();
+    const eventGroups = new Map<MeshPath, Set<Function>>();
     
     // 🌟 新增：全局卸载池，集中管理所有已注册插件的销毁函数
     const allPluginUninstalls = new Set<Function>();

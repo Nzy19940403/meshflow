@@ -1,4 +1,4 @@
-import { DependOnContext, MeshEmit, MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, StandardUITrigger } from "../types/types";
+import { DependOnContext, MeshEmit, MeshError, MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, StandardUITrigger } from "../types/types";
 import { useMeshTask } from "./useMeshTask";
 import { createMeshNode } from './useMeshNode';
 import { KeysOfUnion, createScheduler } from "../utils/util";
@@ -17,12 +17,12 @@ export function useScheduler<
         useEntangleStep:number
     },
     dependency: {
-        GetDependencyOrder: () => P[][];
-        GetAllNextDependency: (path: P) => P[];
-        GetNextDependency: (path: P) => P[];
-        GetPrevDependency: (path: P) => P[];
-        GetAllPrevDependency: (path: P) => P[];
-        GetPathToLevelMap: () => Map<P, number>;
+        GetDependencyOrder: () => number[][];
+        GetAllNextDependency: (targetUid: number) => number[];
+        GetNextDependency: (targetUid: number) => number[];
+        GetPrevDependency: (targetUid: number) => number[];
+        GetAllPrevDependency: (targetUid: number) => number[];
+        GetUidToLevelMap: () => Map<number, number>;
     },
     history: Partial<{
         pushIntoHistory: any;
@@ -45,32 +45,33 @@ export function useScheduler<
 
     const UidToNodeMap: MeshFlowTaskNode<P, any, NM>[] = [];
     const UidToGroupMap: MeshFlowGroupNode[] = [];
+    const UidToPathMap:Array<P> = []
 
     const AllBuckets:Array<SchemaBucket<P>> = []
 
     let isPending = false;
-    const flushPathSet = new Set<P>();
+    const flushPathSet = new Set<number>();
  
     let isInitializing:boolean = false;
-
  
+
     const flushUpdate = async () => {
         // console.log("ui update");
 
-        const paths = Array.from(flushPathSet);
+        const uids = Array.from(flushPathSet);
 
         // 2. 立即清空，让 Set 变回初始状态，准备迎接下一轮（或者逻辑中意外触发的）通知
         flushPathSet.clear();
  
         if ('signalTrigger' in UITrigger && typeof UITrigger.signalTrigger === 'function') {
             // --- 走原来的 Vue/React 触发逻辑 ---
-            for (let path of paths) {
-                let target = GetNodeByPath(path);
+            for (let uid of uids) {
+                let target = GetNodeByUid(uid);
     
                 UITrigger.signalTrigger(target.dirtySignal);
             }
         }else if('emit' in UITrigger){
-            UITrigger.emit(paths);
+            UITrigger.emit(uids);
         }
         
     };
@@ -94,8 +95,10 @@ export function useScheduler<
             useEntangleStep:config.useEntangleStep
         },
         timeScheduler,
-        dependency.GetPathToLevelMap,
+        dependency.GetUidToLevelMap,
         GetNodeByPath,
+        GetNodeByUid,
+        GetPathByUid,
         {
             emit: hooks.emit,
             onError: hooks.callOnError
@@ -103,14 +106,17 @@ export function useScheduler<
         
     );
 
-    const taskrunner = useMeshTask<P,NM>(
+    const {TaskRunner,CancelTask} = useMeshTask<P,NM>(
         {
             useGreedy: config.useGreedy
         },
         dependency,
         {
             GetNodeByPath,
+            GetNodeByUid,
+            GetPathByUid,
             GetBucket,
+            GetMaxUid,
             Turnstile 
         },
         hooks,
@@ -141,7 +147,7 @@ export function useScheduler<
         const dependOn = (cb: (data: any) => any,key:KeysOfUnion<NM> | (string & {}) = 'value') => {
             const newVal = cb({ ...dependOnContext });
             const schemaNode = GetNodeByPath(nodeMeta.path);
-
+           
             // 处理历史记录 (兼容 history 为空的情况)
             if (history.createHistoryAction && history.pushIntoHistory) {
                 const item = history.createHistoryAction(
@@ -187,7 +193,8 @@ export function useScheduler<
 
         // 3. 存入调度映射
         PathToUidMap.set(nodeInstance.path, currentId);
-        // UidToNodeMap.set(currentId, nodeInstance);
+        //把叶子节点的uid和它的path映射起来
+        UidToPathMap[currentId]=nodeInstance.path;
  
         UidToNodeMap[currentId] = nodeInstance;
 
@@ -215,7 +222,7 @@ export function useScheduler<
         }) as MeshFlowGroupNode<P>;
 
         PathToUidMap.set(groupInstance.path, currentId);
-        // UidToGroupMap.set(currentId, groupInstance);
+       
         UidToGroupMap[currentId] = groupInstance;
 
         return groupInstance;
@@ -227,10 +234,22 @@ export function useScheduler<
         // const targetSchema = UidToNodeMap.get(uid);
         const targetSchema = UidToNodeMap[uid];
         if (!targetSchema) {
-            throw Error('wrong ID')
+            throw Error(MeshError.WrongId)
         }
         return targetSchema;
     };
+
+    function GetNodeByUid(uid:number):MeshFlowTaskNode<P, any, NM>{
+        const targetSchema = UidToNodeMap[uid];
+        if (!targetSchema) {
+            throw Error(MeshError.WrongId)
+        }
+        return targetSchema;
+    }
+    function GetPathByUid(uid:number):P{
+        const path = UidToPathMap[uid];
+        return path;
+    }
 
     function GetGroupByPath(path: MeshPath) {
         const uid = PathToUidMap.get(path)!
@@ -248,33 +267,36 @@ export function useScheduler<
 
         const bucket = AllBuckets[bucketId];
         if(!bucket){
-            throw Error('WrongID')
+            throw Error(MeshError.WrongId)
         }
         return bucket;
     }
 
+    function GetMaxUid(){
+        return uid 
+    }
 
     const notify = (path: P) => {
  
         let inDegree = GetNodeByPath(path);
 
         if (!inDegree) {
-            throw Error("Node undefined");
+            throw Error(MeshError.WrongId);
         }
 
         //更新的路径
-        flushPathSet.add(path);
+        flushPathSet.add(inDegree.uid);
 
         requestUpdate();
 
-        let nextOrder = dependency.GetNextDependency(path);
-         
-        runNotifyTask(nextOrder, path);
+        let nextOrder = dependency.GetNextDependency(inDegree.uid);
+      
+        runNotifyTask( inDegree.uid,nextOrder);
  
     };
 
-    function runNotifyTask(initialNodes: P[], triggerPath: P) {
-        taskrunner(triggerPath, initialNodes);
+    function runNotifyTask( triggerUid: number,initialNodes: number[]) {
+        TaskRunner(triggerUid, initialNodes);
     };
 
     const notifyAll = async () => {
@@ -291,7 +313,7 @@ export function useScheduler<
 
             // 初始化期间，可以加上你之前的防打扰锁
             isInitializing = true;
-
+           
             try {
                 
                 // 🌟 3. 神奇的魔法在这里：
@@ -299,7 +321,7 @@ export function useScheduler<
                 // 不会跳过任何 roots，并且完美的复用了你那套阻力拦截、背压控制、防卡顿机制
                 // Promise.resolve()
                 // .then(()=>{
-                    taskrunner(null, roots);
+                    TaskRunner(null, roots);
                 // })
                 
 
@@ -326,17 +348,17 @@ export function useScheduler<
                     updates.map(u => ({ path: u.path, key: u.key, value: u.value }))
                 ],
                 (metadataArray: any[]) => {
-                    const undoRoots = new Set<P>();
+                    const undoRoots = new Set<number>();
                     metadataArray.forEach(meta => {
                         let data = GetNodeByPath(meta.path);
                         (data.state as any)[meta.key] = meta.value;
                         flushPathSet.add(meta.path);
                         // 撤销时，也把这些节点作为源头收集起来
-                        undoRoots.add(meta.path);
+                        undoRoots.add(meta.uid);
                     });
                     requestUpdate();
                     if (undoRoots.size > 0) {
-                        taskrunner(null, Array.from(undoRoots)); // 撤销也是一波流！
+                        TaskRunner(null, Array.from(undoRoots)); // 撤销也是一波流！
                     }
                 }
             );
@@ -344,7 +366,7 @@ export function useScheduler<
         }
     
         // 2. 🌟 状态更新 & 收集这一波的“触发源”
-        const updateRoots = new Set<P>();
+        const updateRoots = new Set<number>();
     
         updates.forEach(update => {
             let node = GetNodeByPath(update.path);
@@ -353,10 +375,10 @@ export function useScheduler<
             (node.state as any)[update.key] = update.value;
             
             // 加入 UI 刷新队列
-            flushPathSet.add(update.path);
+            flushPathSet.add(node.uid);
     
             // 🌟 核心突破：不去找下游，直接把被修改的节点本身记下来！
-            updateRoots.add(update.path);
+            updateRoots.add(node.uid);
         });
     
         // 3. 触发 UI 批量更新
@@ -365,7 +387,7 @@ export function useScheduler<
         // 4. 🌟 真正的上帝模式：一波流推平 DAG！
         if (updateRoots.size > 0) {
             // 把所有被修改的节点，作为同一个 Task 的起点，一次性输入！
-            taskrunner(null, Array.from(updateRoots)); 
+            TaskRunner(null, Array.from(updateRoots)); 
         }
     };
  
@@ -383,6 +405,8 @@ export function useScheduler<
 
         SetBucket,
         GetBucket,
+
+        CancelTask,
 
         UITrigger,
         UidToNodeMap

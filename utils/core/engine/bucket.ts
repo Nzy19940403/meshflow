@@ -234,7 +234,7 @@ export class SchemaBucket<P>{
 
     public contract: ContractType;
 
-    private rules = new Map<string, Set<{ logic: () => any }>>();
+    private rules = new Map<number, Set<{ logic: () => any }>>();
 
     //分辨绑定的key是否是value
     private isValue = false;
@@ -247,7 +247,7 @@ export class SchemaBucket<P>{
 
     private version: number = 0;
 
-    private deps: Map<P, any> = new Map();
+    private deps: Map<number, any> = new Map();
     //强制通知下游，优化的策略
     private _forceNotify: boolean = false;
 
@@ -273,7 +273,7 @@ export class SchemaBucket<P>{
             priority: 0,
             entityId: '__base__',
             logic: () => baseValue
-        });
+        } as any);
  
     }
 
@@ -305,10 +305,19 @@ export class SchemaBucket<P>{
     setDefaultRule(value: any) {
         const rules = new Set<{ logic: () => any }>();
         rules.add(value);
-        this.rules.set('defaultRules', rules);
+
+        // -1代表默认rule
+        this.rules.set(-1, rules);
     }
 
-    setRules(value: any, DepsArray?: Array<[P, any]>) {
+    setRules(value: {
+        value: any,
+        targetUid:number,
+        triggerUids: number[],
+        priority: any
+        logic:any,
+        entityId?:any
+    }, DepsArray?: Array<[number, any]>) {
         if (DepsArray) {
             this.updateDeps(DepsArray)
         }
@@ -320,11 +329,11 @@ export class SchemaBucket<P>{
             entityId,
         };
 
-        for (let path of value.triggerPaths) {
-            if (!this.rules.has(path)) {
-                this.rules.set(path, new Set<any>());
+        for (let uid of value.triggerUids) {
+            if (!this.rules.has(uid)) {
+                this.rules.set(uid, new Set<any>());
             };
-            this.rules.get(path)!.add(ruleEntity);
+            this.rules.get(uid)!.add(ruleEntity);
         };
 
         this.strategy.updateComputedRules();
@@ -332,16 +341,16 @@ export class SchemaBucket<P>{
         //返回删除对应rule的方法
         return () => {
 
-            for (let path of value.triggerPaths) {
-                const set = this.rules.get(path);
+            for (let uid of value.triggerUids) {
+                const set = this.rules.get(uid);
                 if (set) {
                     // O(1) 复杂度，直接移除引用
                     set.delete(ruleEntity);
 
                     // 极致优化：如果 Set 空了，释放内存
                     if (set.size === 0) {
-                        this.rules.delete(path);
-                        this.deps.delete(path);
+                        this.rules.delete(uid);
+                        this.deps.delete(uid);
                     };
                 };
             };
@@ -349,14 +358,21 @@ export class SchemaBucket<P>{
         };
     };
 
-    updateDeps(DepsArray: Array<[P, any]>) {
+    updateDeps(DepsArray: Array<[number, any]>) {
 
-        for (let [triggerPath, value] of DepsArray) {
-            this.deps.set(triggerPath, value)
+        for (let [triggerUid, value] of DepsArray) {
+            this.deps.set(triggerUid, value)
         }
     }
 
-    setRule(value: any, DepsArray?: Array<[P, any]>) {
+    setRule(value: {
+        value: any,
+        targetUid:number,
+        triggerUids: number[],
+        priority: any
+        logic:any,
+        entityId?:any
+    }, DepsArray?: Array<[number, any]>) {
 
         //如果是内部调用，DepsArray是没有值的，那就按照默认的逻辑执行。如果传入DepsArray，就是外界注册setRule的时候传入的，需要记录一下
         //当前的桶关联了哪些path，这些path的value会被记录下来当作依赖，变化了之后会执行计算，没有变化就返回cache
@@ -382,26 +398,26 @@ export class SchemaBucket<P>{
 
         if (value)
 
-            for (let path of value.triggerPaths) {
-                if (!this.rules.has(path)) {
-                    this.rules.set(path, new Set<any>());
+            for (let uid of value.triggerUids) {
+                if (!this.rules.has(uid)) {
+                    this.rules.set(uid, new Set<any>());
                 }
-                this.rules.get(path)!.add(ruleEntity)
+                this.rules.get(uid)!.add(ruleEntity)
             };
         this.strategy.updateComputedRules();
         //返回删除对应rule的方法
         return () => {
 
-            for (let path of value.triggerPaths) {
-                const set = this.rules.get(path);
+            for (let uid of value.triggerUids) {
+                const set = this.rules.get(uid);
                 if (set) {
                     // O(1) 复杂度，直接移除引用
                     set.delete(ruleEntity);
 
                     // 极致优化：如果 Set 空了，释放内存
                     if (set.size === 0) {
-                        this.rules.delete(path);
-                        this.deps.delete(path);
+                        this.rules.delete(uid);
+                        this.deps.delete(uid);
                     };
                 };
             };
@@ -440,18 +456,13 @@ export class SchemaBucket<P>{
         //把这个移出来看看能否把异步变成同步
         let shouldSkipCalculate = false;
         //当不是从notifyAll触发的时候
-        if (typeof api.triggerPath === 'string') {
+        if (typeof api.triggerUid === 'number') {
             shouldSkipCalculate = true;
+ 
 
-            // // 1. 打印触发源
-            // console.log(`%c [桶预检] ${this.path}`, "color: #e6a23c; font-weight: bold;", {
-            //     triggerPath: api.triggerPath,
-            //     curToken: curToken
-            // });
-
-            let oldVal = this.deps.get(api.triggerPath);
-            // let curVal = api.GetValueByPath(api.triggerPath)
-            let curVal = api.getStateByPath(api.triggerPath)
+            let oldVal = this.deps.get(api.triggerUid);
+ 
+            let curVal = api.getStateByUid(api.triggerUid)
 
             // 2. 打印直接触发者的对比
             // console.log(`   └─ 触发路径对比: ${api.triggerPath} | 旧值:`, oldVal, " | 新值:", curVal);
@@ -464,7 +475,7 @@ export class SchemaBucket<P>{
                 for (let path of paths) {
                     let oldVal = this.deps.get(path);
                     // let curVal = api.GetValueByPath(path);
-                    let curVal = api.getStateByPath(path);
+                    let curVal = api.getStateByUid(path);
                     if (oldVal !== curVal) {
                         // console.log(`   %c └─ 判定: 发现差异路径 ${path} | ${oldVal} -> ${curVal} | 执行重算`, "color: #f56c6c");
                         shouldSkipCalculate = false;
@@ -522,8 +533,8 @@ export class SchemaBucket<P>{
         this.cache = res;
         // 更新依赖快照 (同步)
         this.deps.forEach((_, path) => {
-            // this.deps.set(path, api.GetValueByPath(path));
-            this.deps.set(path, api.GetRenderSchemaByPath(path));
+          
+            this.deps.set(path, api.getProxyByUid(path));
         });
         return res;
     }

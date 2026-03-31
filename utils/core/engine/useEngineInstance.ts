@@ -59,17 +59,32 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     let isEntangleDirty:boolean = false;
     let isEntangleChecking:boolean = false;
 
-    const dependencyGraph = new Map<P, Set<P>>();
+    // const dependencyGraph = new Map<P, Set<P>>();
 
-    const predecessorGraph = new Map<P, Set<P>>();
+    // const predecessorGraph = new Map<P, Set<P>>();
 
-    let directChildDependencyGraph = new Map<P, Set<P>>();
+    // let directChildDependencyGraph = new Map<P, Set<P>>();
 
-    let directParentDependencyGraph = new Map<P, Set<P>>();
+    // let directParentDependencyGraph = new Map<P, Set<P>>();
 
-    let dependencyOrder: P[][] = [];
+    // let dependencyOrder: P[][] = [];
 
-    let pathToLevelMap: Map<P, number> = new Map();
+    //这是所有使用setrule建立过依赖关系的节点集合，用uid作为map的key值，value是这个路径被建立了几次依赖
+    const activeTopologyUids:Map<number,number> = new Map()
+
+    const dependencyGraph:Array<Array<number>> = [];
+    const _dependencyGraph:Array<Set<number>> = []; //初始化时候的影子依赖，等依赖关系稳定后就清除
+
+    const predecessorGraph:Array<Array<number>> = [];
+    const _predecessorGraph:Array<Set<number>> = [];// 影子依赖
+
+    let directChildDependencyGraph:Array<Array<number>> = [];
+
+    let directParentDependencyGraph:Array<Array<number>> = [];
+
+    let dependencyOrder: number[][] = [];
+
+    let uidToLevelMap: Map<number, number> = new Map();
 
     let isReady: boolean = false;
 
@@ -83,7 +98,10 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         () => dependencyGraph,
         () => predecessorGraph,
         () => directParentDependencyGraph, //传入直接父路径map集合
-        () => directChildDependencyGraph //传入直接子路径map集合
+        () => directChildDependencyGraph, //传入直接子路径map集合
+
+         
+       
     );
 
     const historyInternalModule: {
@@ -186,7 +204,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
             GetNextDependency,
             GetPrevDependency,
             GetAllPrevDependency,
-            GetPathToLevelMap: () => pathToLevelMap,
+            GetUidToLevelMap: () => uidToLevelMap,
         },
         historyInternalModule,
         {
@@ -205,7 +223,9 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         GetNodeByPath,
         notifyAll,
         useEntangle,
-        updateEntangleLevel
+        updateEntangleLevel,
+
+        CancelTask
     } = scheduler;
 
     if(isRenderGateRegistered){
@@ -246,14 +266,16 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         GetBucket,
         dependencyGraph,
         predecessorGraph,
-    
+        _dependencyGraph,
+        _predecessorGraph,
+        activeTopologyUids
     );
 
     const { SetStrategy } = useSetStrategy<P,NM>(GetNodeByPath,GetBucket);
 
  
 
-    const check = useCheckCycleInGraph<P>(dependencyGraph);
+    const check = useCheckCycleInGraph<P,NM>(dependencyGraph,activeTopologyUids);
 
     //必须被调用，否则denpenencyorder没法更新
     const CheckCycleInGraph = () => {
@@ -261,8 +283,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         //这里对dependencyOrder重新赋值
         const res = check();
         dependencyOrder = res.steps;
-        pathToLevelMap = res.levelMap;
-        
+        uidToLevelMap = res.levelMap;
+     
         //更新完levelmap之后需要去更新一下纠缠关系的level
         forceSyncEngineState();
     };
@@ -339,7 +361,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     };
 
     const notifyAllWrapper = async () => {
-     
+        
         CheckCycleInGraph();
         await notifyAll();
         isReady = true;
@@ -415,7 +437,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
         scheduler,
 
-        destroyPlugin
+        destroyPlugin,
+        CancelTask
     };
  
 

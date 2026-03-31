@@ -1,6 +1,6 @@
 //表单计算流程的动画
 
-import { BaseMeshEvents } from "../types/types";
+import { BaseMeshEvents, MeshFlowEventsName } from "../types/types";
 
 type NodeStatus = 'idle' | 'pending' | 'calculating' | 'calculated' | 'error' | 'canceled';
 
@@ -38,7 +38,7 @@ export function useExecutionTrace<T>(
       on: (event: keyof BaseMeshEvents, cb: (data: any) => void) => void 
     }) => {
       // 1. 全局流点火：新任务开始，重置上一轮
-      api.on('flow:start', () => {
+      api.on( MeshFlowEventsName.FlowStart , () => {
          
         currentSessionAffected.forEach(p => updateStatus(p, 'idle'));
         currentSessionAffected.clear();
@@ -47,7 +47,7 @@ export function useExecutionTrace<T>(
       });
   
       // 2. 释放点火：标记为待命状态
-      api.on('node:release', ({ path ,type}) => {
+      api.on( MeshFlowEventsName.NodeRelease , ({ path ,type}) => {
         if(type==1||type==2){
           
           currentSessionAffected.add(path);
@@ -59,7 +59,7 @@ export function useExecutionTrace<T>(
         // }
       });
 
-      api.on('node:pending',({path})=>{
+      api.on( MeshFlowEventsName.NodePending ,({path})=>{
         
          currentSessionAffected.add(path);
         if (!statusMap.has(path) || statusMap.get(path) === 'idle') {
@@ -68,7 +68,7 @@ export function useExecutionTrace<T>(
       })
   
       // 3. 计算启动：正式施工
-      api.on('node:start', ({ path }: { path: T }) => {
+      api.on( MeshFlowEventsName.NodeStart , ({ path }: { path: T }) => {
         // if(path==='cloudConsole.billing.totalPrice'){
         //   debugger
         // }
@@ -78,12 +78,12 @@ export function useExecutionTrace<T>(
       });
   
       // 4. 计算成功：完成施工
-      api.on('node:success', ({ path }: { path: T }) => {
+      api.on( MeshFlowEventsName.NodeSuccess , ({ path }: { path: T }) => {
         updateStatus(path, 'calculated');
       });
   
       // 5. 路径终结信号：确保 UI 不会悬挂
-      api.on('node:intercept', ({ path ,type}) => {
+      api.on( MeshFlowEventsName.NodeIntercept , ({ path ,type}) => {
         //3是节点正在被计算的拦截信号,所以显示正在被计算
         if(type==3){
           updateStatus(path, 'calculating');
@@ -94,10 +94,10 @@ export function useExecutionTrace<T>(
         }
 
       });
-      api.on('node:stagnate', ({ path } ) => {
+      api.on( MeshFlowEventsName.NodeStagnate , ({ path } ) => {
         updateStatus(path, 'pending')
       });
-      api.on('node:error', ({ path } ) => updateStatus(path, 'error'));
+      api.on( MeshFlowEventsName.NodeError , ({ path } ) => updateStatus(path, 'error'));
     };
 
     return { apply }

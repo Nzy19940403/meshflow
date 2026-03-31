@@ -1,4 +1,4 @@
-import {  MeshPath } from "../types/types";
+import {  MeshError, MeshPath } from "../types/types";
 import { InferLeafPath, InferLeafType } from "../utils/util";
 import { useEngineInstance } from "./useEngineInstance";
 
@@ -118,7 +118,7 @@ const useEngineManager = <
  
 
     if (engineMap.has(id)) {
-      throw Error("engineID repeated");
+      throw Error(MeshError.EngineIdRepeated);
     }
 
     const EngineInstance = useEngineInstance<T, P, S, M, NM>(Schema, {
@@ -166,7 +166,8 @@ const useEngineManager = <
       onStart,
 
       scheduler,
-      destroyPlugin
+      destroyPlugin,
+      CancelTask
     } = EngineInstance;
 
     const baseEngine: BaseEngine<SchedulerType<T, P, S, M, NM>> = {
@@ -256,6 +257,7 @@ const useEngineManager = <
     const finalEngine: any = {
       ...baseEngine,
       destroyPlugin,
+      CancelTask,
       modules: {},
     };
     const modules = options.modules;
@@ -325,7 +327,7 @@ const useEngine = <
   const instance = engineMap.get(id);
 
   if (!instance) {
-    throw Error(`[MeshFlow] Engine ID "${String(id)}" not found. Ensure it is initialized with useMeshFlow.`);
+    throw Error(MeshError.EngineNotFound);
   }
 
   // 这里的 as any 是必要的，因为 engineMap 存的是 Engine<any, any, any>
@@ -335,7 +337,8 @@ const useEngine = <
 
 const deleteEngine = (id: MeshPath) => {
   const engine = engineMap.get(id) ;
-  engine.destroyPlugin()    
+  engine.destroyPlugin();    
+  engine.CancelTask();
 
   engineMap.delete(id);
 };
@@ -351,16 +354,19 @@ export {
 
 export type {
   MeshPath,
+  MeshEmit,
   SetRuleOptions,
   MeshEvents,
   MeshFlowGroupNode,
   MeshErrorContext,
   MeshFlowTaskNode,
-  MeshNodeProxy
+  MeshNodeProxy,
+  GhostProposalApi,
 } from "../types/types";
 
 export {
-  TriggerCause
+  TriggerCause,
+  MeshFlowEventsName
 } from "../types/types";
 
 export type { SchemaBucket } from "../engine/bucket";
@@ -370,3 +376,5 @@ export {DefaultStrategy} from '../engine/bucket'
 export type { InferLeafPath, InferLeafType } from "../utils/util";
  
 export * from "../engine/useScheduler";
+ 
+

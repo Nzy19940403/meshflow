@@ -1,7 +1,6 @@
-//这里需要定义一些预设的rule，然后暴露一下createRule方法
-
  
-import { DefaultStrategy, SchemaBucket } from "../engine/bucket"; 
+ 
+import {  SchemaBucket } from "../engine/bucket"; 
 import { MeshFlowTaskNode, MeshPath, SetRuleOptions, logicApi } from "../types/types";
 import { KeysOfUnion } from '../utils/util';
  
@@ -11,25 +10,23 @@ K,
 NM,
 TKeys extends KeysOfUnion<NM>  ,
  
->(targetPath: P, targetKey: K , options: {
+>(targetUid: number, targetKey: K , options: {
     value?: any
     priority?: number,
     logic: (api: logicApi<TKeys>) => any,
-    triggerPaths: P[],
+    triggerUids: number[],
     triggerKeys:Array<TKeys>;
  
 }) => {
 
     const basePriority = 10;
-    // type newKey = TKeys;
-    // let lastDeps: any[] | undefined = undefined;
-    // let cache: any = undefined;
+ 
 
     //这里的参数就是调用evaluate的时候传入的参数
     const logic = (api:any) => {
      
-        const currentDeps = options.triggerPaths.map(path => {
-            const node = api.GetRenderSchemaByPath(path);
+        const currentDeps = options.triggerUids.map(uid => {
+            const node = api.getProxyByUid(uid);
             
             
             if(options.triggerKeys.length===0) return node;
@@ -46,10 +43,7 @@ TKeys extends KeysOfUnion<NM>  ,
     
             return triggerSnapshot;
         });
-        // if (lastDeps && currentDeps.every((val, i) => val === lastDeps![i])) {
-        //     return cache; 
-        // }
-
+ 
         const slot = Object.create(null);
         Object.defineProperty(slot, 'triggerTargets', {
             get: () => currentDeps
@@ -57,14 +51,13 @@ TKeys extends KeysOfUnion<NM>  ,
         Object.defineProperty(slot, 'affectedTatget', {
             get: () => {
             
-                return api.GetRenderSchemaByPath(targetPath)[targetKey]
+                return api.getProxyByUid(targetUid)[targetKey]
             }
         });
 
         const result = options.logic({ slot });
 
-        // lastDeps = currentDeps;
-        // cache = result;
+ 
 
         return result;
     }
@@ -72,8 +65,8 @@ TKeys extends KeysOfUnion<NM>  ,
     return {
     
         value: options.value,
-        targetPath:targetPath,
-        triggerPaths: options.triggerPaths,
+        targetUid:targetUid,
+        triggerUids: options.triggerUids,
         priority: options.priority ?? basePriority,
         logic,
     }
@@ -84,27 +77,46 @@ export const useSetRule = <P extends MeshPath,NM>(
     Finder: (path: P) => MeshFlowTaskNode<P,any,NM>,
     SetBucket:(newBucket: SchemaBucket<P>) => number,
     GetBucket: (bucketId: number) => SchemaBucket<P>,
-    dependencyGraph: Map<P, Set<P>>,
-    predecessorGraph: Map<P, Set<P>>,
- 
+    dependencyGraph: Array<Array<number>>,
+    predecessorGraph: Array<Array<number>>,
+
+    _dependencyGraph:Array<Set<number>>,
+    _predecessorGraph:Array<Set<number>>,
+
+    activeTopologyUids:Map<number,number>
 ) => {
     if (!Finder) {
-        throw Error('')
+        throw Error()
     }
     let GetByPath = Finder;
 
-    const updateGraphRelation = (source: P, target: P) => {
+    const updateGraphRelation = (sourceUid: number, targetUid: number) => {
         // 1. 维护出度表 (dependencyGraph): source -> targets
-        if (!dependencyGraph.has(source)) {
-            dependencyGraph.set(source, new Set<P>());
+    
+        if(typeof dependencyGraph[sourceUid] === 'undefined'){
+            dependencyGraph[sourceUid] = [];
+            _dependencyGraph[sourceUid] = new Set();
         }
-        dependencyGraph.get(source)!.add(target);
+        //避免多次加入,影子节点用来避免大数据量的情况下加入节点时候的去重问题，稳定之后可以删除影子节点
+ 
+        _dependencyGraph[sourceUid].add(targetUid);
+        if(_dependencyGraph[sourceUid].size>dependencyGraph[sourceUid].length){
+            dependencyGraph[sourceUid].push(targetUid);
+            // dependencyGraph[sourceUid] = Array.from(_dependencyGraph[sourceUid])
+        }
+        
 
         // 2. 维护入度表 (predecessorGraph): target -> sources
-        if (!predecessorGraph.has(target)) {
-            predecessorGraph.set(target, new Set<P>());
+        if(typeof predecessorGraph[targetUid] === 'undefined'){
+            predecessorGraph[targetUid] = [];
+            _predecessorGraph[targetUid]= new Set();
         }
-        predecessorGraph.get(target)!.add(source);
+        _predecessorGraph[targetUid].add(sourceUid);
+        if(_predecessorGraph[targetUid].size>predecessorGraph[targetUid].length){
+            predecessorGraph[targetUid].push(sourceUid)
+            // predecessorGraph[targetUid] = Array.from(_predecessorGraph[targetUid]);
+        }  
+ 
     };
 
     const SetRule = <
@@ -113,20 +125,31 @@ export const useSetRule = <P extends MeshPath,NM>(
     >(outDegreePath: P, inDegreePath: P, key: K , options: SetRuleOptions<NM,TKeys>) => {
         
        
-        // let outDegree = GetByPath(outDegreePath);
-        let inDegree = GetByPath(inDegreePath);
+        const outDegree = GetByPath(outDegreePath);
+        const inDegree = GetByPath(inDegreePath);
         
         const triggerKeys = options.triggerKeys || [] ;
-    
- 
+        
+        let activeIndegreeCount = activeTopologyUids.get(inDegree.uid)||0
+        let activeOutdegreeCount = activeTopologyUids.get(outDegree.uid)||0
+       
+        activeIndegreeCount+=1;
+        activeOutdegreeCount+=1
+         
+        activeTopologyUids.set(inDegree.uid,activeIndegreeCount);
+        activeTopologyUids.set(outDegree.uid,activeOutdegreeCount)
 
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
-        let newRule = CreateRule<P,K,NM,TKeys>(inDegreePath, key, { ...options, triggerPaths: [outDegreePath],triggerKeys  });
+        let newRule = CreateRule<P,K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: [outDegree.uid],triggerKeys  });
 
         // const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).value])
-        const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).state.value])
+        const DepsArray:Array<[number,any]> = [outDegreePath].map(path=>{
+            const node = GetByPath(path);
+            return [node.uid,node.state.value]
+        })
+      
         // 维护图关系
-        updateGraphRelation(outDegreePath, inDegreePath);
+        updateGraphRelation(outDegree.uid, inDegree.uid);
         
      
 
@@ -190,21 +213,38 @@ export const useSetRule = <P extends MeshPath,NM>(
         key: K,
         options: SetRuleOptions<NM,TKeys> ) => {
         
-        let inDegree = GetByPath(inDegreePath);
+          
+        const inDegree = GetByPath(inDegreePath);
+
+        let activeIndegreeCount = activeTopologyUids.get(inDegree.uid)||0
+      
+        activeIndegreeCount+=1;
      
+        activeTopologyUids.set(inDegree.uid,activeIndegreeCount)
+     
+        const outDegreeUids:Array<number> = []
         // 维护多对一的图关系
         for (let outDegreePath of outDegreePaths) {
-            updateGraphRelation(outDegreePath, inDegreePath);
+            const outDegree = GetByPath(outDegreePath);
+            outDegreeUids.push(outDegree.uid);
+            let activeOutdegreeCount = activeTopologyUids.get(outDegree.uid)||0
+            activeOutdegreeCount+=1;
+            activeTopologyUids.set(outDegree.uid,activeOutdegreeCount);
+            
+            updateGraphRelation(outDegree.uid, inDegree.uid);
         }
 
         const triggerKeys = options.triggerKeys || [];
  
 
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
-        let newRule = CreateRule<P,K,NM,TKeys>(inDegreePath, key, { ...options, triggerPaths: outDegreePaths,triggerKeys });
+        let newRule = CreateRule<P,K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: outDegreeUids,triggerKeys });
 
-        // const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).value])
-        const DepsArray:Array<[P,any]> = outDegreePaths.map(path=>[path,GetByPath(path).state.value])
+   
+        const DepsArray:Array<[number,any]> = outDegreePaths.map(path=>{
+            const node = GetByPath(path);
+            return [node.uid,node.state.value]
+        })
 
         
         if (typeof inDegree.nodeBucket[key] ==='number' ) {

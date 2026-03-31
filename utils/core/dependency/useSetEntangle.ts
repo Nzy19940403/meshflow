@@ -4,214 +4,254 @@ import {
   MeshFlowTaskNode,
   MeshPath,
   MeshEmit,
-  MeshErrorContext
+  MeshErrorContext,
+  GhostProposalApi,
+  EntangleOp
 } from "../types/types";
 import { createScheduler } from "../utils/util";
 
-type EntangleRoute<P extends MeshPath> = {
-  target: P;
-  emit: EntangleArgType<P>["emit"];
+type EntangleLink<P extends MeshPath> = {
+  impact: P;
   filter?: (obs: any, tgt: any) => boolean;
+  emit:<T>(src:any,tgt:any,propose:GhostProposalApi<T>) => void | EntangleGhost<T> | undefined | Promise<void | EntangleGhost<T> | undefined>; 
   count: number;
+  isProxy:boolean
 };
 
 export const UseSetEntangle = <P extends MeshPath, NM>(
-  config: {
-    useEntangleStep: number
-  },
+  config: { useEntangleStep: number },
   timeScheduler: ReturnType<typeof createScheduler>,
-  getPathToLevelMap: () => Map<P, number>,
+  GetUidToLevelMap: () => Map<number, number>,
   GetNodeByPath: (path: P) => MeshFlowTaskNode<P, any, NM>,
- 
-  hooks:{
+  GetNodeByUid: (uid: number) => MeshFlowTaskNode<P, any, NM>,
+  GetPathByUid: (uid: number) => P,
+  hooks: {
     emit: MeshEmit,
     onError: (error: MeshErrorContext) => void
   }
-  
 ) => {
   const MAX_ENTANGLE_DEPTH = config.useEntangleStep;
- 
-  const _registry = new Map<P, Map<string, EntangleRoute<P>[]>>();
-  const _ghostBuffer = new Map<P, EntangleGhost[]>();
+
+  const _registry: Array<Map<string, EntangleLink<P>[]>> = [];
+  const _ghostBuffer: Array<EntangleGhost[]> = [];
   const _volatileLevels = new Set<number>();
 
   const _GetNodeByPath = GetNodeByPath;
+  const _GetNodeByUid = GetNodeByUid;
+  const _GetPathByUid = GetPathByUid;
+  const _GetUidToLevelMap = GetUidToLevelMap;
 
-  
-  
-  let _onSettle: (() => void) | null = null;
-
-  // 全局异步任务飞行计数器
   let activeAsyncCount = 0;
+  // 🌟 优化点 1：用 O(1) 计数器替代数组扫描
+  let pendingGhostNodesCount = 0; 
+
+  const MESH_CAPACITY = 100;
+
+  const createPoolCell = () => {
+    const cell: any = {
+      link: null,
+      impactNode: null,
+      impactUid: -1,
+      hitTargetUids: null,
+      isDirty: false,
+      propose: null
+    };
+
+    cell.propose = {
+      set: (key: string, value: any, weight = 1) => {
+        if (value === cell.impactNode.state[key]) return;
+        cell.link.count++;
+        
+        // 🌟 O(1) 幽灵追踪：如果这是该节点第一个幽灵，计数器 +1
+        if (!_ghostBuffer[cell.impactUid] || _ghostBuffer[cell.impactUid].length === 0) {
+          _ghostBuffer[cell.impactUid] = [];
+          pendingGhostNodesCount++;
+        }
+        _ghostBuffer[cell.impactUid].push({ key, value, weight });
+        
+        if (!cell.isDirty) {
+          cell.hitTargetUids.push(cell.impactUid);
+          cell.isDirty = true;
+        }
+      },
+      update: (key: string, delta: any, op: EntangleOp = "add") => {
+        cell.link.count++;
+        if (!_ghostBuffer[cell.impactUid] || _ghostBuffer[cell.impactUid].length === 0) {
+          _ghostBuffer[cell.impactUid] = [];
+          pendingGhostNodesCount++;
+        }
+        _ghostBuffer[cell.impactUid].push({ key, delta, op, weight: 1 });
+        
+        if (!cell.isDirty) {
+          cell.hitTargetUids.push(cell.impactUid);
+          cell.isDirty = true;
+        }
+      },
+      patch: (key: string, patchFn: (oldState: any) => any) => {
+        cell.link.count++;
+        if (!_ghostBuffer[cell.impactUid] || _ghostBuffer[cell.impactUid].length === 0) {
+          _ghostBuffer[cell.impactUid] = [];
+          pendingGhostNodesCount++;
+        }
+        _ghostBuffer[cell.impactUid].push({ key, patch: patchFn, weight: 1 });
+        
+        if (!cell.isDirty) {
+          cell.hitTargetUids.push(cell.impactUid);
+          cell.isDirty = true;
+        }
+      }
+    };
+    return cell;
+  };
+
+  const contextPool = Array.from({ length: MESH_CAPACITY }, createPoolCell);
+  let poolCursor = MESH_CAPACITY - 1;
+
+  const processLink = (
+    link: EntangleLink<P>, 
+    causeNode: MeshFlowTaskNode<P, any, NM>, 
+    hitTargetUids: number[]
+  ): Promise<void> | void => {
+    const causePath = causeNode.path;
+    const impactPath = link.impact;
+
+    if (link.count >= MAX_ENTANGLE_DEPTH) {
+      hooks.emit('entangle:blocked' as any, { observer: causePath as string, target: impactPath as string, count: link.count });
+      return;
+    }
+
+    const impactNode = _GetNodeByPath(impactPath);
+    const causeArg = link.isProxy ? causeNode.proxy : causeNode;
+    const impactArg = link.isProxy ? impactNode.proxy : impactNode;
+
+    if (link.filter && !link.filter(causeArg, impactArg)) return;
+
+    let cell;
+    let isFromPool = true;
+
+    if (poolCursor < 0) {
+      cell = createPoolCell();
+      isFromPool = false;
+    } else {
+      cell = contextPool[poolCursor--];
+    }
+
+    cell.isDirty = false;
+    cell.link = link;
+    cell.impactNode = impactNode;
+    cell.impactUid = impactNode.uid;
+    cell.hitTargetUids = hitTargetUids;
+
+    const emitResult = link.emit(causeArg, impactArg, cell.propose);
+
+    if (emitResult instanceof Promise || (emitResult && typeof (emitResult as any).then === 'function')) {
+      activeAsyncCount++;
+      return (async () => {
+        try {
+          await emitResult; 
+        } catch (e) {
+          hooks.emit('node:error' as any, { path: causePath as string, error: e });
+          hooks.onError({ path: causePath as string, error: e as Error });
+        } finally {
+          activeAsyncCount--;
+          if (isFromPool) {
+            contextPool[++poolCursor] = cell; 
+          }
+        }
+      })();
+    } else {
+      if (isFromPool) {
+        contextPool[++poolCursor] = cell;
+      }
+    }
+  };
 
   const updateEntangleLevel = () => {
-     
-    const levelMap = getPathToLevelMap();
-    // if (!levelMap || levelMap.size === 0) return;
-    
+    const levelMap = _GetUidToLevelMap();
     _volatileLevels.clear();
-    for (const observer of _registry.keys()) {
-      const level = levelMap.get(observer)||0;
-      // if (level !== undefined) {
+    for (let uid = 0; uid < _registry.length; uid++) {
+      if (_registry[uid] !== undefined) {
+        const level = levelMap.get(uid) || 0;
         _volatileLevels.add(level);
-      // } else {
-      //   hooks.emit('entangle:warn' as any, { path: observer as string, type: 'no_level' });
-      // }
+      }
     }
   };
 
   const useEntangle = (config: EntangleArgType<P>) => {
-    const { observer, target, triggerKeys, emit: entangleEmit,filter } = config;
-   
-    if (!triggerKeys || triggerKeys.length === 0) {
-      hooks.emit('entangle:warn' as any, { path: observer as string, type: 'no_keys' });
+    const { cause, impact, via, emit, filter, isProxy } = config;
+    
+    if (!via || via.length === 0) {
+      hooks.emit('entangle:warn' as any, { path: cause as string, type: 'no_keys' });
       return;
     }
 
-    if (!_registry.has(observer)) {
-      _registry.set(observer, new Map());
-    }
-     
-    const obsMap = _registry.get(observer)!;
+    const causeNode = _GetNodeByPath(cause);
+    const causeUid = causeNode.uid;
 
-    triggerKeys.forEach((key) => {
-      if (!obsMap.has(key)) {
-        obsMap.set(key, []);
-      }
-      obsMap.get(key)!.push({ target, emit: entangleEmit, filter, count: 0 });
-    });
-     
+    if (!_registry[causeUid]) {
+      _registry[causeUid] = new Map();
+    }
+      
+    const causeMap = _registry[causeUid];
+
+    for (let i = 0; i < via.length; i++) {
+      const key = via[i];
+      if (!causeMap.has(key)) causeMap.set(key, []);
+      causeMap.get(key)!.push({ impact, emit: emit as any, filter, count: 0, isProxy: !!isProxy });
+    }
   };
 
   const Turnstile: any = {
     volatileLevels: _volatileLevels,
 
     get inFlightCount() {
-      
       return activeAsyncCount;
     },
 
+    // 🌟 优化点 1 收益：全 O(1) 返回，极致性能
     get hasPendingGhosts() {
-      for (const ghosts of _ghostBuffer.values()) {
-        if (ghosts.length > 0) return true;
-      }
-      return false;
+      return pendingGhostNodesCount > 0;
     },
 
-    onSettle: (cb: () => void) => { _onSettle = cb; },
+    hasObserver: (uid: number) => {
+      return _registry[uid] !== undefined;
+    },
 
-    hasObserver: (path: P) => {
+    getTriggerKeys: (uid: number): string[] => {
+      const causeMap = _registry[uid];
+      return causeMap ? Array.from(causeMap.keys()) : [];
+    },
+
+    receiveGhosts: (causeNode: MeshFlowTaskNode<P, any, NM>, changedKeys: string[] = []): number[] | Promise<number[]> => {
+      const causeUid = causeNode.uid;
+      const hitTargetUids: number[] = [];
+      const causeMap = _registry[causeUid];
+
+      if (!causeMap || changedKeys.length === 0) return hitTargetUids;
+
+      const linksArray: EntangleLink<P>[] = [];
       
-      return _registry.has(path)
-    },
-
-    getTriggerKeys: (path: P): string[] => {
-      const obsMap = _registry.get(path);
-      return obsMap ? Array.from(obsMap.keys()) : [];
-    },
-
-    receiveGhosts: (observerNode: MeshFlowTaskNode<P, any, NM>, changedKeys: string[] = []): P[] | Promise<P[]> => {
- 
- 
-
-      const observerPath = observerNode.path;
-      const hitTargets: P[] = [];
-
-      const obsMap = _registry.get(observerPath);
-      if (!obsMap || changedKeys.length === 0) return hitTargets;
-
-      const routesToFire = new Set<EntangleRoute<P>>();
-
-      changedKeys.forEach(key => {
-        const routes = obsMap.get(key);
-        if (routes) {
-          routes.forEach(r => routesToFire.add(r));
-        }
-      });
-       
-      const isPromise = (obj: any): obj is Promise<any> => {
-        return obj instanceof Promise || (obj !== null && typeof obj === 'object' && typeof obj.then === 'function');
-      };
-
-      const processRoute = (route: EntangleRoute<P>): Promise<void> | void => {
-        const targetPath = route.target;
-
-        if (route.count >= MAX_ENTANGLE_DEPTH) {
-          
-          hooks.emit('entangle:blocked' as any, { observer: observerPath as string, target: targetPath as string, count: route.count });
-          return;
-        }
-
-        const currentNode = _GetNodeByPath(targetPath);
-
-        if (route.filter && !route.filter(observerNode.proxy, currentNode.proxy)) {
-          return; // 被过滤器挡下，静默拦截
-        }
-        const ghostProposalOrPromise = route.emit(observerNode.proxy, currentNode.proxy);
-
-        const handleProposal = (ghostProposal: any) => {
-          
-          if (ghostProposal && ghostProposal.key !== undefined) {
-
-            if (
-              ghostProposal.delta === undefined && 
-              ghostProposal.value !== undefined && 
-              ghostProposal.value === currentNode.state[ghostProposal.key]
-            ) {
-              return; // 直接截断因果链！不上报 hitTargets，系统在此处恢复稳态！
-            }
-
-            route.count++;
-            if (!_ghostBuffer.has(targetPath)) _ghostBuffer.set(targetPath, []);
-            _ghostBuffer.get(targetPath)!.push({ weight: 1, ...ghostProposal });
-            hitTargets.push(targetPath);
-            
- 
+      // 🌟 优化点 2：彻底砍掉 impactBuffer 的 new Set。原生数组极速展平。
+      for (let k = 0; k < changedKeys.length; k++) {
+        const links = causeMap.get(changedKeys[k]);
+        if (links) {
+          for (let j = 0; j < links.length; j++) {
+            linksArray.push(links[j]);
           }
-        };
-
-        if (isPromise(ghostProposalOrPromise)) {
-          activeAsyncCount++;
-  
-          return (async () => {
-            try {
-              const res = await ghostProposalOrPromise;
- 
-              handleProposal(res);
-            } catch (e) {
-              hooks.emit('node:error', { path: observerPath, error: e });
-              hooks.onError({ path: observerPath as any, error: e });
-            } finally {
-          
-                activeAsyncCount--;
-                // 🌟 核心：只有当天上没有幽灵时，才鸣枪！
-                // if (activeAsyncCount === 0 && _onSettle) {
-                //   _onSettle();
-                // }
-            }
-          })();
-        } else {
-          handleProposal(ghostProposalOrPromise);
         }
-      };
-
-      const routesArray = Array.from(routesToFire);
+      }
       
       let i = 0;
       let wentAsync = false;
       let firstAsyncPromise: Promise<void> | null = null;
 
-      // 第一阶段：尝试纯同步执行
-      for (; i < routesArray.length; i++) {
-        // 1. 如果当前帧时间耗尽，必须强制转为异步模式，把主线程还给 UI
+      for (; i < linksArray.length; i++) {
         if (timeScheduler.shouldYield()) {
-          // 🌟 修改点 2：在让位之前，向外部发射渲染请求，告诉 UI 此时可以先渲染已定型的中间态
-          // uitrigger.requestUpdate(); 
           wentAsync = true;
           break;
         }
 
-        const p = processRoute(routesArray[i]);
+        const p = processLink(linksArray[i], causeNode, hitTargetUids);
         if (p) {
           firstAsyncPromise = p;
           wentAsync = true;
@@ -220,114 +260,118 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
         }
       }
 
+      // 🌟 提取的公共轻量级去重方法 (替代末尾的 Array.from(new Set))
+      const getUniqueHits = () => {
+        if (hitTargetUids.length <= 1) return hitTargetUids;
+        const unique: number[] = [];
+        const seen = Object.create(null); // 极轻量级字典，无原型链
+        for (let j = 0; j < hitTargetUids.length; j++) {
+          const u = hitTargetUids[j];
+          if (!seen[u]) { seen[u] = true; unique.push(u); }
+        }
+        return unique;
+      };
+
       if (!wentAsync) {
-        return Array.from(new Set(hitTargets));
+        return getUniqueHits();
       }
 
       return (async () => {
-        if (firstAsyncPromise) {
-          await firstAsyncPromise;
-        }
+        if (firstAsyncPromise) await firstAsyncPromise;
+        if (timeScheduler.shouldYield()) await timeScheduler.yieldToMain();
 
-        // 🌟 修改点 3：如果在进入大循环前就需要让位，发射更新信号
-        if (timeScheduler.shouldYield()) {
-          // uitrigger.requestUpdate();
-          await timeScheduler.yieldToMain();
-        }
-
-        const CHUNK_SIZE = 50; 
-        for (; i < routesArray.length; i += CHUNK_SIZE) {
-          const chunkRoutes = routesArray.slice(i, i + CHUNK_SIZE);
+        for (; i < linksArray.length; ) {
           const chunkPromises: Promise<void>[] = [];
+          const boundary = Math.min(i + MESH_CAPACITY, linksArray.length);
 
-          for (const route of chunkRoutes) {
-            const p = processRoute(route);
+          for (; i < boundary; i++) {
+            const p = processLink(linksArray[i], causeNode, hitTargetUids);
             if (p) chunkPromises.push(p);
           }
 
           if (chunkPromises.length > 0) {
-            // 🌟 修改点 4：包裹并发任务。任何一个任务完成如果超时了，立刻请求 UI 渲染并让位
-            const wrappedChunk = chunkPromises.map(async (p) => {
+            await Promise.all(chunkPromises.map(async (p) => {
               await p;
-              if (timeScheduler.shouldYield()) {
-                // uitrigger.requestUpdate();
-                await timeScheduler.yieldToMain();
-              }
-            });
-            await Promise.all(wrappedChunk);
+              if (timeScheduler.shouldYield()) await timeScheduler.yieldToMain();
+            }));
           }
 
-          // 🌟 修改点 5：Chunk 批次之间，同样进行渲染探测
-          if (timeScheduler.shouldYield()) {
-            // uitrigger.requestUpdate();
-            await timeScheduler.yieldToMain();
-          }
+          if (timeScheduler.shouldYield()) await timeScheduler.yieldToMain();
         }
 
-        return Array.from(new Set(hitTargets));
+        return getUniqueHits();
       })();
     },
 
     resolveGhosts: (node: MeshFlowTaskNode<P, any, NM>): string[] => {
-      const targetPath = node.path;
-      const buffer = _ghostBuffer.get(targetPath);
+      const targetUid = node.uid;
+      const buffer = _ghostBuffer[targetUid];
       
       if (!buffer || buffer.length === 0) return [];
 
       const changedKeys: string[] = [];
-      const proposalsByKey = new Map<string, EntangleGhost[]>();
+      // 🌟 优化点 3：用极其轻量的 Object.create(null) 替代 Map
+      const proposalsByKey: Record<string, EntangleGhost[]> = Object.create(null);
 
-      for (const p of buffer) {
-        if (!proposalsByKey.has(p.key)) proposalsByKey.set(p.key, []);
-        proposalsByKey.get(p.key)!.push(p);
+      for (let i = 0; i < buffer.length; i++) {
+        const p = buffer[i];
+        if (!proposalsByKey[p.key]) proposalsByKey[p.key] = [];
+        proposalsByKey[p.key].push(p);
       }
 
-      for (const [key, proposals] of proposalsByKey.entries()) {
+      // 🌟 优化点 4：消灭 Reduce 和 Filter 嵌套，改为一趟遍历！
+      for (const key in proposalsByKey) {
+        const proposals = proposalsByKey[key];
         let finalValue = node.state[key];
         
-        // patch优先级最高，存在时直接用patch计算，忽略其他规则
-        const patchProposals = proposals.filter((p) => p.patch !== undefined);
-        if (patchProposals.length > 0) {
-          // 多个patch按顺序叠加执行
-          finalValue = patchProposals.reduce((acc, p) => {
-            return p.patch!(acc);
-          }, finalValue);
-        } else {
-          // 没有patch才走原来的规则
-          const deltaProposals = proposals.filter((p) => p.delta !== undefined);
-          const setProposals = proposals.filter((p) => p.value !== undefined);
-      
-          if (setProposals.length > 0) {
-            const winner = setProposals.reduce((prev, curr) =>
-              (curr.weight ?? 1) >= (prev.weight ?? 1) ? curr : prev
-            );
-            finalValue = winner.value;
+        let bestSetVal: any;
+        let bestSetWeight = -Infinity;
+        let hasSet = false;
+
+        // Pass 1: 先处理 Patch 和 Set (保持你的业务顺序)
+        for (let i = 0; i < proposals.length; i++) {
+          const p = proposals[i];
+          if (p.patch !== undefined) {
+            finalValue = p.patch(finalValue);
           }
-      
-          if (deltaProposals.length > 0) {
-            finalValue = deltaProposals.reduce((acc, p) => {
-              const op = p.op || "add";
-              switch (op) {
-                case "add":
-                  return (typeof acc === "number" ? acc : 0) + p.delta;
-                case "remove":
-                  return Array.isArray(acc) ? acc.filter(v => v !== p.delta) : acc;
-                case "intersect":
-                  return Array.isArray(acc) ? acc.filter(v => p.delta.includes(v)) : p.delta;
-                case "union": {
-                  const baseArr = Array.isArray(acc) ? acc : [];
-                  const newItems = Array.isArray(p.delta) ? p.delta : [p.delta];
-                  return [...new Set([...baseArr, ...newItems])];
-                }
-                case "merge": {
-                  const baseObj = (typeof acc === "object" && acc !== null && !Array.isArray(acc)) ? acc : {};
-                  const patch = (typeof p.delta === "object" && p.delta !== null && !Array.isArray(p.delta)) ? p.delta : {};
-                  return { ...baseObj, ...patch };
-                }
-                default:
-                  return acc;
+          if (p.value !== undefined) {
+            const weight = p.weight ?? 1;
+            if (weight >= bestSetWeight) {
+              bestSetWeight = weight;
+              bestSetVal = p.value;
+              hasSet = true;
+            }
+          }
+        }
+
+        if (hasSet) finalValue = bestSetVal;
+
+        // Pass 2: 处理 Delta 运算
+        for (let i = 0; i < proposals.length; i++) {
+          const p = proposals[i];
+          if (p.delta !== undefined) {
+            const op:EntangleOp = p.op || "add";
+            switch (op) {
+              case "add": 
+                finalValue = (typeof finalValue === "number" ? finalValue : 0) + p.delta; break;
+              case "remove": 
+                finalValue = Array.isArray(finalValue) ? finalValue.filter(v => v !== p.delta) : finalValue; break;
+              case "intersect": 
+                finalValue = Array.isArray(finalValue) ? finalValue.filter(v => p.delta.includes(v)) : p.delta; break;
+              case "union": {
+                const baseArr = Array.isArray(finalValue) ? finalValue : [];
+                const newItems = Array.isArray(p.delta) ? p.delta : [p.delta];
+                // 这里的 Set 是业务逻辑必须的（交并集计算），保留无妨
+                finalValue = [...new Set([...baseArr, ...newItems])]; 
+                break;
               }
-            }, finalValue);
+              case "merge": {
+                const baseObj = (typeof finalValue === "object" && finalValue !== null && !Array.isArray(finalValue)) ? finalValue : {};
+                const patch = (typeof p.delta === "object" && p.delta !== null && !Array.isArray(p.delta)) ? p.delta : {};
+                finalValue = { ...baseObj, ...patch };
+                break;
+              }
+            }
           }
         }
       
@@ -336,74 +380,23 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
           changedKeys.push(key);
         }
       }
-      // for (const [key, proposals] of proposalsByKey.entries()) {
-      //   let finalValue = node.state[key];
-      //   const deltaProposals = proposals.filter((p) => p.delta !== undefined);
-      //   const setProposals = proposals.filter((p) => p.value !== undefined);
 
-      //   if (setProposals.length > 0) {
-      //     const winner = setProposals.reduce((prev, curr) =>
-      //       (curr.weight ?? 1) >= (prev.weight ?? 1) ? curr : prev
-      //     );
-      //     finalValue = winner.value;
-      //   }
-
-      //   if (deltaProposals.length > 0) {
-      //     // const totalDelta = deltaProposals.reduce((sum, p) => sum + p.delta!, 0);
-      //     // const nextVal = (typeof finalValue === "number" ? finalValue : 0) + totalDelta;
-      //     // finalValue = Math.max(0, parseFloat(nextVal.toFixed(6)));
-      //     finalValue = deltaProposals.reduce((acc, p) => {
-      //       const op = p.op || "add"; // 默认 add 兼容老代码
+      // 清空，并且追踪器 -1
+      _ghostBuffer[targetUid] = [];
+      pendingGhostNodesCount--; 
       
-      //       switch (op) {
-      //         case "add":
-      //           return (typeof acc === "number" ? acc : 0) + p.delta;
-      
-      //         case "remove":
-      //           // 数组剔除：如果基准是 [1,2,3]，邻居说 remove 2，结果就是 [1,3]
-      //           return Array.isArray(acc) ? acc.filter(v => v !== p.delta) : acc;
-      
-      //         case "intersect":
-      //           // 交集过滤： 
-      //           return Array.isArray(acc) ? acc.filter(v => p.delta.includes(v)) : p.delta;
-      
-      //         case "union":
-      //           // 并集去重
-      //           const baseArr = Array.isArray(acc) ? acc : [];
-      //           const newItems = Array.isArray(p.delta) ? p.delta : [p.delta];
-      //           return [...new Set([...baseArr, ...newItems])];
-      
-      //         case "merge": {
-      //           const baseObj = (typeof acc === "object" && acc !== null && !Array.isArray(acc)) ? acc : {};
-      //           const patch = (typeof p.delta === "object" && p.delta !== null && !Array.isArray(p.delta)) ? p.delta : {};
-      //           return { ...baseObj, ...patch };
-      //         }
-
-      //         default:
-      //           return acc;
-      //       }
-      //     }, finalValue);
-      //   }
-
-      //   if (!Object.is(node.state[key], finalValue)) {
-      //     node.state[key] = finalValue;
-      //     changedKeys.push(key);
-      //   }
-      // }
-
-      _ghostBuffer.set(targetPath, []);
-
-      if (changedKeys.length > 0) {
-        return changedKeys;
-      }
-
-      return [];
+      return changedKeys.length > 0 ? changedKeys : [];
     },
 
     resetCounters: () => {
-      for (const obsMap of _registry.values()) {
-        for (const routes of obsMap.values()) {
-          routes.forEach(r => r.count = 0);
+      for (let i = 0; i < _registry.length; i++) {
+        const obsMap = _registry[i];
+        if (obsMap) {
+          for (const routes of obsMap.values()) {
+            for (let j = 0; j < routes.length; j++) {
+              routes[j].count = 0;
+            }
+          }
         }
       }
     },

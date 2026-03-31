@@ -6,7 +6,7 @@ export const useSetStrategy = <P,NM>(Finder: any,GetBucket:any) => {
     let GetByPath = Finder ? Finder : undefined;
 
     if (!GetByPath) {
-        throw Error('')
+        throw Error()
     }
 
     const SetStrategy = (path: P, key: KeysOfUnion<NM>, strategy: DefaultStrategy) => {

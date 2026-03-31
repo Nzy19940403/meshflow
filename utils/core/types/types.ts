@@ -1,52 +1,71 @@
-import { SchemaBucket } from "../engine/bucket";
+ 
 import { KeysOfUnion } from "../utils/util";
 
-export interface BaseMeshEvents {
-  "flow:start": { path: MeshPath,token:symbol };
 
-  "node:start": { path: MeshPath,calledBy:number };
-  "node:success": { path: MeshPath,calledBy:number };
-  "node:processing": { path: MeshPath,calledBy:number };
-
-  "node:error": { path: MeshPath; error: any };
-  "node:intercept": { path: MeshPath; type: number; detail?: any };
-  "node:release": { path: MeshPath; type: number; detail?: any };
-  "node:stagnate": { path: MeshPath; type: number };
+/**
+ * 🚀 核心内部事件名枚举
+ * 使用 const enum 确保编译后直接内联为字符串，零运行时开销
+ */
+export const enum MeshFlowEventsName {
+  FlowStart = 0,
+  FlowSuccess = 1,
+  FlowEnd = 2,
+  FlowAbort = 3,
+  FlowWait = 4,
+  FlowFire = 5,
   
-
-  "node:pending": { path: MeshPath };
-
-  "flow:wait": { type: number; detail?: any };
-
+  NodeStart = 6,
+  NodeSuccess = 7,
+  NodeProcessing = 8,
+  NodeError = 9,
+  NodePending = 10,
+  NodeRevive = 11,
   
-
-  "flow:fire": { path: MeshPath; type: number; detail?: any };
-
-  "node:bucket:success": { path: MeshPath; key: string; value: any,calledBy:number };
-
-  'entangle:warn': { path: string; type: 'no_keys' | 'no_level' };
-  'entangle:blocked': { observer: string; target: string; count: number };
+  NodeIntercept = 12,
+  NodeRelease = 13,
+  NodeStagnate = 14,
+  
+  NodeBucketSuccess = 15,
+  
+  EntangleWarn = 16,
+  EntangleBlocked = 17,
 }
 
+/**
+ * 🧱 基础事件负载定义
+ */
+export interface BaseMeshEvents {
+  [MeshFlowEventsName.FlowStart]: { path: MeshPath; token: symbol };
+  [MeshFlowEventsName.FlowWait]: { type: number; detail?: any };
+  [MeshFlowEventsName.FlowFire]: { path: MeshPath; type: number; detail?: any };
+
+  [MeshFlowEventsName.NodeStart]: { path: MeshPath; calledBy: number };
+  [MeshFlowEventsName.NodeSuccess]: { path: MeshPath; calledBy: number };
+  [MeshFlowEventsName.NodeProcessing]: { path: MeshPath; calledBy: number };
+  [MeshFlowEventsName.NodeError]: { path: MeshPath; error: any };
+  [MeshFlowEventsName.NodePending]: { path: MeshPath };
+
+  [MeshFlowEventsName.NodeIntercept]: { path: MeshPath; type: number; detail?: any };
+  [MeshFlowEventsName.NodeRelease]: { path: MeshPath; type: number; detail?: any };
+  [MeshFlowEventsName.NodeStagnate]: { path: MeshPath; type: number };
+
+  [MeshFlowEventsName.NodeBucketSuccess]: { path: MeshPath; key: string; value: any; calledBy: number };
+
+  [MeshFlowEventsName.EntangleWarn]: { path: string; type: 'no_keys' | 'no_level' };
+  [MeshFlowEventsName.EntangleBlocked]: { observer: string; target: string; count: number };
+}
+
+/**
+ * 🌟 完整事件扩展定义
+ * 包含流程控制及“逆转未来”等特殊场景
+ */
 export interface MeshEvents extends BaseMeshEvents {
-//   "node:start": { path: MeshPath };
-//   "node:success": { path: MeshPath };
-//   "node:pending": { path: MeshPath };
-//   "node:error": { path: MeshPath; error: any };
-//   "node:intercept": { path: MeshPath; type: number; detail?: any };
-//   "node:release": { path: MeshPath; type: number; detail?: any };
-//   "node:stagnate": { path: MeshPath; type: number };
-//   "node:processing": { path: MeshPath };
-//   "flow:wait": { type: number; detail?: any };
-//   "flow:fire": { path: MeshPath; type: number; detail?: any };
-//   "flow:start": { path: MeshPath };
+  [MeshFlowEventsName.FlowSuccess]: { duration: string; token: symbol };
+  [MeshFlowEventsName.FlowEnd]: { type: number };
+  [MeshFlowEventsName.FlowAbort]: { token: symbol };
 
-  "flow:success": { duration: string,token:symbol };
-  "flow:end": { type: number };
-  "flow:abort": {  token:symbol };
-
-  //逆转未来时候的事件
-  "node:revive":{path: MeshPath; triggerPath: MeshPath;}
+  // 逆转未来时候的事件
+  [MeshFlowEventsName.NodeRevive]: { path: MeshPath; triggerPath: MeshPath };
 }
 
 export type MeshEventName = keyof MeshEvents;
@@ -162,6 +181,16 @@ export interface SetRuleOptions<NM, TKeys extends KeysOfUnion<NM>> {
 }
 
  
+export type EntangleOp = "add" | "intersect" | "union" | "merge" | "remove";
+
+export interface GhostProposalApi<T> {
+  // 直接覆盖值 (对应原来的 value 和 weight)
+  set: (key: string, value: any, weight?: number) => void;
+  // 增量修改 (对应原来的 delta 和 op)
+  update: (key: string, delta: any, op?: EntangleOp) => void;
+  // 函数式补丁 (对应原来的 patch)
+  patch: (key: string, patchFn: (oldState: T) => T) => void;
+}
   
 // 投射出的幽灵建议 (Ghost Proposal)
 export type EntangleGhost<T=any> = {
@@ -169,25 +198,46 @@ export type EntangleGhost<T=any> = {
   value?: any;         // 建议的值
   delta?: number | any;
   weight?: number;  // 权重 (默认 1)
-  op?: "add" | "intersect" | "union" | "merge" | "remove";
+  op?: EntangleOp;
   patch?:(oldState:T)=>T
 };
 
 // 纠缠配置参数
-export type EntangleArgType<P extends MeshPath> = {
-  observer: P;      // 观测者 (谁引发了纠缠)
-  target: P;        // 目标 (受影响的节点)
-  triggerKeys: string[]; // (可选) 观测者的哪些属性变动才触发预言
-  filter?: (obs: any, tgt: any) => boolean;
-  emit: (
-    observerState: any, 
-    currentState: any
-  ) => void | EntangleGhost | undefined 
-      | Promise<void | EntangleGhost | undefined>; // 预言推演逻辑
+export type EntangleArgType<P extends MeshPath,IsProxy extends boolean = boolean> = {
+  cause:P;
+  impact:P;
+  via:string[];
+  isProxy?: IsProxy;
+  filter?: (
+    cause: IsProxy extends true ? any : MeshFlowTaskNode<P>, 
+    impact: IsProxy extends true ? any : MeshFlowTaskNode<P>
+  ) => boolean;
+  
+  emit:<T>(
+    cause: IsProxy extends true ? any : MeshFlowTaskNode<P>, 
+    impact: IsProxy extends true ? any : MeshFlowTaskNode<P>,
+    propose:GhostProposalApi<T>) => void | EntangleGhost<T> | undefined | Promise<void | EntangleGhost<T> | undefined>; // 预言推演逻辑
 };
  
-export enum TriggerCause {
+export const enum TriggerCause {
   CAUSALITY = 0,   // 因果推导（正常）
   INVERSION = 1,   // 逆转回跳（纠缠）
   REPERCUSSION = 2  // 连锁：由逆转回跳引发的因果推导
+}
+
+export const enum NodeStatus {
+  NONE    = 0,
+  READY   = 1 << 0, // 1 
+  STAGING = 1 << 1, // 2
+  RESURE  = 1 << 2, // 4
+  DIRTY   = 1 << 3, // 8 (备用：标记节点是否需要重算)
+  PROCESSED  = 1 << 4, // 16  替代 processed 数组
+  PROCESSING = 1 << 5, // 32  替代 processingSet 数组
+}
+
+export const enum MeshError {
+  cycle = "Circular dependency detected",
+  EngineNotFound = "Engine not found.",
+  EngineIdRepeated = "engineID repeated",
+  WrongId = "Wrong id"
 }
