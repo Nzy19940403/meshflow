@@ -1,27 +1,12 @@
 import { createConsola } from "consola";
 
-export interface LoggerInternalEvents {
-    'flow:start': { path: string; token: symbol }; 
-    'node:processing': { path: string; calledBy: number };  
-    'node:start': { path: string; calledBy: number };       
-    'node:success': { path: string; calledBy: number };
-    'node:bucket:success': { path: string, key: string, value: any, calledBy: number }; 
-    'node:error': { path: string; error: any };
-    'node:intercept': { path: string; type: number; detail?: any };
-    'node:release': { path: string; type: number, detail?: any };
-    'node:stagnate': { path: string; type: number };
-    'node:revive': { path: string; triggerPath: string; };
-    'flow:wait': { type: number; detail?: any };
-    'flow:fire': { path: string; type: number; detail?: any };
-    'flow:success': { duration: string; token: symbol };
-    'flow:abort': { token: symbol }; 
-    'flow:end': { type: number };
+import { MeshFlowEventsName,MeshEvents,MeshPath } from "@meshflow/core";
+ 
 
-    'entangle:warn': { path: string; type: 'no_keys' | 'no_level' };
-    'entangle:blocked': { observer: string; target: string; count: number };
-}
+ 
 
-type LoggerEventName = keyof LoggerInternalEvents;
+type LoggerEventName = keyof MeshEvents
+ 
 
 const locales: any = {
     zh: {
@@ -122,21 +107,21 @@ const locales: any = {
 
 export interface LoggerOptions {
     locale?: 'zh' | 'en';
-    foldFilter?: (path: string, calledBy: number) => boolean;
+    foldFilter?: (path: MeshPath, calledBy: number) => boolean;
 }
 
 const logger = createConsola({ level: 3 });
 
 // 🌟 修改点 1：把原来直接打印的方法，改成生成 console.log 所需的参数数组
-const getBadgeArgs = (label: string, text: string, color: string, bgColor: string, dimText = false) => {
+const getBadgeArgs = (label: string, text: MeshPath, color: string, bgColor: string, dimText = false) => {
     return [
-        `%c ${label} %c ${text} `, 
+        `%c ${label} %c ${text as string} `, 
         `background: ${color}; color: #ffffff; border-radius: 4px 0 0 4px; padding: 3px 6px; font-weight: bold; font-size: 11px;`,
         `background: ${bgColor}; color: ${dimText ? '#909399' : color}; border-radius: 0 4px 4px 0; padding: 3px 6px; border: 1px solid ${color}; border-left: none; font-size: 11px; font-weight: bold;`
     ];
 };
 
-const printBadge = (label: string, text: string, color: string, bgColor: string, dimText = false) => {
+const printBadge = (label: string, text: MeshPath, color: string, bgColor: string, dimText = false) => {
     console.log(...getBadgeArgs(label, text, color, bgColor, dimText));
 };
 
@@ -147,7 +132,7 @@ const useLogger = (options: LoggerOptions = {}) => {
 
     const apply = (api: any) => {
         let sessionSecurityLogs: any[] = [];
-        let sessionNodeTrace: Array<{ path: string, calledBy: number }> = []; 
+        let sessionNodeTrace: Array<{ path: MeshPath, calledBy: number }> = []; 
         let sessionSchedulerLogs: string[] = []; 
         let sessionEntangleLogs: any[] = []; 
         
@@ -159,16 +144,16 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         // 🌟 核心并发状态控制
         const activeTokens = new Set<symbol>();
-        const tokenToPath = new Map<symbol, string>(); 
-        let abortedPaths: string[] = []; 
+        const tokenToPath = new Map<symbol, MeshPath>(); 
+        let abortedPaths: MeshPath[] = []; 
         let finalDuration = '';
         let closeTimer: any = null; 
 
-        const on = <K extends LoggerEventName>(event: K, cb: (data: LoggerInternalEvents[K]) => void) => {
+        const on = <K extends LoggerEventName>(event: K, cb: (data: MeshEvents[K]) => void) => {
             api.on(event, cb);
         };
 
-        on('flow:start', ({ path, token }) => {
+        on( MeshFlowEventsName.FlowStart , ({ path, token }) => {
             if (closeTimer) {
                 clearTimeout(closeTimer);
                 closeTimer = null;
@@ -197,7 +182,7 @@ const useLogger = (options: LoggerOptions = {}) => {
 
             if (abortedPaths.length > 0) {
                 console.groupCollapsed(`%c${t.tags.flowAbortTitle} %c${t.tags.abortCount(abortedPaths.length)}`, "color: #F56C6C; font-weight: bold; font-size: 11px;", "color: #909399; font-style: normal;");
-                abortedPaths.forEach(p => console.log(`%c ${t.tags.abortItem} %c ${p} `, "color: #F56C6C; font-size: 10px;", "color: #909399;"));
+                abortedPaths.forEach(p => console.log(`%c ${t.tags.abortItem} %c ${p as string} `, "color: #F56C6C; font-size: 10px;", "color: #909399;"));
                 console.groupEnd();
             }
             
@@ -287,19 +272,19 @@ const useLogger = (options: LoggerOptions = {}) => {
             }
         };
 
-        on('flow:success', ({ duration, token }) => {
+        on(MeshFlowEventsName.FlowSuccess , ({ duration, token }) => {
             finalDuration = duration; 
             returnToken(token, true);
         });
 
-        on('flow:abort', ({ token }) => {
-            const pathName = tokenToPath.get(token) || 'unknown';
+        on(MeshFlowEventsName.FlowAbort , ({ token }) => {
+            const pathName = tokenToPath.get(token) || 'unknown' ;
             abortedPaths.push(pathName); 
             returnToken(token);
         });
 
         // 遇到 Error 还是要立刻打印出来暴露问题
-        on('node:error', ({ path, error }) => {
+        on(MeshFlowEventsName.NodeError , ({ path, error }) => {
             if (isFlowGroupActive) {
                 console.groupEnd();
                 isFlowGroupActive = false;
@@ -309,29 +294,29 @@ const useLogger = (options: LoggerOptions = {}) => {
             console.error(error);
         });
 
-        on('node:processing', () => {}); 
+        on( MeshFlowEventsName.NodeProcessing , () => {}); 
 
         // 🌟 修改点 4：把原来的 printBadge 替换为 sessionOperationLogs.push，收集所有样式和文案
-        on('node:start', ({ path, calledBy }) => {
+        on( MeshFlowEventsName.NodeStart , ({ path, calledBy }) => {
             lastWaitStamp = ''; 
             if (shouldFold(path, calledBy)) return; 
             sessionOperationLogs.push(getBadgeArgs(t.tags.start, path, '#58b9ff', '#1a2b3c', true)); 
         });
 
-        on('node:bucket:success', ({ path, key, value, calledBy }) => {
+        on( MeshFlowEventsName.NodeBucketSuccess , ({ path, key, value, calledBy }) => {
             if (shouldFold(path, calledBy)) return; 
             const displayValue = (value !== null && typeof value === 'object') ? `{... ${Object.keys(value).length} keys}` : value;
             // 因为这个是不带边框徽章的树状图文本，直接保存参数数组
-            sessionOperationLogs.push([`  %c└─ %c[${path}] %c${key} %c➔ %c${displayValue}`, "color: #4a4a4a", "color: #58b9ff", "color: #e0e0e0; font-weight: bold", "color: #909399", "color: #a6e22e"]);
+            sessionOperationLogs.push([`  %c└─ %c[${path as string}] %c${key} %c➔ %c${displayValue}`, "color: #4a4a4a", "color: #58b9ff", "color: #e0e0e0; font-weight: bold", "color: #909399", "color: #a6e22e"]);
         });
 
-        on('node:success', ({ path, calledBy }) => {
+        on( MeshFlowEventsName.NodeSuccess , ({ path, calledBy }) => {
             sessionNodeTrace.push({ path, calledBy }); 
             if (shouldFold(path, calledBy)) return; 
             sessionOperationLogs.push(getBadgeArgs(t.tags.success, path, '#67C23A', '#1e3323', false)); 
         });
 
-        on('flow:wait', ({ type, detail }) => {
+        on( MeshFlowEventsName.FlowWait , ({ type, detail }) => {
             const currentStamp = `${type}-${detail?.asyncNums || detail?.nums || 0}`;
             if (lastWaitStamp === currentStamp) return; 
             lastWaitStamp = currentStamp;
@@ -340,15 +325,15 @@ const useLogger = (options: LoggerOptions = {}) => {
             sessionOperationLogs.push(getBadgeArgs(s.label, (t.flowWait as any)[type](detail), s.color, s.bg, false));
         });
 
-        on('node:release', ({ path, type, detail }) => sessionSecurityLogs.push({ action: 'Release', path, type, detail }));
-        on('node:revive', ({ path, triggerPath }) => sessionSecurityLogs.push({ action: 'Revive', path, triggerPath }));
-        on('node:intercept', ({ path, type, detail }) => sessionSecurityLogs.push({ action: 'Intercept', path, type, detail }));
-        on('node:stagnate', ({ path, type }) => sessionSecurityLogs.push({ action: 'Stagnate', path, type }));
-        on('flow:fire', ({ path, type, detail }) => sessionSchedulerLogs.push(`${t.tags.fire} ${path} ${(t.flowFire as any)[type](detail)}`));
-        on('flow:end', ({ type }) => { sessionSchedulerLogs.push(`${t.tags.end} ${(t.flowEnd as any)[type]()}`); });
+        on( MeshFlowEventsName.NodeRelease , ({ path, type, detail }) => sessionSecurityLogs.push({ action: 'Release', path, type, detail }));
+        on( MeshFlowEventsName.NodeRevive , ({ path, triggerPath }) => sessionSecurityLogs.push({ action: 'Revive', path, triggerPath }));
+        on( MeshFlowEventsName.NodeIntercept  , ({ path, type, detail }) => sessionSecurityLogs.push({ action: 'Intercept', path, type, detail }));
+        on( MeshFlowEventsName.NodeStagnate , ({ path, type }) => sessionSecurityLogs.push({ action: 'Stagnate', path, type }));
+        on( MeshFlowEventsName.FlowFire , ({ path, type, detail }) => sessionSchedulerLogs.push(`${t.tags.fire} ${path as string} ${(t.flowFire as any)[type](detail)}`));
+        on( MeshFlowEventsName.FlowEnd , ({ type }) => { sessionSchedulerLogs.push(`${t.tags.end} ${(t.flowEnd as any)[type]()}`); });
         
-        on('entangle:warn', (d) => { sessionEntangleLogs.push({ event: 'Config Warn', path: d.path, detail: t.reports.entangleWarn(d.path, d.type) }); logger.warn(t.reports.entangleWarn(d.path, d.type)); });
-        on('entangle:blocked', (d) => { sessionEntangleLogs.push({ event: 'Clamping', observer: d.observer, target: d.target, detail: t.reports.entangleBlocked(d.observer, d.target), depth: d.count }); });
+        on( MeshFlowEventsName.EntangleWarn , (d) => { sessionEntangleLogs.push({ event: 'Config Warn', path: d.path, detail: t.reports.entangleWarn(d.path, d.type) }); logger.warn(t.reports.entangleWarn(d.path, d.type)); });
+        on( MeshFlowEventsName.EntangleBlocked , (d) => { sessionEntangleLogs.push({ event: 'Clamping', observer: d.observer, target: d.target, detail: t.reports.entangleBlocked(d.observer, d.target), depth: d.count }); });
     }
 
     return { apply }
