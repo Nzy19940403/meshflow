@@ -14,8 +14,6 @@ export interface CellMeta {
 }
 
 export interface JudgementState {
-  // 记录 "某个区域的某个数字" 唯一对应的格子 path
-  // 例如: { "row_0_num_5": "cell_4" } 意味着第0行只有 cell_4 能填 5
   globalDistribution: Record<string, string>;
 }
 
@@ -24,32 +22,53 @@ export type SudokuSchema =
   | { path: 'judgement'; type: 'judgement'; state: JudgementState; meta: {}; notifyKeys: Set<string>; };
 
 // --- 2. 动态生成与注册工厂 ---
-export function useSudokuLayout() {
+// 🚀 核心修改：传入 size (默认 9，可以传 16)
+export function useSudokuLayout(size: number = 9) {
   const _data: any[] = [];
+  
+  // 算出子宫格的边长 (比如 size=9 时 subSize=3, size=16 时 subSize=4)
+  const subSize = Math.sqrt(size);
+  if (!Number.isInteger(subSize)) {
+    throw new Error("⚠️ 玩脱了老哥！数独的边长必须是完全平方数 (如 9, 16, 25)");
+  }
 
-  // 生成 81 个格子
-  for (let i = 0; i < 81; i++) {
-    const row = Math.floor(i / 9);
-    const col = i % 9;
-    const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+  const totalCells = size * size;
+
+  // 动态生成候选数数组：[1, 2, 3, ..., size]
+  const initialCandidates = Array.from({ length: size }, (_, i) => i + 1);
+
+  // 🚀 生成 N * N 个格子
+  for (let i = 0; i < totalCells; i++) {
+    const row = Math.floor(i / size);
+    const col = i % size;
+    // 🧠 核心拓扑数学：计算当前格子属于哪个大 Box
+    const box = Math.floor(row / subSize) * subSize + Math.floor(col / subSize);
 
     _data.push({
       path: `cell_${i}`,
       type: "cell",
       state: { 
         value: null, 
-        candidates: [1, 2, 3, 4, 5, 6, 7, 8, 9] , 
+        // 记得用展开语法切断引用，防止所有格子共享同一个数组内存！
+        candidates: [...initialCandidates], 
         forbidden: {},
         neighbors: {},
         banned: [],
-        isGiven: false
+        isGiven: false,
+        version:-1
       },
-      meta: { index: i, row, col, box,originCandidates: [1,2,3,4,5,6,7,8,9] },
+      meta: { 
+        index: i, 
+        row, 
+        col, 
+        box, 
+        originCandidates: [...initialCandidates] 
+      },
       notifyKeys: new Set([]),
     });
   }
 
-  // 生成上帝视角的法官
+  // 生成上帝视角的法官 (保持不变)
   _data.push({
     path: 'judgement',
     type: 'judgement',
@@ -62,7 +81,6 @@ export function useSudokuLayout() {
     notifyKeys: new Set([]),
   });
 
-  // 强转类型以绕过 MeshFlow 的 readonly 字面量检查
   const data = _data as unknown as readonly SudokuSchema[];
 
   const useSudokuModule = <T, P extends MeshPath>(
@@ -81,7 +99,7 @@ export function useSudokuLayout() {
       }
     }
 
-    // 辅助函数：获取一个格子的 20 个邻居
+    // 🌟 这个辅助函数你写得太绝了！它直接依赖 meta，所以完美兼容 16x16，一行都不用改！
     const getNeighbors = (cellProxy: any) => {
       const { row, col, box } = cellProxy.meta;
       return CellArray.filter(c => 
