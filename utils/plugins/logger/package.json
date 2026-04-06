@@ -1,28 +1,37 @@
 {
-    "name": "@meshflow/logger",
-    "version": "0.2.0",
-    "description": "The official logger plugin for MeshFlow",
-    "main": "./index.js",
-    "module": "./index.mjs",
-    "types": "./index.d.ts",
-    "author": "nzy",
-    "peerDependencies": {
-      "@meshflow/core": ">=0.4.3",
-      "consola": ">=3.0.0"
-    },
-    "publishConfig": {
-      "access": "public",
-      "registry": "https://registry.npmjs.org/"
-    },
-    "license": "MIT",
-    "keywords": [
-        "form",
-        "form-engine",
-        "logic-engine",
-        "topology",
-        "async-linkage",
-        "watermark",
-        "dag",
-        "reactive"
-    ]
-  }
+  "name": "@meshflow/logger",
+  "version": "0.2.2",
+  "description": "The official logger plugin for MeshFlow",
+  "main": "./index.js",
+  "module": "./index.mjs",
+  "types": "./index.d.ts",
+  "author": "nzy",
+  "peerDependencies": {
+    "@meshflow/core": ">=0.4.3",
+    "consola": ">=3.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nzy19940403/meshflow.git",
+    "directory": "utils/plugins/logger"
+  },
+  "bugs": {
+    "url": "https://github.com/Nzy19940403/meshflow/issues"
+  },
+  "homepage": "https://github.com/Nzy19940403/meshflow#readme",
+  "license": "MIT",
+  "keywords": [
+    "form",
+    "form-engine",
+    "logic-engine",
+    "topology",
+    "async-linkage",
+    "watermark",
+    "dag",
+    "reactive"
+  ]
+}
