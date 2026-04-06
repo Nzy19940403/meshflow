@@ -6,9 +6,8 @@ dist/
 build/
 
  
- 
+docs/
 
-tsup.config.ts
 
 lib-dist/
 lib-plugins/

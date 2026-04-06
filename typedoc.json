@@ -1,0 +1,10 @@
+{
+    "entryPoints": ["utils/core/engine/useEngineManager.ts"], 
+    "tsconfig": "./tsconfig.json",
+    "out": "docs/api",
+    "plugin": ["typedoc-plugin-markdown"],
+    "hideGenerator": true,
+    "name": "MeshFlow Core API",
+    "readme": "none",
+    "entryPointStrategy": "expand" 
+  }
