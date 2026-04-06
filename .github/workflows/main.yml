@@ -8,7 +8,8 @@ on:
 jobs:
   sync-job:
     runs-on: ubuntu-latest
-
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       # 1. 检出项目 A (源码)
       - name: Checkout Source (Meshflow/core)
