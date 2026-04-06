@@ -40,7 +40,7 @@ export default defineConfig([
       console.log("🚀 打包完成：产物名为 index.js / index.cjs / index.d.ts");
       console.log("✅ Library-specific README copied.");
 
-      const mdsrcPath = path.resolve(__dirname, "utils/core/README.md");
+      const mdsrcPath = path.resolve(__dirname, "utils/core/readme.md");
       const mddestPath = path.resolve(__dirname, "lib-dist/README.md");
 
       fs.copyFileSync(mdsrcPath, mddestPath);
