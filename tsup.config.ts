@@ -136,7 +136,7 @@ export default defineConfig([
    
       fs.copyFileSync(pkgPath, destPath);
 
-      const mdsrcPath = path.resolve(__dirname, "utils/forms/README.md");
+      const mdsrcPath = path.resolve(__dirname, "utils/forms/readme.md");
       const mddestPath = path.resolve(__dirname, "lib-form/README.md");
 
       fs.copyFileSync(mdsrcPath, mddestPath);
