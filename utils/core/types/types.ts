@@ -162,13 +162,13 @@ export interface DependOnContext<P extends MeshPath> {
 
 export interface logicApi<TKeys extends MeshPath> {
   slot: {
-    triggerTargets: Array<Record<TKeys , any>>;
+    triggerTargets: Array<Record<TKeys | InternalKeys , any>>;
     affectedTatget: any;
   };
 }
 
+export type InternalKeys = 'path'|'uid'|'type'|'meta'|'state'
  
-
 export interface SetRuleOptions<NM, TKeys extends KeysOfUnion<NM>> {
   value?: any;
   priority?: number;
@@ -177,7 +177,7 @@ export interface SetRuleOptions<NM, TKeys extends KeysOfUnion<NM>> {
   effect?: (args: any) => any;
   effectArgs?: Array<KeysOfUnion<NM>>;
   cacheStrategy?: "none" | "shallow";
-  triggerKeys?: Array<TKeys>;
+  triggerKeys?: Array<TKeys| Exclude<InternalKeys,'state'> >;
 }
 
  

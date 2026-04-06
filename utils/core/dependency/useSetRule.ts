@@ -1,7 +1,7 @@
  
  
 import {  SchemaBucket } from "../engine/bucket"; 
-import { MeshFlowTaskNode, MeshPath, SetRuleOptions, logicApi } from "../types/types";
+import { InternalKeys, MeshFlowTaskNode, MeshPath, SetRuleOptions, logicApi } from "../types/types";
 import { KeysOfUnion } from '../utils/util';
  
 const CreateRule = <
@@ -15,7 +15,7 @@ TKeys extends KeysOfUnion<NM>  ,
     priority?: number,
     logic: (api: logicApi<TKeys>) => any,
     triggerUids: number[],
-    triggerKeys:Array<TKeys>;
+    triggerKeys:Array<TKeys | InternalKeys >;
  
 }) => {
 
@@ -31,7 +31,7 @@ TKeys extends KeysOfUnion<NM>  ,
             
             if(options.triggerKeys.length===0) return node;
  
-            const triggerSnapshot = {} as Record<TKeys,any>;
+            const triggerSnapshot = {} as Record<TKeys|InternalKeys ,any>;
     
             // 依然只摘取用户关心的 Keys，保持数据量最轻
             options.triggerKeys.forEach((key) => {
@@ -140,14 +140,15 @@ export const useSetRule = <P extends MeshPath,NM>(
         activeTopologyUids.set(outDegree.uid,activeOutdegreeCount)
 
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
-        let newRule = CreateRule<P,K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: [outDegree.uid],triggerKeys  });
+        let newRule = CreateRule<P,K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: [outDegree.uid],triggerKeys });
 
         // const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).value])
-        const DepsArray:Array<[number,any]> = [outDegreePath].map(path=>{
+        const DepsArray:Array<[number,Array<TKeys| Exclude<InternalKeys,'state'>>,any]> = [outDegreePath].map(path=>{
             const node = GetByPath(path);
-            return [node.uid,node.state.value]
+           
+            return [node.uid,triggerKeys,node.proxy]
         })
-      
+       
         // 维护图关系
         updateGraphRelation(outDegree.uid, inDegree.uid);
         
@@ -206,7 +207,7 @@ export const useSetRule = <P extends MeshPath,NM>(
 
     const SetRules = <
     K extends KeysOfUnion<NM>,
-    TKeys extends KeysOfUnion<NM>  
+    TKeys extends KeysOfUnion<NM>
     >(
         outDegreePaths: P[],
         inDegreePath: P,
@@ -241,11 +242,12 @@ export const useSetRule = <P extends MeshPath,NM>(
         let newRule = CreateRule<P,K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: outDegreeUids,triggerKeys });
 
    
-        const DepsArray:Array<[number,any]> = outDegreePaths.map(path=>{
+        const DepsArray:Array<[number,Array<TKeys| Exclude<InternalKeys,'state'>>,any]> = outDegreePaths.map(path=>{
             const node = GetByPath(path);
-            return [node.uid,node.state.value]
+            
+            return [node.uid,triggerKeys,node.state]
         })
-
+       
         
         if (typeof inDegree.nodeBucket[key] ==='number' ) {
             const node = GetBucket(inDegree.nodeBucket[key]);
