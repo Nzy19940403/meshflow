@@ -1,0 +1,58 @@
+name: Build and Sync Docs
+
+on:
+  push:
+    branches:
+      - main # 假设项目 A 的主分支是 main
+
+jobs:
+  sync-job:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出项目 A (源码)
+      - name: Checkout Source (Meshflow/core)
+        uses: actions/checkout@v4
+
+      # 2. 打包：执行 tsup 和 typedoc
+      # 确保执行完后，docs/api 已经生成
+      - name: Build Library and API Docs
+        run: |
+          npm install
+          npm run build:lib
+
+      # 3. 检出项目 B (meshflow-docs)
+      - name: Checkout Target (meshflow-docs)
+        uses: actions/checkout@v4
+        with:
+          repository: Nzy19940403/meshflow-docs
+          token: ${{ secrets.SYNC_TOKEN }}
+          path: temp_b
+
+      # 4. 精准搬运：只覆盖 B 项目的 docs 目录
+      - name: Overwrite Docs Folder
+        run: |
+          # 1. 删掉 B 项目中旧的 docs 文件夹（确保 api 子目录也会被物理刷新）
+          rm -rf temp_b/docs
+          
+          # 2. 将 A 项目中最新的 docs 文件夹（含刚生成的 api/）整个拷贝过去
+          cp -r docs temp_b/
+          
+          # 3. (可选) 如果你的 B 项目根目录需要一些特定文件（如 CNAME），可以在这里保护一下
+          # 目前这种 cp -r docs 方式会直接把 A 的 docs 变成 B 的 docs
+
+      # 5. 提交并推送
+      - name: Commit and Push to B
+        run: |
+          cd temp_b
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 检查是否有变更（包括新增加的 API 文档文件）
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "docs: auto-sync api and guide from core (ref: ${{ github.sha }})"
+            git push origin master # 假设项目 B 的生产分支是 master
+          else
+            echo "没有内容更新，跳过。"
+          fi
