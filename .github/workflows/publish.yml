@@ -1,0 +1,87 @@
+name: 🚀 Meshflow Multi-Package Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'utils/core/package.json'
+      - 'utils/forms/package.json'
+      - 'utils/plugins/logger/package.json'
+
+jobs:
+  # 🔍 第一步：检测到底是哪个包的版本号动了
+  filter:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.changes.outputs.core }}
+      forms: ${{ steps.changes.outputs.forms }}
+      logger: ${{ steps.changes.outputs.logger }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            core: 'utils/core/package.json'
+            forms: 'utils/forms/package.json'
+            logger: 'utils/plugins/logger/package.json'
+
+  # 📦 第二步：发布 Core
+  publish-core:
+    needs: filter
+    if: ${{ needs.filter.outputs.core == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install && npm run build:lib
+      - name: 🚢 Publish Core
+        # 🌟 关键：进入打包产物目录发布
+        working-directory: ./lib-dist 
+        run: npm publish --access public --provenance
+
+  # 📦 第三步：发布 Forms
+  publish-forms:
+    needs: filter
+    if: ${{ needs.filter.outputs.forms == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install && npm run build:lib
+      - name: 🚢 Publish Forms
+        # 🌟 关键：进入 forms 的产物目录
+        working-directory: ./lib-form 
+        run: npm publish --access public --provenance
+
+  # 📦 第四步：发布 Logger
+  publish-logger:
+    needs: filter
+    if: ${{ needs.filter.outputs.logger == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install && npm run build:lib
+      - name: 🚢 Publish Logger
+        # 🌟 关键：假设你的 logger 打包产物在 lib-logger
+        working-directory: ./lib-plugins/logger
+        run: npm publish --access public --provenance
