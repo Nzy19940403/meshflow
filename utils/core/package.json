@@ -1,27 +1,36 @@
 {
     "name": "@meshflow/core",
-    "version": "0.4.7",
-    "description": "A logic orchestration engine utilizing topological scheduling and watermark control to resolve asynchronous race conditions in complex dependency linkages.”",
+    "version": "0.4.8",
+    "description": "A logic orchestration engine utilizing topological scheduling and watermark control to resolve asynchronous race conditions in complex dependency linkages.",
     "main": "./index.cjs",
     "module": "./index.js",
     "types": "./index.d.ts",
     "author": "nzy",
     "license": "AGPL-3.0-or-later",
     "publishConfig": {
-        "registry": "https://registry.npmjs.org/"
+      "registry": "https://registry.npmjs.org/"
     },
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/Nzy19940403/meshflow.git",
+      "directory": "utils/core"
+    },
+    "bugs": {
+      "url": "https://github.com/Nzy19940403/meshflow/issues"
+    },
+    "homepage": "https://github.com/Nzy19940403/meshflow#readme",
     "keywords": [
-        "form",
-        "form-engine",
-        "logic-engine",
-        "topology",
-        "async-linkage",
-        "watermark",
-        "dag",
-        "reactive"
+      "form",
+      "form-engine",
+      "logic-engine",
+      "topology",
+      "async-linkage",
+      "watermark",
+      "dag",
+      "reactive"
     ],
     "devDependencies": {
-        "typescript": "^5.0.0",
-        "tsup": "^8.0.0"
+      "typescript": "^5.0.0",
+      "tsup": "^8.0.0"
     }
   }
