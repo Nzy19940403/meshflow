@@ -1,6 +1,6 @@
 {
   "name": "@meshflow/history",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "The official history plugin for MeshFlow",
   "main": "./index.js",
   "module": "./index.mjs",
@@ -12,6 +12,14 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nzy19940403/meshflow.git",
+    "directory": "utils/plugins/history"
+  },
+  "bugs": {
+    "url": "https://github.com/Nzy19940403/meshflow/issues"
   },
   "license": "MIT",
   "keywords": [
