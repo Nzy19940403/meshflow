@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - main # 假设项目 A 的主分支是 main
-
+    paths:
+      - 'utils/core/**'        # core 源码变了，API 文档才需要重刷
+      - '.github/workflows/main.yml' # 脚本自己变了，得跑一下试试
 jobs:
   sync-job:
     runs-on: ubuntu-latest
