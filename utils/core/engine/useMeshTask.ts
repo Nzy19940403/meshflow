@@ -93,6 +93,7 @@ function useMeshTask<P extends MeshPath, NM>(
      
         
         let isLooping = false; // 状态锁：标志 while 循环是否在运行
+        let isHeartbeatRunning = false;
 
         //scheduler重置
         timeScheduler.reset();
@@ -1259,7 +1260,14 @@ function useMeshTask<P extends MeshPath, NM>(
                         // ==========================================================
                         // 量子纠缠处理：在水位提升前集中结算
                         // ==========================================================
-                      
+                      // 🛑 核心屏障：如果天上还有纠缠任务在飞，拒绝结算！
+                        if (turnstile.inFlightCount > 0) {
+                            // 直接跳出 while 循环！
+                            // 引擎会顺滑地进入下方的 finally 块，触发 waitType = 3，
+                            // 然后启动 requestAnimationFrame(monitor) 挂起等待。
+                            console.log('break')
+                            break; 
+                        }
                         if (currentEntangleArray.length > 0) {
                             let hasQuantumReversal = false;
                             let minReversalLevel = currentLevel;
@@ -1614,33 +1622,34 @@ function useMeshTask<P extends MeshPath, NM>(
 
                     if(asyncRemaining>0){
 
-                 
+                        if (!isHeartbeatRunning) {
+                            isHeartbeatRunning = true; // 上锁
 
-                        const monitor = () => {
-                            // 1. 如果中途 21 号任务进来了，旧心跳立即物理终止，零浪费
-                            if (globalLatestSessionToken !== curToken) return;
-        
-                            // 2. 双重稳态检查：天上没幽灵 && 地上没未处理的新火种
-                            if (turnstile.inFlightCount === 0 ) {
-                                // 账平了！重新调起主引擎收割，并在下一次 finally 中走向 Success
-                                nextMacroTick(()=>{
-                                   
-                                    if(turnstile.inFlightCount===0){
-                                        flushQueue(); 
-                                    }else{
-                                        requestAnimationFrame(monitor); 
-                                    }
-                                })
-                               
-                            } else {
-                                // 还没平？将下一次检查挂载到下一帧排队
-                                requestAnimationFrame(monitor); 
-                            }
-                        };
-                        
-                        // 启动帧循环监听
-                        requestAnimationFrame(monitor);
-                      
+                            const monitor = () => {
+                                // 1. 如果中途 21 号任务进来了，旧心跳立即物理终止，零浪费
+                                if (globalLatestSessionToken !== curToken) return;
+                                console.log('monitor',turnstile.inFlightCount)
+                                // 2. 双重稳态检查：天上没幽灵 && 地上没未处理的新火种
+                                if (turnstile.inFlightCount === 0 ) {
+                                    // 账平了！重新调起主引擎收割，并在下一次 finally 中走向 Success
+                                    nextMacroTick(()=>{
+                                    
+                                        if(turnstile.inFlightCount===0){
+                                            flushQueue(); 
+                                        }else{
+                                            requestAnimationFrame(monitor); 
+                                        }
+                                    })
+                                
+                                } else {
+                                    // 还没平？将下一次检查挂载到下一帧排队
+                                    requestAnimationFrame(monitor); 
+                                }
+                            };
+                            
+                            // 启动帧循环监听
+                            requestAnimationFrame(monitor);
+                        }
                     }
                 }
             }
