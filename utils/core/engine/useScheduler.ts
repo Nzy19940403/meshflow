@@ -147,7 +147,9 @@ export function useScheduler<
         const dependOn = (cb: (data: any) => any,key:KeysOfUnion<NM> | (string & {}) = 'value') => {
             const newVal = cb({ ...dependOnContext });
             const schemaNode = GetNodeByPath(nodeMeta.path);
-           
+            if (Object.is(schemaNode.state[key], newVal)) {
+                return; 
+            }
             // 处理历史记录 (兼容 history 为空的情况)
             if (history.createHistoryAction && history.pushIntoHistory) {
                 const item = history.createHistoryAction(
