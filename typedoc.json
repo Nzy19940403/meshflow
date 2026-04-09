@@ -1,10 +1,16 @@
 {
-    "entryPoints": ["utils/core/engine/useEngineManager.ts"], 
+    "entryPoints": [
+      "utils/core/engine/useEngineManager.ts",
+      "utils//core/dependency/useSetRule.ts"
+    ], 
     "tsconfig": "./tsconfig.json",
     "out": "docs/api",
     "plugin": ["typedoc-plugin-markdown"],
     "hideGenerator": true,
     "name": "MeshFlow Core API",
     "readme": "none",
-    "entryPointStrategy": "expand" 
+    "entryPointStrategy": "expand" ,
+    "excludeInternal": true,
+    "categorizeByGroup": true,
+    "categoryOrder": ["Core", "DAG", "Entanglement"]
   }
