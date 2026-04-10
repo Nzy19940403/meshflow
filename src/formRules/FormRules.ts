@@ -1,7 +1,7 @@
 import { AllPath } from "@/devSchemaConfig/dev.form.Schema.check";
-import { DefaultStrategy } from "@/utils/core/engine/bucket";
+ 
 import { FormFieldSchema, GroupField, InputField,CheckboxField,SelectField } from "@/utils/forms/schema/schema";
-import { logicApi } from "@/utils/core/types/types";
+import { DefaultStrategy } from "@/utils/core/types/types";
  
 import { KeysOfUnion } from "@/utils/core/utils/util";
  
@@ -84,10 +84,11 @@ notifyAll: () => void
         "value",
         {
           logic: (api) => {
+            console.log('test')
             return new Promise((resolve,reject)=>{
               setTimeout(() => {
                 resolve(calculatePrice(api))
-              }, 4000);
+              }, 2000);
             })
             // return  calculatePrice(api);
           },
