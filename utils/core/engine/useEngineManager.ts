@@ -2,6 +2,9 @@ import {  MeshError, MeshPath } from "../types/types";
 import { InferLeafPath, InferLeafType } from "../utils/util";
 import { useEngineInstance } from "./useEngineInstance";
 
+/**
+ * @internal
+*/
 export type SchedulerType<
   T,
   P extends MeshPath,
@@ -9,7 +12,9 @@ export type SchedulerType<
   M extends Record<string, any>,
   NM
 > = ReturnType<typeof useEngineInstance<T, P, S, M, NM>>;
-
+/**
+ * @internal
+*/
 export type BaseEngine<T> = {
   data: {
     SetValue: T extends { SetValue: infer F } ? F : never;
@@ -40,12 +45,17 @@ export type BaseEngine<T> = {
   };
 };
 //如果是useMeshRenderGate模块，那就用render为key值包装，其余照旧
+/**
+ * @internal
+*/
 export type TransformModuleKey<T> = T extends "useMeshRenderGate"
   ? "render"
   : T extends `use${infer Rest}`
   ? Uncapitalize<Rest>
   : T;
-
+/**
+ * @internal
+*/
 export type MapModuleToReturn<K, F, P extends MeshPath> =
   // 如果是验证器，强行注入 P，并返回 SetValidators
   K extends "useSchemaValidators" | "schemaValidators"
@@ -69,7 +79,10 @@ export type MapModuleToReturn<K, F, P extends MeshPath> =
     ? R
     : any;
 
-// 🌟 2. 映射类型：带上 P 和 NM
+ 
+/**
+ * @internal
+*/
 export type EngineModules<M extends Record<string, any>, P extends MeshPath> = {
   [K in keyof M as TransformModuleKey<string & K>]: M[K] extends (
     ...args: any
@@ -79,6 +92,9 @@ export type EngineModules<M extends Record<string, any>, P extends MeshPath> = {
     ? EngineModules<M[K], P> // 是对象？递归进去！
     : M[K];
 };
+/**
+ *@internal 
+ */ 
 export type Engine<
   T,
   M extends Record<string, any>,
@@ -89,8 +105,18 @@ export type Engine<
 
 const engineMap = new Map<MeshPath, any>();
 
-/** @deprecated 请使用新的 useMeshFlow 别名 */
-const useEngineManager = <
+ /**
+ * 初始化并获取 MeshFlow 引擎实例
+ * * @description 
+ *  
+ * * **查看完整的引擎实例 API 文档，请点击这里：** {@link EngineCoreAPI}
+ *  @group Core Api 
+ * @category 入口函数
+ * @param id 引擎实例的唯一 ID
+ * @param Schema 类型定义模板（仅用于 TS 类型约束，不参与运行逻辑）,注册节点通过模块的方式进行
+ * @param options 引擎配置项与扩展模块 {@link MeshFlowOptions}
+ */
+const useMeshFlow = <
   const S extends Record<string, any> | any[],
   T, //UITrigger的类型
   M extends Record<string, any>,
@@ -284,7 +310,20 @@ const useEngineManager = <
   }
 };
 
-//传入客户定义的path类型，这样引擎就不会计算
+/**
+ * 类型工厂：锁定全局路径与元数据类型，生成定制化的实例化函数。
+ * @description
+ * 这是一个高阶函数（Currying），旨在解决泛型冗余。通过预先注入 `MeshPath` (P) 和 `MetaType` (NM)，
+ * 你会得到一个“专属”的实例化工具，从而避免在业务代码中反复书写冗长的泛型尖括号。
+ * **工作流：**
+ * 1. 在项目初始化/配置文件中定义：`const defineMesh = useMeshFlowDefiner<MyPaths, MyMeta>();`
+ * 2. 在业务逻辑中实例化：`const engine = defineMesh('app-engine', schema, { ... });`
+ * @template P - 当前项目定义的路径字面量类型 (MeshPath)
+ * @template S - 初始 Schema 的结构定义
+ * @template NM - 节点元数据 (Node Metadata) 的类型定义
+ * @group Core Api
+ * @category 入口函数
+ */
 const useMeshFlowDefiner = <
   P extends MeshPath,
   S extends Record<string, any> | any[] = any,
@@ -310,9 +349,16 @@ const useMeshFlowDefiner = <
 };
 
 /**
- * 获取 Engine 实例
- * @template M 手动注入的模块映射 (例如 { useHistory: typeof useHistory })
- * @template P ID 类型 (支持 string | number | symbol)
+ * 实例检索：跨文件/组件获取已激活的 Engine 实例
+ * @description
+ * 只要引擎通过 `useMeshFlow` 或 `defineMesh` 初始化过，你就可以在任何地方通过 ID 直接拿到它。
+ * 无需 Prop Drilling，它是跨组件通讯的核心桥梁。
+ * @template M - 动态插件类型 (可选)
+ * @template P - 路径类型标识 (可选)
+ * @param id - 引擎实例的唯一 ID
+ * @throws {MeshError.EngineNotFound} 如果 ID 对应实例不存在则抛错
+ * @group Core Api
+ * @category 实例管理
  */
 const useEngine = <
   M extends Record<string, any> = {},
@@ -334,7 +380,14 @@ const useEngine = <
   // 所有的类型安全由调用处传入的泛型 P, M 保证
   return instance as Engine<SchedulerType<T, P, S, M, NM>, M, P>; 
 };
-
+/**
+ * 🗑️ 实例销毁：从全局池中注销并释放引擎资源。
+ * * @description
+ * 彻底切断引擎与其所有插件、异步任务的联系，并从内存中移除引用。
+ * * @param id - 待销毁引擎的唯一标识符
+ * @group Core Api
+ * @category 实例管理
+ */
 const deleteEngine = (id: MeshPath) => {
   const engine = engineMap.get(id) ;
   engine.destroyPlugin();    
@@ -342,10 +395,10 @@ const deleteEngine = (id: MeshPath) => {
 
   engineMap.delete(id);
 };
-const useMeshFlow = useEngineManager;
+ 
 
 export {
-  useEngineManager,
+ 
   useMeshFlow,
   useEngine,
   deleteEngine,
@@ -366,12 +419,13 @@ export type {
 
 export {
   TriggerCause,
-  MeshFlowEventsName
+  MeshFlowEventsName,
+  DefaultStrategy
 } from "../types/types";
 
 export type { SchemaBucket } from "../engine/bucket";
 
-export {DefaultStrategy} from '../engine/bucket'
+ 
 
 export type { InferLeafPath, InferLeafType } from "../utils/util";
  

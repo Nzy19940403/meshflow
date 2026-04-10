@@ -23,21 +23,28 @@
 // 它的原理是利用 (string & {}) 让 TS 认为这不是一个单纯的 string，
 // 从而保留 T 中的字面量提示，同时又因为它是 string 的子类型而允许输入任何字符串。
  
-
- 
+/**
+ * @internal
+ * */ 
 export type FinalFlatten<T> = T extends infer O ? { [K in keyof O]: O[K] } : never; //展开
 
-
+/**
+ * @internal
+ * */ 
 type Unwrap<T> = T extends ReadonlyArray<infer U> ? U : T;
 
  
-
+/**
+ * @internal
+ * */ 
 export type GetAllPath<T,Path = ''> = T extends object
 ?{
   [K in keyof T]:GetAllPath<T[K],Path extends ""?K:`${Path &string}.${K & string}`>
 }[keyof T]
 :Path;
-
+/**
+ * @internal
+ * */ 
 export type InferLeafType<T> = 
 Unwrap<T> extends infer Node
   ? Node extends { readonly name: any } // 只要是节点
@@ -49,6 +56,9 @@ Unwrap<T> extends infer Node
     : never
   : never;
 
+/**
+ * @internal
+ * */ 
 export type InferLeafPath<T, Prefix extends string = ""> = 
   Unwrap<T> extends infer Node
     ? Node extends { readonly name: infer N }

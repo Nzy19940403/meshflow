@@ -1,16 +1,26 @@
 {
     "entryPoints": [
-      "utils/core/engine/useEngineManager.ts",
-      "utils//core/dependency/useSetRule.ts"
+      "utils/core/types/types.ts",
+      "utils/core/dependency/useSetRule.ts",
+      "utils/core/engine/useEngineManager.ts"
     ], 
     "tsconfig": "./tsconfig.json",
     "out": "docs/api",
-    "plugin": ["typedoc-plugin-markdown"],
+    "plugin": ["typedoc-plugin-markdown","typedoc-plugin-merge-modules"],
     "hideGenerator": true,
     "name": "MeshFlow Core API",
     "readme": "none",
-    "entryPointStrategy": "expand" ,
+    "entryPointStrategy": "resolve" ,
     "excludeInternal": true,
     "categorizeByGroup": true,
-    "categoryOrder": ["Core", "DAG", "Entanglement"]
+    "categoryOrder": ["Engine", "DAG", "Entanglement","入口函数","Config","Enum"],
+    "groupOrder": [
+      "Core Api",
+      "Types",
+      "*"            // 其余没提到的按默认排序
+    ],
+    "navigationModel": {
+      "excludeFolders": true
+    },
+    "flattenOutputFiles": true // 针对 Markdown 插件的扁平化
   }

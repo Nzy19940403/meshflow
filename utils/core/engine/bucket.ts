@@ -1,12 +1,8 @@
-import { InternalKeys } from "../types/types";
+import { InternalKeys ,DefaultStrategy} from "../types/types";
 
 type ContractType = "boolean" | "scalar" | "array" | "object";
 
-export enum DefaultStrategy {
-  OR = "OR",
-  PRIORITY = "PRIORITY",
-  MERGE = "MERGE",
-}
+
 
 type validatorItem = {
   logic: (value: any) => any; //验证逻辑
@@ -126,7 +122,10 @@ export class StrategyStore {
         if (p instanceof Promise) {
           return (async () => {
             const val = await p;
-            if (val !== undefined) return { res: val, version };
+            if (val !== undefined) {
+              const finalRes = rule.value !== undefined ? rule.value : val;
+              return { res: finalRes, version };
+            }
 
             for (let j = i + 1; j < allRules.length; j++) {
               const nextRule = allRules[j];
@@ -140,7 +139,8 @@ export class StrategyStore {
         }
 
         if (p !== undefined) {
-          return { res: p, version };
+          const finalRes = rule.value !== undefined ? rule.value : p;
+          return { res:finalRes , version };
         }
       }
 
@@ -258,11 +258,19 @@ export class StrategyStore {
   }
 }
 
+/**
+ * @group Core Api
+ * @category 内部实现
+ * 
+*/
 export class SchemaBucket<P> {
   private path: any;
 
   private strategy: StrategyStore;
 
+  /**
+   * @internal
+   * */ 
   public contract: ContractType;
 
   private rules = new Map<number, Set<{ logic: () => any }>>();
@@ -303,7 +311,9 @@ export class SchemaBucket<P> {
       logic: () => baseValue,
     } as any);
   }
-
+  /**
+   * @internal
+   * */ 
   setUseCache(val: boolean) {
     this.useCache = val;
   }
@@ -311,7 +321,9 @@ export class SchemaBucket<P> {
   forceNotify() {
     this._forceNotify = true;
   }
-
+  /**
+   * @internal
+   * */ 
   isForceNotify() {
     return this._forceNotify;
   }
@@ -320,12 +332,17 @@ export class SchemaBucket<P> {
     this.strategy.setStrategy(type);
   }
 
+  /**
+   * @internal
+   * */ 
   setDefaultRule(value: any) {
     const rules = new Set<{ logic: () => any }>();
     rules.add(value);
     this.rules.set(-1, rules);
   }
-
+  /**
+   * @internal
+   * */ 
   setRules<TKeys = any>(
     value: {
       value: any;
@@ -372,7 +389,9 @@ export class SchemaBucket<P> {
       this.strategy.updateComputedRules();
     };
   }
-
+  /**
+   * @internal
+   * */ 
   updateDeps<TKeys>(
     DepsArray: Array<
       [number, Array<TKeys | Exclude<InternalKeys, "state">>, any]
@@ -389,7 +408,9 @@ export class SchemaBucket<P> {
       this.deps.set(triggerUid, obj);
     }
   }
-
+  /**
+   * @internal
+   * */ 
   setRule<TKeys = any>(
     value: {
       value: any;
@@ -443,11 +464,15 @@ export class SchemaBucket<P> {
       this.strategy.updateComputedRules();
     };
   }
-
+  /**
+   * @internal
+   * */ 
   setSideEffect(data: { fn: (args: any[]) => any; args: any[] }) {
     this.effectArray.push(data);
   }
-
+  /**
+   * @internal
+   * */ 
   getSideEffect() {
     return [...this.effectArray];
   }
@@ -571,7 +596,9 @@ export class SchemaBucket<P> {
 
     return this.pendingPromise;
   }
-
+  /**
+   * @internal
+   * */ 
   private finalizeSync(res: any, version: number, api: any, curToken: any) {
     if (curToken !== this.promiseToken || version < this.version) {
       return this.cache;
@@ -593,7 +620,9 @@ export class SchemaBucket<P> {
 
     return res;
   }
-
+  /**
+   * @internal
+   * */ 
   private inferType(val: any): ContractType {
     if (Array.isArray(val)) return "array";
     return typeof val as ContractType;

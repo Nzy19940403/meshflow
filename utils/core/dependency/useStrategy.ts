@@ -1,7 +1,9 @@
-import { DefaultStrategy, SchemaBucket } from "../engine/bucket";
+import { DefaultStrategy  } from "../types/types";
 
 import { KeysOfUnion } from '../utils/util';
-
+/**
+ * @internal
+*/
 export const useSetStrategy = <P,NM>(Finder: any,GetBucket:any) => {
     let GetByPath = Finder ? Finder : undefined;
 

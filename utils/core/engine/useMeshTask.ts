@@ -356,6 +356,17 @@ function useMeshTask<P extends MeshPath, NM>(
             const dirtyEntangleKeys = dirtyKeysPool[targetUid];
             dirtyEntangleKeys.length = 0; // 物理清空
 
+            const isNodeWatched = hasObserver(targetUid);
+            const watchedKeys = isNodeWatched ? getTriggerKeys(targetUid) : [];
+
+            const recordDirtyEntangleKey = (changedKey: string) => {
+                // 这里直接读闭包里的局部变量，速度极快
+                if (!isNodeWatched) return; 
+                if (watchedKeys.length === 0 || watchedKeys.includes(changedKey)) {
+                    dirtyEntangleKeys.push(changedKey);
+                }
+            };
+
             const pendingPromises = promisesPool[targetUid];
             pendingPromises.length = 0;
 
@@ -590,7 +601,9 @@ function useMeshTask<P extends MeshPath, NM>(
                             // 精准记录副作用导致的属性变动
                             if (!Object.is(targetSchema.state[key], result[key])) {
                                 targetSchema.state[key] = result[key];
-                                dirtyEntangleKeys.push(key); 
+                                // dirtyEntangleKeys.push(key); 
+                                recordDirtyEntangleKey(key);
+                                
                                 hasValueChanged = true;
 
                                 // 新增：副作用里的 key 也受 notifyKeys 检查！
@@ -881,7 +894,8 @@ function useMeshTask<P extends MeshPath, NM>(
                     targetSchema.state[bucketName] = result;
                     hasValueChanged = true;
                     // 精准记录桶产生的属性变动
-                    dirtyEntangleKeys.push(String(bucketName));
+                    // dirtyEntangleKeys.push(String(bucketName));
+                    recordDirtyEntangleKey(String(bucketName));
                     // hooks.emit( MeshFlowEventsName.NodeBucketSuccess , {
                     //     path: targetPath,
                     //     key: String(bucketName),

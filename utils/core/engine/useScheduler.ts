@@ -4,7 +4,11 @@ import { createMeshNode } from './useMeshNode';
 import { KeysOfUnion, createScheduler } from "../utils/util";
 import { UseSetEntangle } from "../dependency/useSetEntangle";
 import { SchemaBucket } from "./bucket";
-
+/**
+ * @group Core Api
+ * @category 内部实现
+ * 
+*/
 export function useScheduler<
     T, //ui trigger中定义的类型
     P extends MeshPath, // 路径类型
