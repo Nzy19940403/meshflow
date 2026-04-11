@@ -24,6 +24,7 @@ describe("Meshflow Epoch Engine 核心一致性与调度测试", () => {
         { path: "nodeB", initValue: "initial" },
         { path: "nodeC", initValue: "initial" },
         { path: "nodeD", initValue: "initial" },
+   
       ],
     };
 
@@ -329,5 +330,248 @@ describe("Meshflow Epoch Engine 核心一致性与调度测试", () => {
     // 🌟 终极验证：多路径汇聚，只允许计算 1 次！
     expect(calcSpy).toHaveBeenCalledTimes(1);
     expect(engine.data.GetValue('nodeD', 'state').value).toBe('B:new-B, C:new-C');
+  });
+  it('12. 逆向时序权重测试：迟到的低权重 T0 不能覆盖早到的高权重 T1', async () => {
+    // 定义纠缠：T0 慢（2s），T1 快（1s）
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeB', via: ['value'],
+      emit: async (s, t, p) => {
+        if (s.state.value === 'T0') {
+          await new Promise(r => setTimeout(r, 2000)); // 故意极慢
+          p.set('value', 'Stale-Data', 1); // 权重极低
+        } else if (s.state.value === 'T1') {
+          await new Promise(r => setTimeout(r, 500));  // 很快
+  
+          p.set('value', 'Fresh-Data', 100); // 权重极高
+        }
+      }
+    });
+  
+    // 1. 发起 T0 (0ms)
+    engine.data.SetValue('nodeA', 'value', 'T0');
+    
+    // 2. 500ms 后发起 T1
+    await vi.advanceTimersByTimeAsync(500);
+    engine.data.SetValue('nodeA', 'value', 'T1');
+  
+    // 3. 快进到 1000ms (此时 T1 落地)
+    await vi.advanceTimersByTimeAsync(600);
+    expect(engine.data.GetValue('nodeB', 'state').value).toBe('Fresh-Data');
+  
+    // 4. 快进到 2500ms (此时 T0 终于落地了)
+    await vi.advanceTimersByTimeAsync(1500);
+  
+    // 🌟 终极验证：即使 T0 是最后执行 p.set 的，但由于它权重低，B 必须保持 Fresh-Data
+    expect(engine.data.GetValue('nodeB', 'state').value).toBe('Fresh-Data');
+    // 如果这里变成了 Stale-Data，说明你的引擎只是简单的“后来居上”，权重系统就废了
+  });
+  it('13. 自激防御：防止 nodeA 修改自身导致的同步死循环', async () => {
+    const emitSpy = vi.fn();
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeA', via: ['value'],
+      emit: (s, t, p) => {
+        emitSpy();
+        // 如果没有处理好，这里会无限递归
+        p.set('value', s.state.value);
+      }
+    });
+  
+    engine.data.SetValue('nodeA', 'value', 'hit');
+    await vi.advanceTimersByTimeAsync(50);
+  
+    // 应该只触发一次或在极低次数内停止（取决于你的接力棒机制）
+    expect(emitSpy).toHaveBeenCalledTimes(1);
+  });
+  it('14. 纪元压制：新任务启动后，旧任务的提案必须被物理拦截', async () => {
+    const resultPath = 'nodeB';
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: resultPath, via: ['value'],
+      emit: async (s, t, p) => {
+        if (s.state.value === 'Old') {
+          await new Promise(r => setTimeout(r, 1000));
+          p.set('value', 'I-am-Zombie', 100); // 哪怕权重再高也没用
+        } else {
+          p.set('value', 'I-am-New', 1);
+        }
+      }
+    });
+  
+    // 1. 发起旧任务
+    engine.data.SetValue('nodeA', 'value', 'Old');
+    await vi.advanceTimersByTimeAsync(100);
+ 
+    engine.data.SetValue('nodeA', 'value', 'New');
+  
+    // 3. 快进时间，让旧幽灵醒来
+    await vi.advanceTimersByTimeAsync(0);
+  
+    // 🌟 结果验证：B 必须保持 New 的值，Old 的高权重提案由于 Epoch 不对，根本进不去 buffer
+    expect(engine.data.GetValue(resultPath, 'state').value).toBe('I-am-New');
+  });
+  it('15. 批量提交：SetValues 应当在一个 Session 内完成所有纠缠触发', async () => {
+    const monitorSpy = vi.fn();
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeC', via: ['value'],
+      emit: () => monitorSpy()
+    });
+    engine.config.useEntangle({
+      cause: 'nodeB', impact: 'nodeC', via: ['value'],
+      emit: () => monitorSpy()
+    });
+  
+    // 🌟 批量修改 A 和 B
+    engine.data.SetValues([
+      { path: 'nodeA', key: 'value', value: 'changeA' },
+      { path: 'nodeB', key: 'value', value: 'changeB' }
+    ]);
+  
+    await vi.advanceTimersByTimeAsync(100);
+  
+    // 如果你的 SetValues 实现了 Batching，这里应该是 2（每个链路触发一次，但处于同一个结算周期）
+    expect(monitorSpy).toHaveBeenCalledTimes(2);
+  });
+  it('16. 递归熔断：当纠缠深度超过 useEntangleStep 时应停止接力', async () => {
+    const stepLimit = 10; // 初始化时配置的
+    const trackSpy = vi.fn();
+  
+    // 建立 A <-> B 的死循环
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeB', via: ['value'],
+      emit: (s, t, p) => { trackSpy(); p.set('value', s.state.value + 1); }
+    });
+    engine.config.useEntangle({
+      cause: 'nodeB', impact: 'nodeA', via: ['value'],
+      emit: (s, t, p) => { trackSpy(); p.set('value', s.state.value + 1); }
+    });
+  
+    engine.data.SetValue('nodeA', 'value', 1);
+    await vi.advanceTimersByTimeAsync(200);
+  
+    // 两个节点各 10 步左右，总调用次数不应远超 20
+    expect(trackSpy.mock.calls.length).toBeLessThanOrEqual(20);
+  });
+  it('17. 动态过滤：Filter 必须在异步任务产生前完成拦截', async () => {
+    const asyncSpy = vi.fn();
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeB', via: ['value'],
+      filter: (s, t) => s.state.value > 100, // 只有值大于 100 才允许纠缠
+      emit: async (s, t, p) => {
+        asyncSpy();
+        p.set('value', 'Passed');
+      }
+    });
+  
+    // 1. 给个 50，不应触发
+    engine.data.SetValue('nodeA', 'value', 50);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(asyncSpy).not.toHaveBeenCalled();
+  
+    // 2. 给个 150，触发
+    engine.data.SetValue('nodeA', 'value', 150);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(asyncSpy).toHaveBeenCalledTimes(1);
+  });
+  it('18. Patch 叠加：多个异步 Patch 提议应在结算阶段按序执行', async () => {
+    engine.config.useEntangle({
+      cause: 'nodeA', 
+      impact: 'nodeB', 
+      via: ['value'],
+      emit: (s, t, p) => {
+        // 🌟 测试原子累加：两个 patch 同时发，最终结果应该是 2 而不是 1
+        p.patch('count', (old) => (old || 0) + 1);
+        p.patch('count', (old) => (old || 0) + 1);
+      }
+    });
+  
+    // 点火
+    engine.data.SetValue('nodeA', 'value', 'trigger');
+    await vi.advanceTimersByTimeAsync(100);
+  
+    // 验证 nodeB.state.count 最终叠加结果
+    const nodeBState = engine.data.GetValue('nodeB', 'state');
+    expect(nodeBState.count).toBe(2); 
+  });
+  it('19. 权重比拼：同一纪元内，高权重提议必须覆盖低权重提议', async () => {
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeB', via: ['value'],
+      emit: (s, t, p) => {
+        p.set('value', 'Low-Weight', 1);
+        p.set('value', 'High-Weight', 10);
+      }
+    });
+  
+    engine.data.SetValue('nodeA', 'value', 'trigger');
+    await vi.advanceTimersByTimeAsync(50);
+  
+    expect(engine.data.GetValue('nodeB', 'state').value).toBe('High-Weight');
+  });
+ 
+  it('20. 混合竞争：高权重异步任务应覆盖低权重同步任务', async () => {
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeB', via: ['value'],
+      emit: async(s, t, p) => {
+        // 1. 同步提交低权重
+        p.set('value', 'Sync-Low', 1);
+  
+        // 2. 异步提交高权重
+     
+        await new Promise(r => setTimeout(r, 50));
+        p.set('value', 'Async-High', 100);
+        
+      }
+    });
+  
+    engine.data.SetValue('nodeA', 'value', 'trigger');
+    
+    // 关键：先等同步微任务跑完，此时 B 可能是 Sync-Low (或者还没结算)
+    await vi.advanceTimersByTimeAsync(10);
+    //还有幽灵在飞，不应该修改state
+    expect(engine.data.GetValue('nodeB', 'state').value).toBe('initial');
+    // 再等异步落地
+    await vi.advanceTimersByTimeAsync(100);
+    
+    expect(engine.data.GetValue('nodeB', 'state').value).toBe('Async-High');
+  });
+  it('21. 纪元跳跃验证：$T_0$ 异步落地应瞬间完成 State 改写并点火 $T_1$', async () => {
+    const trace: string[] = [];
+  
+    // T0 链路：A -> B (带 50ms 延迟)
+    engine.config.useEntangle({
+      cause: 'nodeA', impact: 'nodeB', via: ['value'],
+      emit: async (s, t, p) => {
+        await new Promise(r => setTimeout(r, 60));
+        trace.push('T0_Proposing');
+        p.set('value', 'B_Updated');
+      }
+    });
+  
+    // T1 链路：B -> C (同步，用于验证 B 改变的瞬间)
+    engine.config.useEntangle({
+      cause: 'nodeB', impact: 'nodeC', via: ['value'],
+      emit:   (s, t, p) => {
+  
+        trace.push('T1_Triggered');
+        p.set('value', 'C_Finished');
+      }
+    });
+  
+    // 1. 发射 A
+    engine.data.SetValue('nodeA', 'value', 'start');
+  
+    // 2. 在 20ms 时，由于 T0 还没跑完，B 和 C 都应该是初始值
+    await vi.advanceTimersByTimeAsync(10);
+    expect(engine.data.GetValue('nodeB', 'state').value).toBe('initial');
+    expect(trace).toEqual([]); // 幽灵还在飞
+  
+    // 3. 🌟 跨越临界点：快进到 60ms
+    // 此时：T0 落地 -> 触发 resolveGhosts -> 修改 nodeB -> 发现 nodeB 变了 -> 触发 T1
+    await vi.advanceTimersByTimeAsync(56);
+  
+    // 4. 验证状态瞬间改写
+    expect(engine.data.GetValue('nodeB', 'state').value).toBe('B_Updated');
+    // expect(engine.data.GetValue('nodeC', 'state').value).toBe('C_Finished');
+  
+    // 5. 验证执行顺序：必须先有 T0 的提案，再有 T1 的触发
+    expect(trace).toEqual(['T0_Proposing', 'T1_Triggered']);
   });
 });
