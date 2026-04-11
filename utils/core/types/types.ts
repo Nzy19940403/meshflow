@@ -380,7 +380,7 @@ export type EntangleGhost<T=any> = {
  * @group 参数类型
  * @category 纠缠设置
  */
-export type EntangleArgType<P extends MeshPath,IsProxy extends boolean = boolean> = {
+export type EntangleArgType<P extends MeshPath,T = any,IsProxy extends boolean = boolean> = {
   cause:P;
   impact:P;
   via:string[];
@@ -392,7 +392,7 @@ export type EntangleArgType<P extends MeshPath,IsProxy extends boolean = boolean
   /**
      * @params propose  提案调用参考{@link GhostProposalApi}
     */
-  emit:<T>(
+  emit:(
     cause: IsProxy extends true ? any : MeshFlowTaskNode<P>, 
     impact: IsProxy extends true ? any : MeshFlowTaskNode<P>,
     propose:GhostProposalApi<T>) => void | EntangleGhost<T> | undefined | Promise<void | EntangleGhost<T> | undefined>; // 预言推演逻辑
