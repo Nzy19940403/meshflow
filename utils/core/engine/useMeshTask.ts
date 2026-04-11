@@ -97,6 +97,7 @@ function useMeshTask<P extends MeshPath, NM>(
 
         //scheduler重置
         timeScheduler.reset();
+        data.Turnstile.nextEpoch()
 
         const maxUid = data.GetMaxUid() + 3;
       
@@ -1639,13 +1640,15 @@ function useMeshTask<P extends MeshPath, NM>(
                         if (!isHeartbeatRunning) {
                             isHeartbeatRunning = true; // 上锁
 
-                            const monitor = () => {
+                            const monitor =  () => {
                                 // 1. 如果中途 21 号任务进来了，旧心跳立即物理终止，零浪费
                                 if (globalLatestSessionToken !== curToken) return;
                                 console.log('monitor',turnstile.inFlightCount)
+                     
                                 // 2. 双重稳态检查：天上没幽灵 && 地上没未处理的新火种
                                 if (turnstile.inFlightCount === 0 ) {
                                     // 账平了！重新调起主引擎收割，并在下一次 finally 中走向 Success
+                                  
                                     nextMacroTick(()=>{
                                     
                                         if(turnstile.inFlightCount===0){
@@ -1656,6 +1659,7 @@ function useMeshTask<P extends MeshPath, NM>(
                                     })
                                 
                                 } else {
+                               
                                     // 还没平？将下一次检查挂载到下一帧排队
                                     requestAnimationFrame(monitor); 
                                 }

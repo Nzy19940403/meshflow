@@ -45,6 +45,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   // 🌟 优化点 1：用 O(1) 计数器替代数组扫描
   let pendingGhostNodesCount = 0; 
 
+  let currentEpoch = 0;
+
   const MESH_CAPACITY = 100;
 
   const createPoolCell = () => {
@@ -59,6 +61,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
 
     cell.propose = {
       set: (key: string, value: any, weight = 1) => {
+        if (cell.epoch !== currentEpoch) return;
+
         if (value === cell.impactNode.state[key]) return;
         cell.link.count++;
         
@@ -75,6 +79,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
         }
       },
       update: (key: string, delta: any, op: EntangleOp = "add") => {
+        if (cell.epoch !== currentEpoch) return;
+
         cell.link.count++;
         if (!_ghostBuffer[cell.impactUid] || _ghostBuffer[cell.impactUid].length === 0) {
           _ghostBuffer[cell.impactUid] = [];
@@ -88,6 +94,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
         }
       },
       patch: (key: string, patchFn: (oldState: any) => any) => {
+        if (cell.epoch !== currentEpoch) return;
+
         cell.link.count++;
         if (!_ghostBuffer[cell.impactUid] || _ghostBuffer[cell.impactUid].length === 0) {
           _ghostBuffer[cell.impactUid] = [];
@@ -136,6 +144,10 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       cell = contextPool[poolCursor--];
     }
 
+ 
+    const runEpoch = currentEpoch;
+    cell.epoch = runEpoch;
+
     cell.isDirty = false;
     cell.link = link;
     cell.impactNode = impactNode;
@@ -153,7 +165,10 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
           hooks.emit('node:error' as any, { path: causePath as string, error: e });
           hooks.onError({ path: causePath as string, error: e as Error });
         } finally {
-          activeAsyncCount--;
+          // activeAsyncCount--;
+          if (runEpoch === currentEpoch) {
+            activeAsyncCount--;
+          }
           if (isFromPool) {
             contextPool[++poolCursor] = cell; 
           }
@@ -213,6 +228,13 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       return pendingGhostNodesCount > 0;
     },
 
+    nextEpoch: () => {
+      currentEpoch++; // 历史长河往前走一步，之前的幽灵全部沦为“前朝丧尸”
+      activeAsyncCount = 0; // 旋转门本朝计数瞬间清零
+      pendingGhostNodesCount = 0; // 待结算幽灵节点数清零
+      _ghostBuffer.length = 0; // 极速清空数组，抹杀任何已经在缓冲区但还没 resolve 的前朝提议
+    },
+    
     hasObserver: (uid: number) => {
       return _registry[uid] !== undefined;
     },
