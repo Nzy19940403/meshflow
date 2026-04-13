@@ -79,6 +79,36 @@ function useMeshTask<P extends MeshPath, NM>(
         detail: SHARED_DETAIL // 嵌套对象也必须是复用的
     };
 
+    let isTaskActive:boolean = false;
+
+    const stageBuffer: Array<{ uid: number, key: SuggestKey<NM>, value: any }> = [];
+    let ignitionTimer: Promise<void> | null = null;
+    const stageValueFn = (uid: number, key: SuggestKey<NM>, value: any) => {
+        // stageBuffer.push({ uid, key, value });
+        // if (!isTaskActive) {
+        //     TaskRunner(null, []);
+        // }
+        // 1. 无论如何，数据先入库
+        stageBuffer.push({ uid, key, value });
+
+        // 2. 检查引擎是否已经在跑
+        if (isTaskActive) return;
+
+        // 3. 🌟 聚合逻辑：如果已经在排队点火了，就不要再点火了
+        if (ignitionTimer) return;
+
+        // 4. 开启微任务聚合
+        ignitionTimer = Promise.resolve().then(() => {
+            ignitionTimer = null; // 清空点火器，准备下一次
+
+            // 再次检查，防止在微任务排队期间引擎被其他途径唤醒了
+            if (!isTaskActive) {
+             
+                TaskRunner(null, []);
+            }
+        });
+    }
+
     //运行调用入口
     const TaskRunner = async (triggerUid: number | null, initialNodes: number[]) => {
         //最大并发数
@@ -91,7 +121,7 @@ function useMeshTask<P extends MeshPath, NM>(
         currentExecutionToken.set(triggerToken, curToken);
         globalLatestSessionToken = curToken;
 
-     
+        isTaskActive = true;
         
         let isLooping = false; // 状态锁：标志 while 循环是否在运行
         let isHeartbeatRunning = false;
@@ -102,7 +132,7 @@ function useMeshTask<P extends MeshPath, NM>(
 
         const maxUid = data.GetMaxUid() + 3;
       
- 
+        console.log('task start')
         // const processed = new Set<number>();
         // const processingSet = new Set<number>();
         // const AllAffectedPaths = new Set<number>();
@@ -149,7 +179,7 @@ function useMeshTask<P extends MeshPath, NM>(
         // 幽灵接力棒：暂存 resolveGhosts 真正修改了哪些 Key，交给 executor 使用，用完即焚
         // const ghostBaton = new Map<P, string[]>();
         // const ghostBaton = new Map<number, string[]>();
-        const ghostBaton: Array<string[] | null> = new Array(maxUid).fill(null);
+        const ghostBaton: Array<MeshPath[] | null> = new Array(maxUid).fill(null);
 
         // ==========================================================
         // 预言弹药库：只在阶段三集中引爆
@@ -159,9 +189,70 @@ function useMeshTask<P extends MeshPath, NM>(
         const turnstile = data.Turnstile;
 
 
-        const dirtyKeysPool:Array<Array<string>> = new Array(maxUid).fill(null).map(() => []);
+        const dirtyKeysPool:Array<Array<MeshPath>> = new Array(maxUid).fill(null).map(() => []);
         const promisesPool:Array<Array<Promise<void>>> = new Array(maxUid).fill(null).map(() => []);
 
+        const stagedBufferUids: number[] = [];
+
+        const applyStageValue = () => {
+            if (stageBuffer.length === 0) return false;
+            
+            let hasInjected = false;
+            let minInjectedLevel = Infinity; // 记录注入节点的最低水位
+        
+            while (stageBuffer.length > 0) {
+                const { uid, key, value } = stageBuffer.shift()!;
+                const node = data.GetNodeByUid(uid);
+                if (!stagedBufferUids.includes(uid)) stagedBufferUids.push(uid);
+                if (!Object.is(node.state[key], value)) {
+                    hasInjected = true;
+                    
+                    // 1. 物理写值
+                    node.state[key] = value;
+                    uitrigger.flushPathSet.add(uid);
+        
+                    // 🌟 2. 核心修复：直接黄袍加身，不再绕道 currentEntangleArray
+                    node.calledBy = TriggerCause.INVERSION;
+        
+                    // 3. 传接力棒：告诉 executor 这个节点改了哪些 key
+                    const keys = ghostBaton[uid] || [];
+                    if (!keys.includes(key)) keys.push(key);
+                    ghostBaton[uid] = keys;
+        
+                    // 4. 清理旧的阻塞状态
+                    flagArray[uid] &= ~NodeStatus.PROCESSED;
+                    // 如果它之前被卡在暂存区，直接撕掉它的封条
+                    if (flagArray[uid] & NodeStatus.STAGING) {
+                        flagArray[uid] &= ~NodeStatus.STAGING;
+                        stagingActiveCount--;
+                    }
+        
+                    // 🌟 5. 直接暴力塞入发车队列！
+                    if (!(flagArray[uid] & NodeStatus.READY)) {
+                        flagArray[uid] |= NodeStatus.READY;
+                        readyQueue[readyCount++] = uid;
+                        readyActiveCount++;
+                    }
+        
+                    // 6. 记录这次神谕的层级
+                    const level = dependency.GetUidToLevelMap().get(uid) ?? 0;
+                    if (level < minInjectedLevel) minInjectedLevel = level;
+                    
+                    updateWatermark(uid); // 顺手推高影响水位
+                }
+            }
+        
+            // 🌟 核心水位修复：冷启动时 currentLevel 可能极大，必须拉回现实
+            if (hasInjected) {
+                // 如果当前水位比我们注入的水位还要深，强行把水位提上来
+                // 这样 flushQueue 发车时，阻力计算才会正确
+                if (currentLevel === undefined || currentLevel > minInjectedLevel) {
+                    currentLevel = minInjectedLevel;
+                }
+            }
+        
+            return hasInjected;
+        };
 
         // ==========================================================
         //  2. 捞取火种 
@@ -174,13 +265,13 @@ function useMeshTask<P extends MeshPath, NM>(
         const hasObserver:(uid: number) => boolean = IS_ENTANGLEMENT_ENABLED
             ? turnstile.hasObserver
             : (uid:number) => false;
-        const emitGhosts:(observerNode: MeshFlowTaskNode<P, any, NM>, changedKeys: string[])=>number[] | Promise<number[]> = IS_ENTANGLEMENT_ENABLED
+        const emitGhosts:(observerNode: MeshFlowTaskNode<P, any, NM>, changedKeys: MeshPath[])=>number[] | Promise<number[]> = IS_ENTANGLEMENT_ENABLED
             ? turnstile.receiveGhosts
             : () => [];
-        const resolveGhosts:(node: MeshFlowTaskNode<P, any, NM>) => string[] = IS_ENTANGLEMENT_ENABLED
+        const resolveGhosts:(node: MeshFlowTaskNode<P, any, NM>) => MeshPath[] = IS_ENTANGLEMENT_ENABLED
             ? turnstile.resolveGhosts
             : () => [];
-        const getTriggerKeys:(uid: number) => string[] = IS_ENTANGLEMENT_ENABLED
+        const getTriggerKeys:(uid: number) => MeshPath[] = IS_ENTANGLEMENT_ENABLED
             ? turnstile.getTriggerKeys
             : () => [];
          
@@ -210,7 +301,7 @@ function useMeshTask<P extends MeshPath, NM>(
                 }
             });
         };
-
+        applyStageValue();
        // ==========================================================
         // 阶段 0：源力探针 (Prime Mover Prophecy)
         // ==========================================================
@@ -231,7 +322,7 @@ function useMeshTask<P extends MeshPath, NM>(
         }
 
         // 核心：seedsOfChaos 用于发射预言，它必须包含 triggerUid
-        const seedsOfChaos = typeof triggerUid==='number' ? [triggerUid] : initialNodes;
+        const seedsOfChaos = typeof triggerUid==='number' ? [triggerUid] : [...initialNodes, ...stagedBufferUids];;
 
         if(timeScheduler.shouldYield()){
             uitrigger.requestUpdate();
@@ -873,6 +964,7 @@ function useMeshTask<P extends MeshPath, NM>(
          
                 // ghostBaton.clear();
                 ghostBaton.fill(null);
+                isTaskActive = false;
 
                 hooks.callOnError(err);
 
@@ -1585,9 +1677,7 @@ function useMeshTask<P extends MeshPath, NM>(
                         currentExecutionToken.get(triggerToken) === curToken &&
                         !isFlowFinished
                     ) {
-                        
  
-                      
                         isFlowFinished = true;
                         // hooks.emit( MeshFlowEventsName.FlowEnd , {
                         //     type: 1,
@@ -1600,6 +1690,7 @@ function useMeshTask<P extends MeshPath, NM>(
                         turnstile.resetCounters();
                         // ghostBaton.clear();
                         ghostBaton.fill(null);
+                        isTaskActive = false; 
                         
                         const endTime = performance.now();
                         quantumWatermark = -1;
@@ -1613,7 +1704,7 @@ function useMeshTask<P extends MeshPath, NM>(
                         SHARED_PAYLOAD.token = curToken;
                         SHARED_PAYLOAD.duration = (endTime - startTime).toFixed(2.1) + "ms";
                         hooks.emit(MeshFlowEventsName.FlowSuccess,SHARED_PAYLOAD)
-
+                        console.log('success')
                         Promise.resolve().then(() => {
                              
                             hooks.callOnSuccess();
@@ -1641,27 +1732,36 @@ function useMeshTask<P extends MeshPath, NM>(
                         if (!isHeartbeatRunning) {
                             isHeartbeatRunning = true; // 上锁
 
-                            const monitor =  () => {
-                                // 1. 如果中途 21 号任务进来了，旧心跳立即物理终止，零浪费
-                                if (globalLatestSessionToken !== curToken) return;
-                                console.log('monitor',turnstile.inFlightCount)
-                     
-                                // 2. 双重稳态检查：天上没幽灵 && 地上没未处理的新火种
-                                if (turnstile.inFlightCount === 0 ) {
-                                    // 账平了！重新调起主引擎收割，并在下一次 finally 中走向 Success
-                                  
-                                    nextMacroTick(()=>{
-                                    
-                                        if(turnstile.inFlightCount===0){
-                                            flushQueue(); 
-                                        }else{
-                                            requestAnimationFrame(monitor); 
+                            const monitor = () => {
+                                // 1. 令牌校验：如果中途被新任务顶替，旧心跳必须物理终止并放锁
+                                if (globalLatestSessionToken !== curToken) {
+                                    isHeartbeatRunning = false; // 🌟 补丁：令牌失效，必须放锁
+                                    return;
+                                };
+                            
+                                // 2. 核心分水岭
+                                if (turnstile.inFlightCount === 0) {
+                                    // 🌟 补丁 1：既然账平了，心跳使命就结束了，立刻放锁
+                                    isHeartbeatRunning = false; 
+                            
+                                    // 账平了！重新调起主引擎收割
+                                    applyStageValue();
+                                    nextMacroTick(() => {
+                                        if (globalLatestSessionToken === curToken) {
+                                            // 如果在 tick 期间又冒出幽灵了，交给下一次 flushQueue 的 finally 处理
+                                            if (turnstile.inFlightCount === 0) {
+                                                flushQueue(); 
+                                            }
                                         }
-                                    })
-                                
+                                    });
+                                    
+                                    // 🌟 补丁 2：这里直接 return，彻底截断递归链条
+                                    // 这样底部的 requestAnimationFrame(monitor) 就永远不会在 0 的时候执行
+                                    return; 
+                            
                                 } else {
-                               
-                                    // 还没平？将下一次检查挂载到下一帧排队
+                                    // 🌟 证明：只有在幽灵还在飞 (>0) 时，才会执行这里的打印和递归
+                                    console.log('monitor flighting:', turnstile.inFlightCount);
                                     requestAnimationFrame(monitor); 
                                 }
                             };
@@ -1677,7 +1777,7 @@ function useMeshTask<P extends MeshPath, NM>(
         flushQueue();
     };
 
-    return {TaskRunner,CancelTask};
+    return {TaskRunner,CancelTask,stageValueFn};
 }
 
 export { useMeshTask };

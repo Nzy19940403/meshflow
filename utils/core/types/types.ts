@@ -172,7 +172,7 @@ export interface MeshFlowTaskNode<
   calledBy:TriggerCause
 
   meta: NM ; //存放业务元数据
-  dependOn: (cb: (val: V) => V, key?: keyof NM) => void;
+  dependOn: (cb: (val: V) => V, key?:SuggestKey<NM>) => void;
   createView: <E extends Record<string, any> = {}>(extraProps?: E) => MeshNodeProxy<MeshFlowTaskNode<P, V, NM>, V, NM, E>;
 }
  /**
@@ -644,16 +644,35 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
      * @param path 节点的唯一路径标识
      * @param value 要写入的最新值
      */
-    SetValue: (path: P,key: KeysOfUnion<NM> | (string & {}), value: any) => void;
+    SetValue: (path: P,key: SuggestKey<NM>, value: any) => void;
     
     /** 读取指定节点的值 */
-    GetValue: (path: P,key:any) => any;
+    GetValue: (path: P,key:SuggestKey<NM>) => any;
     
     /** 批量写入数据 */
-    SetValues: (updates: { path: P, key: KeysOfUnion<NM> | (string & {}), value: any }[]) => void;
+    SetValues: (updates: { path: P, key: SuggestKey<NM>, value: any }[]) => void;
+
+ /**
+ * 🌟 静默属性注入 (熵减缓冲区)
+ * * @description 
+ * 该方法不会立即中断当前引擎任务，而是将修改意图推入 `stageBuffer`。
+ * 主要用于处理外部高频干预（如自动空投、WebSocket 流、或是跨帧的连续修改）。
+ * * @features
+ * 1. **非侵入性**：如果引擎正在运行，它会静默排队，待当前纠缠落地后再通过 monitor 自动收割。
+ * 2. **自动点火**：如果引擎处于静止态，它会触发微任务级别的“聚合点火”，确保多笔修改只启动一次 Task。
+ * 3. **协助纠缠**：作为外部与纠缠系统之间的“避震器”，防止高频交互导致因果链条（Token）频繁重置。
+ * * @param path - 目标节点的路径 (nodeProxy.path)
+ * @param key - 需要修改的属性键名 (必须是模型定义的 SuggestKey)
+ * @param value - 注入的原始物理值 (注入后将作为下一轮纠缠的种子)
+ * * @example
+ * // 外部定时器高频新增，不希望闪烁或卡顿
+ * engine.data.StageValue(path, 'isDead', false);
+ */
+    StageValue:(path: P,key: SuggestKey<NM>, value: any) => void;
     
     /** 根据路径获取对应分组的数据 */
     GetGroupByPath: (path: P) => any;
+
   };
 
   /**

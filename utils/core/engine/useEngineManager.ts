@@ -21,6 +21,7 @@ export type BaseEngine<T> = {
     GetValue: T extends { GetValue: infer F } ? F : never;
     SetValues: T extends { SetValues: infer F } ? F : never;
     GetGroupByPath: T extends { GetGroupByPath: infer F } ? F : never;
+    StageValue: T extends { StageValue: infer F } ? F : never;
   };
   config: {
     SetRule: T extends { SetRule: infer F } ? F : never;
@@ -207,7 +208,8 @@ const useMeshFlow = <
 
       scheduler,
       destroyPlugin,
-      CancelTask
+      CancelTask,
+      StageValue
     } = EngineInstance;
 
     const baseEngine: BaseEngine<SchedulerType<T, P, S, M, NM>> = {
@@ -221,7 +223,7 @@ const useMeshFlow = <
         hasRenderGate,
         useEntangle 
       },
-      data: { SetValue, GetValue, SetValues, GetGroupByPath },
+      data: { SetValue, GetValue, SetValues, GetGroupByPath,StageValue },
       dependency: { GetAllDependency, GetDependencyOrder },
       hooks: { onError, onSuccess, onStart },
     };

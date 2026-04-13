@@ -1,4 +1,4 @@
-import { DependOnContext, MeshEmit, MeshError, MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, StandardUITrigger } from "../types/types";
+import { DependOnContext, MeshEmit, MeshError, MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, StandardUITrigger, SuggestKey } from "../types/types";
 import { useMeshTask } from "./useMeshTask";
 import { createMeshNode } from './useMeshNode';
 import { KeysOfUnion, createScheduler } from "../utils/util";
@@ -110,7 +110,7 @@ export function useScheduler<
         
     );
 
-    const {TaskRunner,CancelTask} = useMeshTask<P,NM>(
+    const {TaskRunner,CancelTask,stageValueFn} = useMeshTask<P,NM>(
         {
             useGreedy: config.useGreedy
         },
@@ -343,7 +343,7 @@ export function useScheduler<
         })
 
     }
-    const batchNotify = (updates: { path: P; key: KeysOfUnion<NM> | (string & {}); value: any }[]) => {
+    const batchNotify = (updates: { path: P; key: SuggestKey<NM>; value: any }[]) => {
         if (!updates || updates.length === 0) return;
     
         // 1. 🌟 历史记录打包（不变）
@@ -413,6 +413,7 @@ export function useScheduler<
         GetBucket,
 
         CancelTask,
+        stageValueFn,
 
         UITrigger,
         UidToNodeMap

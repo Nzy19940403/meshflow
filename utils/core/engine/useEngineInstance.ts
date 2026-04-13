@@ -225,7 +225,9 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         useEntangle,
         updateEntangleLevel,
 
-        CancelTask
+        CancelTask,
+        stageValueFn,
+        
     } = scheduler;
 
     if(isRenderGateRegistered){
@@ -379,13 +381,13 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
     }
 
-    const SetValue = (path: P,key: KeysOfUnion<NM> | (string & {}), value: any) => {
+    const SetValue = (path: P,key:SuggestKey<NM>, value: any) => {
         forceSyncEngineState()
         let node = GetNodeByPath(path);
       
         node.dependOn(() => {
             return value;
-        },key as KeysOfUnion<NM>);
+        },key as SuggestKey<NM>);
     };
 
     const GetValue = (path: P, key = "value") => {
@@ -394,12 +396,17 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         return node[key as keyof typeof node];
     };
 
-    const SetValues = (updates: { path: P, key: KeysOfUnion<NM> | (string & {}), value: any }[]) => {
+    const SetValues = (updates: { path: P, key: SuggestKey<NM>, value: any }[]) => {
         forceSyncEngineState();
         // 直接调用 scheduler 暴露出来的 batchUpdate
         scheduler.batchNotify(updates);
     };
 
+    const StageValue = (path: P,key:SuggestKey<NM>, value: any)=>{
+    
+        const node = GetNodeByPath(path);
+        stageValueFn(node.uid,key,value)
+    }
   
    
 
@@ -441,7 +448,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         scheduler,
 
         destroyPlugin,
-        CancelTask
+        CancelTask,
+        StageValue
     };
  
 
