@@ -23,6 +23,11 @@
   "peerDependencies": {
     "@meshflow/core": ">=0.4.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nzy19940403/meshflow.git",
+    "directory": "utils/forms"
+  },
   "devDependencies": {
     "typescript": "^5.0.0" ,
     "tsup": "^8.0.0"
