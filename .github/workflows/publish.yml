@@ -1,15 +1,32 @@
 name: 🚀 Meshflow Multi-Package Release
 
 on:
+  # 1. 自动触发：监听指定路径下 package.json 的变动
   push:
     branches: [main]
     paths:
       - 'utils/core/package.json'
       - 'utils/forms/package.json'
       - 'utils/plugins/logger/package.json'
+      
+  # 🌟 2. 手动触发：支持在 GitHub Actions 页面手动点击运行，并选择要强制发布的包
+  workflow_dispatch:
+    inputs:
+      force_core:
+        description: '是否强制发布 Core 包?'
+        type: boolean
+        default: false
+      force_forms:
+        description: '是否强制发布 Forms 包?'
+        type: boolean
+        default: false
+      force_logger:
+        description: '是否强制发布 Logger 包?'
+        type: boolean
+        default: false
 
 jobs:
-  # 🔍 第一步：检测到底是哪个包的版本号动了
+  # 🔍 过滤器：检测变更文件或接收手动输入
   filter:
     runs-on: ubuntu-latest
     outputs:
@@ -26,13 +43,14 @@ jobs:
             forms: 'utils/forms/package.json'
             logger: 'utils/plugins/logger/package.json'
 
-  # 📦 第二步：发布 Core
+  # 📦 发布 Core 包
   publish-core:
     needs: filter
-    if: ${{ needs.filter.outputs.core == 'true' }}
+    # 只要 package.json 变了，或者手动勾选了 force_core，就执行
+    if: ${{ needs.filter.outputs.core == 'true' || inputs.force_core == true }}
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      id-token: write  # 🌟 Trusted Publishing 必须权限
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -42,14 +60,14 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm install && npm run build:lib
       - name: 🚢 Publish Core
-        # 🌟 关键：进入打包产物目录发布
         working-directory: ./lib-dist 
+        # 使用 --provenance 开启受信任发布
         run: npm publish --access public --provenance
 
-  # 📦 第三步：发布 Forms
+  # 📦 发布 Forms 包
   publish-forms:
     needs: filter
-    if: ${{ needs.filter.outputs.forms == 'true' }}
+    if: ${{ needs.filter.outputs.forms == 'true' || inputs.force_forms == true }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -62,14 +80,13 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm install && npm run build:lib
       - name: 🚢 Publish Forms
-        # 🌟 关键：进入 forms 的产物目录
         working-directory: ./lib-form 
         run: npm publish --access public --provenance
 
-  # 📦 第四步：发布 Logger
+  # 📦 发布 Logger 包
   publish-logger:
     needs: filter
-    if: ${{ needs.filter.outputs.logger == 'true' }}
+    if: ${{ needs.filter.outputs.logger == 'true' || inputs.force_logger == true }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -82,6 +99,5 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm install && npm run build:lib
       - name: 🚢 Publish Logger
-        # 🌟 关键：假设你的 logger 打包产物在 lib-logger
         working-directory: ./lib-plugins/logger
         run: npm publish --access public --provenance
