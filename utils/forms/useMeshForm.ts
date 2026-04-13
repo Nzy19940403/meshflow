@@ -13,6 +13,17 @@ import { useInternalForm } from "./useForm";
 import { useSchemaValidators } from "./schema/schema-validators";
  
 
+export type NormalizeFormSchema<T> = T extends Function
+  ? T
+  : T extends readonly any[]
+  ? { -readonly [K in keyof T]: NormalizeFormSchema<T[K]> }
+  : T extends object
+  ? {
+ 
+      -readonly [K in keyof T as K extends 'name' ? 'name' | 'path' : K]: NormalizeFormSchema<T[K]>
+    }
+  : T;
+
 /**
  * NM: NodeMeta 的类型定义
  * S: Schema 的结构类型
@@ -20,11 +31,11 @@ import { useSchemaValidators } from "./schema/schema-validators";
  */
 export function useMeshForm<
 const S extends Record<string, any>, 
-  NM extends Record<string, any> = InferLeafType<S> , 
+  NM extends Record<string, any> = InferLeafType<NormalizeFormSchema<S>> , 
   M extends Record<string, any> = {}, 
   T = any,
   // 🌟 终极魔法：在这里像 Core 一样推导出表单的 Path
-  P extends MeshPath  = [InferLeafPath<S>] extends [never] ? MeshPath : InferLeafPath<S> | (string & {})
+  P extends MeshPath  = [InferLeafPath<NormalizeFormSchema<S>>] extends [never] ? MeshPath : InferLeafPath<NormalizeFormSchema<S>> | (string & {})
 >(
   id: string,
   schema: S,
