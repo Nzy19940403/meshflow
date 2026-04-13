@@ -4,6 +4,7 @@ import {
   deleteEngine,
 } from "../utils/core/engine/useEngineManager";
 import { setupTestNodes } from "./testmodule";
+import { MeshPath } from "@meshflow/core";
 
 // 1️⃣ 定义模块类型
 type TestModules = {
@@ -472,7 +473,7 @@ describe("Meshflow Epoch Engine 核心一致性与调度测试", () => {
     expect(asyncSpy).toHaveBeenCalledTimes(1);
   });
   it('18. Patch 叠加：多个异步 Patch 提议应在结算阶段按序执行', async () => {
-    engine.config.useEntangle({
+    engine.config.useEntangle<number>({
       cause: 'nodeA', 
       impact: 'nodeB', 
       via: ['value'],
@@ -532,7 +533,7 @@ describe("Meshflow Epoch Engine 核心一致性与调度测试", () => {
     
     expect(engine.data.GetValue('nodeB', 'state').value).toBe('Async-High');
   });
-  it('21. 纪元跳跃验证：$T_0$ 异步落地应瞬间完成 State 改写并点火 $T_1$', async () => {
+  it('21. 纪元跳跃验证：T0 异步落地应瞬间完成 State 改写并点火 T1', async () => {
     const trace: string[] = [];
   
     // T0 链路：A -> B (带 50ms 延迟)
@@ -573,5 +574,60 @@ describe("Meshflow Epoch Engine 核心一致性与调度测试", () => {
   
     // 5. 验证执行顺序：必须先有 T0 的提案，再有 T1 的触发
     expect(trace).toEqual(['T0_Proposing', 'T1_Triggered']);
+  });
+  it('22.应当在当前宏任务末尾聚合点火，而非立即执行', async () => {
+    // 1. 设置一个监听器，看引擎什么时候真的“发车”
+    let hasStarted = false;
+    engine.hooks.onStart(()=>{
+      hasStarted = true;
+    })
+
+    // 2. 注入静默更新
+    engine.data.StageValue('nodeA', 'value', 'Staged-1');
+    engine.data.StageValue('nodeA', 'value', 'Staged-Final');
+
+    // 🌟 验证点 A：此时虽然调用了，但引擎不应该“立刻”点火
+    // 逻辑：因为它是聚合在微任务/定时器里的
+    expect(hasStarted).toBe(false); 
+    
+    // 🌟 验证点 B：此时通过公开接口查，值应该还没变
+    const stateBefore = engine.data.GetValue('nodeA', 'state');
+    expect(stateBefore.value).toBe('initial');
+
+    // 3. 推进时间 (跳过你设定的 16ms 或微任务间隙)
+    await vi.advanceTimersByTimeAsync(20);
+
+    // 🌟 验证点 C：此时引擎应该已经触发了 FlowStart 事件
+    expect(hasStarted).toBe(true);
+
+    // 🌟 验证点 D：最终物理值写入成功，且是最后一次的值（LIFO）
+    const stateAfter = engine.data.GetValue('nodeA', 'state');
+    expect(stateAfter.value).toBe('Staged-Final');
+  });
+  it('23.验证在异步任务“飞行中”注入时，不会产生新的 TaskStart', async () => {
+    let startCount = 0;
+ 
+    engine.hooks.onStart(()=>{
+      startCount++;
+    })
+    // 先启动一个带 100ms 异步延迟的纠缠任务
+    engine.data.SetValue('nodeA', 'trigger', Math.random());
+ 
+
+    // 推进 50ms，此时任务在飞（monitor 正在监听）
+    await vi.advanceTimersByTimeAsync(50);
+    
+    // 在飞行中注入 StageValue
+    engine.data.StageValue('nodeC', 'value', 'Ninja-Update');
+ 
+    // 🌟 验证：不应该因为 StageValue 再次触发 FlowStart
+    // 因为它应该被 monitor 静默吸收了
+    expect(startCount).toBe(1); 
+
+    // 推进到落地
+    await vi.advanceTimersByTimeAsync(60); 
+    
+    // 最后确认 nodeC 变了，说明是 monitor 带走的
+    expect(engine.data.GetValue('nodeC', 'state').value).toBe('Ninja-Update');
   });
 });
