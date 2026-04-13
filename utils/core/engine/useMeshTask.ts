@@ -6,6 +6,7 @@ import {
     TriggerCause,
     MeshFlowEventsName,
     NodeStatus,
+    SuggestKey,
 } from "../types/types";
 import { SchemaBucket } from "./bucket";
 
@@ -881,7 +882,7 @@ function useMeshTask<P extends MeshPath, NM>(
             // 这个函数囊括了原来循环体内的所有逻辑
 
             // 提取公共的处理结果逻辑
-            const handleSingleResult = <K extends keyof NM>(
+            const handleSingleResult = <K extends SuggestKey<NM>>(
                 result: any,
                 bucketName: K
             ) => {
@@ -936,7 +937,7 @@ function useMeshTask<P extends MeshPath, NM>(
                 const effectsToRun: Array<{ fn: (args: any) => any; args: any[] }> = [];
 
                 for (let bucketName in targetSchema.nodeBucket) {
-                    const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName]);
+                    const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName as SuggestKey<NM>]);
 
                     effectsToRun.push(...bucket.getSideEffect());
 
