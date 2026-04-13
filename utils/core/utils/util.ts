@@ -47,7 +47,7 @@ export type GetAllPath<T,Path = ''> = T extends object
  * */ 
 export type InferLeafType<T> = 
 Unwrap<T> extends infer Node
-  ? Node extends { readonly name: any } // 只要是节点
+  ? Node extends { readonly path: any } // 只要是节点
     ? Node extends { readonly children: infer C }
       // 有孩子 -> 穿透递归 (只管孩子)
       ? InferLeafType<C>
@@ -61,9 +61,9 @@ Unwrap<T> extends infer Node
  * */ 
 export type InferLeafPath<T, Prefix extends string = ""> = 
   Unwrap<T> extends infer Node
-    ? Node extends { readonly name: infer N }
+    ? Node extends { readonly path: infer N }
       
-      // === Name 是字符串 ===
+      // === path 是字符串 ===
       ? N extends string
         ? N extends ""
           // A1: 匿名组 -> 穿透递归 (只管孩子)
@@ -81,7 +81,7 @@ export type InferLeafPath<T, Prefix extends string = ""> =
                 : (Prefix extends "" ? N : `${Prefix}.${N}`)
             )
 
-      // === Name 是数字或 Symbol ===
+      // === path 是数字或 Symbol ===
       : N extends number | symbol
         // 同样逻辑：没孩子才返回自己
         ? Node extends { readonly children: infer C }

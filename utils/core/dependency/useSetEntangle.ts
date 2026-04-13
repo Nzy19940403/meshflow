@@ -10,10 +10,10 @@ import {
 } from "../types/types";
 import { createScheduler } from "../utils/util";
 
-type EntangleLink<P extends MeshPath> = {
+type EntangleLink<P extends MeshPath,NM> = {
   impact: P;
   filter?: (obs: any, tgt: any) => boolean;
-  emit:<T>(src:any,tgt:any,propose:GhostProposalApi<T>) => void | EntangleGhost<T> | undefined | Promise<void | EntangleGhost<T> | undefined>; 
+  emit:(src:any,tgt:any,propose:GhostProposalApi<any,NM>) => void | EntangleGhost<any> | undefined | Promise<void | EntangleGhost<any> | undefined>; 
   count: number;
   isProxy:boolean
 };
@@ -32,7 +32,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
 ) => {
   const MAX_ENTANGLE_DEPTH = config.useEntangleStep;
 
-  const _registry: Array<Map<string, EntangleLink<P>[]>> = [];
+  const _registry: Array<Map<MeshPath, EntangleLink<P,NM>[]>> = [];
   const _ghostBuffer: Array<EntangleGhost[]> = [];
   const _volatileLevels = new Set<number>();
 
@@ -116,7 +116,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   let poolCursor = MESH_CAPACITY - 1;
 
   const processLink = (
-    link: EntangleLink<P>, 
+    link: EntangleLink<P,NM>, 
     causeNode: MeshFlowTaskNode<P, any, NM>, 
     hitTargetUids: number[]
   ): Promise<void> | void => {
@@ -234,12 +234,12 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       pendingGhostNodesCount = 0; // 待结算幽灵节点数清零
       _ghostBuffer.length = 0; // 极速清空数组，抹杀任何已经在缓冲区但还没 resolve 的前朝提议
     },
-    
+
     hasObserver: (uid: number) => {
       return _registry[uid] !== undefined;
     },
 
-    getTriggerKeys: (uid: number): string[] => {
+    getTriggerKeys: (uid: number): MeshPath[] => {
       const causeMap = _registry[uid];
       return causeMap ? Array.from(causeMap.keys()) : [];
     },
@@ -251,7 +251,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
 
       if (!causeMap || changedKeys.length === 0) return hitTargetUids;
 
-      const linksArray: EntangleLink<P>[] = [];
+      const linksArray: EntangleLink<P,NM>[] = [];
       
       // 🌟 优化点 2：彻底砍掉 impactBuffer 的 new Set。原生数组极速展平。
       for (let k = 0; k < changedKeys.length; k++) {

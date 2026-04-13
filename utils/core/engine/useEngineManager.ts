@@ -1,5 +1,5 @@
-import {  MeshError, MeshPath } from "../types/types";
-import { InferLeafPath, InferLeafType } from "../utils/util";
+import {  IsNever, MeshError, MeshPath } from "../types/types";
+import { InferLeafPath, InferLeafType, KeysOfUnion } from "../utils/util";
 import { useEngineInstance } from "./useEngineInstance";
 
 /**
@@ -103,6 +103,20 @@ export type Engine<
   modules: EngineModules<M, P>;
 };
 
+ 
+    
+type StripReadonly<T> = T extends Function
+  ? T
+  : T extends readonly any[] // 🌟 直接用 any[] 占位即可
+  ? { -readonly [K in keyof T]: StripReadonly<T[K]> } 
+  : T extends object
+  ? { -readonly [K in keyof T]: StripReadonly<T[K]> }
+  : T;
+ 
+type NormalizeSchema<T> = T extends readonly any[]
+  ? (T["length"] extends 0 ? Record<string, any> : StripReadonly<T[0]>)
+  : StripReadonly<T>;
+
 const engineMap = new Map<MeshPath, any>();
 
  /**
@@ -117,10 +131,10 @@ const engineMap = new Map<MeshPath, any>();
  * @param options 引擎配置项与扩展模块 {@link MeshFlowOptions}
  */
 const useMeshFlow = <
-  const S extends Record<string, any> | any[],
+  const S extends Record<string, any> | readonly Record<string, any>[],
   T, //UITrigger的类型
   M extends Record<string, any>,
-  NM extends Record<string, any> = InferLeafType<S>,
+  NM extends Record<string, any> = IsNever<NormalizeSchema<S>> extends true ?Record<KeysOfUnion<NormalizeSchema<S>>, any>:InferLeafType<S>,
   P extends MeshPath = [InferLeafPath<S>] extends [never]
     ? MeshPath
     : InferLeafPath<S> | (string & {}) //path类型，作为任务的唯一性标志, 让leafpath宽松一些，支持动态路径

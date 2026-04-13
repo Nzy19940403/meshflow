@@ -1,14 +1,14 @@
  
  
 import {  SchemaBucket } from "../engine/bucket"; 
-import { InternalKeys, MeshError, MeshFlowTaskNode, MeshPath, SetRuleOptions, logicApi } from "../types/types";
+import { InternalKeys, MeshError, MeshFlowTaskNode, MeshPath, SetRuleOptions, SuggestKey, logicApi } from "../types/types";
 import { KeysOfUnion } from '../utils/util';
  
 const CreateRule = <
-P,
+
 K,
 NM,
-TKeys extends KeysOfUnion<NM>  ,
+TKeys extends SuggestKey<NM>  ,
  
 >(targetUid: number, targetKey: K , options: {
     value?: any
@@ -122,12 +122,10 @@ export const useSetRule = <P extends MeshPath,NM>(
         }  
  
     };
-/**
- * @category DAG
- */
+
     const SetRule = <
-    K extends KeysOfUnion<NM>,
-    TKeys extends KeysOfUnion<NM>  ,
+    K extends SuggestKey<NM>,
+    TKeys extends SuggestKey<NM> = SuggestKey<NM> ,
     >(outDegreePath: P, inDegreePath: P, key: K , options: SetRuleOptions<NM,TKeys>) => {
         
        
@@ -146,7 +144,7 @@ export const useSetRule = <P extends MeshPath,NM>(
         activeTopologyUids.set(outDegree.uid,activeOutdegreeCount)
 
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
-        let newRule = CreateRule<P,K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: [outDegree.uid],triggerKeys });
+        let newRule = CreateRule<K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: [outDegree.uid],triggerKeys });
 
         // const DepsArray:Array<[P,any]> = [outDegreePath].map(path=>[path,GetByPath(path).value])
         const DepsArray:Array<[number,Array<TKeys| Exclude<InternalKeys,'state'>>,any]> = [outDegreePath].map(path=>{
@@ -174,7 +172,7 @@ export const useSetRule = <P extends MeshPath,NM>(
             }
         } else {
             //访问元数据
-            const baseValue = inDegree.meta[key] 
+            const baseValue = (inDegree.meta as any)[key] 
              
             let newBucket = new SchemaBucket<P>(
                 baseValue,
@@ -196,7 +194,7 @@ export const useSetRule = <P extends MeshPath,NM>(
             
         }
         
-        (inDegree.state as any)[key] = inDegree.meta[key]
+        (inDegree.state as any)[key] = (inDegree.meta as any)[key]
         
         const bucket = GetBucket(inDegree.nodeBucket[key])
 
@@ -245,7 +243,7 @@ export const useSetRule = <P extends MeshPath,NM>(
  
 
         //创建rule,第一个是id，现在先由触发它的表单的path来定义
-        let newRule = CreateRule<P,K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: outDegreeUids,triggerKeys });
+        let newRule = CreateRule<K,NM,TKeys>(inDegree.uid, key, { ...options, triggerUids: outDegreeUids,triggerKeys });
 
    
         const DepsArray:Array<[number,Array<TKeys| Exclude<InternalKeys,'state'>>,any]> = outDegreePaths.map(path=>{

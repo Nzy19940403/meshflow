@@ -10,7 +10,7 @@ import { useOnError } from "../hooks/useOnError";
 import { useOnSuccess } from "../hooks/useOnSuccess";
 import { usePluginManager } from "../plugins/usePlugin";
 import { useOnStart } from "../hooks/useOnStart";
-import { EntangleArgType, MeshFlowHistory, MeshFlowTaskNode, MeshPath, SetRuleOptions } from "../types/types";
+import { EntangleArgType, MeshFlowHistory, MeshFlowTaskNode, MeshPath, SetRuleOptions, SuggestKey } from "../types/types";
 import { useScheduler } from "./useScheduler";
 import { KeysOfUnion } from "../utils/util";
  
@@ -335,10 +335,13 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         });
     };
 
-    const setRuleWrapper = <TKeys extends KeysOfUnion<NM>>(
+    const setRuleWrapper = <
+    K extends SuggestKey<NM>, // 🌟 直接用这个最强王者
+    TKeys extends SuggestKey<NM> = SuggestKey<NM>
+    >(
     outDegreePath: P, 
     inDegreePath: P, 
-    key: KeysOfUnion<NM> | (string & {})  , 
+    key: K  , 
     options: SetRuleOptions<NM,TKeys>) => {
         SetRule(outDegreePath, inDegreePath, key as KeysOfUnion<NM> , options);
         isRulesChanged = true;
@@ -367,7 +370,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         isReady = true;
     };
 
-    const useEntangleWrapper = (config: EntangleArgType<P>)=>{
+    const useEntangleWrapper = <State = any>(config: EntangleArgType<P,State,NM>)=>{
        
         useEntangle(config);
         isEntangleDirty = true;

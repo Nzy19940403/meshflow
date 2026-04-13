@@ -161,8 +161,8 @@ export interface MeshFlowTaskNode<
   state: V;
 
   // nodeBucket: Record<keyof NM, SchemaBucket<P>>;
-  nodeBucket: Record<keyof NM, number>;
-  notifyKeys: Set<keyof NM>;
+  nodeBucket: Record<SuggestKey<NM>, number>;
+  notifyKeys: Set<SuggestKey<NM>>;
   // --- 响应式信号 ---
   // 用于通知 UI 组件重绘 (对应 Vue Ref 或 React State)
   dirtySignal: any;
@@ -171,7 +171,7 @@ export interface MeshFlowTaskNode<
 
   calledBy:TriggerCause
 
-  meta: NM; //存放业务元数据
+  meta: NM ; //存放业务元数据
   dependOn: (cb: (val: V) => V, key?: keyof NM) => void;
   createView: <E extends Record<string, any> = {}>(extraProps?: E) => MeshNodeProxy<MeshFlowTaskNode<P, V, NM>, V, NM, E>;
 }
@@ -234,7 +234,7 @@ export type InternalKeys = 'path'|'uid'|'type'|'meta'|'state'
  * @typeParam TKeys - 当前节点关联的键集合
  * @params logic - 桶计算的逻辑块，一个桶里面可以装多个逻辑块，根据策略进行计算，逻辑块入参参考{}
  */
-export interface SetRuleOptions<NM, TKeys extends KeysOfUnion<NM>> {
+export interface SetRuleOptions<NM, TKeys extends SuggestKey<NM>> {
 /**
    * 结果覆盖值 (静态产出)
    * * @description
@@ -326,7 +326,7 @@ export type EntangleOp = "add" | "intersect" | "union" | "merge" | "remove";
  * @group 参数类型
  * @category 纠缠设置
  */
-export interface GhostProposalApi<T> {
+export interface GhostProposalApi<State,NM> {
 /**
    * 提交【绝对值覆盖】提案
    * @description 直接用新值覆盖目标节点的指定状态。
@@ -334,7 +334,7 @@ export interface GhostProposalApi<T> {
    * @param value 期望设置的新值
    * @param weight 提案权重 (默认: 1)。当同一批次内有多个规则试图 `set` 同一个 key 时，权重最高者获胜。
    */
-  set: (key: string, value: any, weight?: number) => void;
+  set: (key: SuggestKey<NM>, value: any, weight?: number) => void;
 /**
    * 提交【增量运算】提案
    * @description 提交一个增量操作，引擎会在清算时将其与目标节点的旧值进行合并计算。
@@ -342,7 +342,7 @@ export interface GhostProposalApi<T> {
    * @param delta 增量数据 (如累加的数值、需追加的数组元素)
    * @param op 运算策略 (默认: 'add')。支持：累加(add)、移除(remove)、交集(intersect)、并集(union)、深度合并(merge)。
    */
-  update: (key: string, delta: any, op?: EntangleOp) => void;
+  update: (key: SuggestKey<NM>, delta: any, op?: EntangleOp) => void;
 /**
    * 提交【函数式补丁】提案
    * @description 基于目标节点的当前状态进行纯函数推导，适用于高度依赖旧值的复杂状态计算。
@@ -353,7 +353,15 @@ export interface GhostProposalApi<T> {
    * 但由于其返回对象通常会触发堆内存分配，在高频纠缠的情况下会显著增加 GC压力。
    * 为了追求极致的内存性能并减少 GC 压力，请优先考虑性能更优的update方法。
    */
-  patch: (key: string, patchFn: (oldState: T) => T) => void;
+  patch:<
+    K extends SuggestKey<NM>, 
+    // 🌟 1. 自动计算 V (Value) 的类型
+    V = IsAny<State> extends false 
+        ? State 
+        :IsNever<NM> extends true ? any :  
+        (IsAny<NM> extends false ? (K extends keyof NM ? NM[K] : any) : any)
+  > 
+  (key: K, patchFn: (oldState: V) => V) => void;
 }
   
 /**
@@ -373,6 +381,16 @@ export type EntangleGhost<T=any> = {
   op?: EntangleOp;
   patch?:(oldState:T)=>T
 };
+/**
+ * @internal
+ * */ 
+export type IsAny<T> = 0 extends (1 & T) ? true : false;
+/**
+ * @internal
+ * */ 
+export type IsNever<T> = [T] extends [never] ? true : false;
+
+
 
 /**
  * 量子纠缠机制的配置选项
@@ -380,10 +398,14 @@ export type EntangleGhost<T=any> = {
  * @group 参数类型
  * @category 纠缠设置
  */
-export type EntangleArgType<P extends MeshPath,T = any,IsProxy extends boolean = boolean> = {
+export type EntangleArgType<P extends MeshPath,State = any,NM=any,  IsProxy extends boolean = boolean> = {
   cause:P;
   impact:P;
-  via:string[];
+  via:Array<
+  SuggestKey<NM>
+  // IsAny<NM> extends true ? string :
+  // IsNever<NM> extends true ? string : keyof NM |(string & {}) 
+  >;
   isProxy?: IsProxy;
   filter?: (
     cause: IsProxy extends true ? any : MeshFlowTaskNode<P>, 
@@ -395,7 +417,7 @@ export type EntangleArgType<P extends MeshPath,T = any,IsProxy extends boolean =
   emit:(
     cause: IsProxy extends true ? any : MeshFlowTaskNode<P>, 
     impact: IsProxy extends true ? any : MeshFlowTaskNode<P>,
-    propose:GhostProposalApi<T>) => void | EntangleGhost<T> | undefined | Promise<void | EntangleGhost<T> | undefined>; // 预言推演逻辑
+    propose:GhostProposalApi<State, NM>) => void | EntangleGhost<State> | undefined | Promise<void | EntangleGhost<State> | undefined>; // 预言推演逻辑
 };
  /**
  * 引擎点火溯源标识 (Trigger Cause)
@@ -710,3 +732,10 @@ export interface MeshFlowOptions<NM = any, M = any, T = any> {
     signalTrigger: (signal: T) => void;
   };
 }
+
+
+export type SuggestKey<T> = IsAny<T> extends true 
+  ? MeshPath 
+  : IsNever<T> extends true 
+    ? MeshPath 
+    : (T extends any ? keyof T : never) | (string & {});
