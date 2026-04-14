@@ -358,9 +358,9 @@ export function useScheduler<
                     metadataArray.forEach(meta => {
                         let data = GetNodeByPath(meta.path);
                         (data.state as any)[meta.key] = meta.value;
-                        flushPathSet.add(meta.path);
+                        flushPathSet.add(data.uid);
                         // 撤销时，也把这些节点作为源头收集起来
-                        undoRoots.add(meta.uid);
+                        undoRoots.add(data.uid);
                     });
                     requestUpdate();
                     if (undoRoots.size > 0) {
@@ -396,7 +396,10 @@ export function useScheduler<
             TaskRunner(null, Array.from(updateRoots)); 
         }
     };
- 
+    
+    const refresTarget = (uid:number)=>{
+        flushPathSet.add(uid)
+    }
 
     return {
         registerNode,
@@ -414,7 +417,8 @@ export function useScheduler<
 
         CancelTask,
         stageValueFn,
-
+        refresTarget,
+        
         UITrigger,
         UidToNodeMap
     }

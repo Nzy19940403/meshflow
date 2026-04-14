@@ -227,7 +227,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
         CancelTask,
         stageValueFn,
-        
+        refresTarget,
     } = scheduler;
 
     if(isRenderGateRegistered){
@@ -408,7 +408,20 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         stageValueFn(node.uid,key,value)
     }
   
-   
+    const SilentSet = (path: P,key:SuggestKey<NM>, value: any)=>{
+    
+        const node = GetNodeByPath(path);
+        if (!node) {
+            return false;
+        }
+
+        if (Object.is(node.state[key], value)) return false;
+
+        // 3. 物理覆写（不触碰任何引擎核心依赖）
+        node.state[key] = value;
+        refresTarget(node.uid);
+        return true; 
+    }
 
     const instance = {
       
@@ -449,7 +462,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
         destroyPlugin,
         CancelTask,
-        StageValue
+        StageValue,
+        SilentSet
     };
  
 

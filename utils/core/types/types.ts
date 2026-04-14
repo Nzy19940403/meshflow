@@ -653,7 +653,7 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
     SetValues: (updates: { path: P, key: SuggestKey<NM>, value: any }[]) => void;
 
  /**
- * 🌟 静默属性注入 (熵减缓冲区)
+ *  
  * * @description 
  * 该方法不会立即中断当前引擎任务，而是将修改意图推入 `stageBuffer`。
  * 主要用于处理外部高频干预（如自动空投、WebSocket 流、或是跨帧的连续修改）。
@@ -665,11 +665,25 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
  * @param key - 需要修改的属性键名 (必须是模型定义的 SuggestKey)
  * @param value - 注入的原始物理值 (注入后将作为下一轮纠缠的种子)
  * * @example
- * // 外部定时器高频新增，不希望闪烁或卡顿
  * engine.data.StageValue(path, 'isDead', false);
  */
     StageValue:(path: P,key: SuggestKey<NM>, value: any) => void;
-    
+    /**
+ *  静默更新 (Silent Update)
+ * * @description 
+ * 强制篡改节点状态而不触发任何纠缠任务（Task）。
+ * 该操作是“非响应式”的，引擎不会感知到此次变化，也不会产生拓扑波动。
+ * * @example
+ * // 场景：系统重置（降噪）
+ * // 先将所有背景节点的干扰项“强行降噪”为 0，再通过 SetValue 触发一次“纯净”的任务流。
+ * list.forEach(node => engine.data.SilentSet(node.path, 'count', 0));
+ * engine.data.SetValue('N5', 'count', 500); // 此时只有 N5 是唯一的能量源
+ * * @param path - 节点的唯一路径
+ * @param key - 需要修改的状态键名
+ * @param value - 目标值
+ * @returns {boolean} 是否成功修改了内存值（若值相等或路径无效则返回 false）
+ */
+    SilentSet:(path: P,key: SuggestKey<NM>, value: any) => boolean;
     /** 根据路径获取对应分组的数据 */
     GetGroupByPath: (path: P) => any;
 
