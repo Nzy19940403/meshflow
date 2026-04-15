@@ -4,112 +4,123 @@ export interface MeshPulseOptions {
     logPrefix?: string;
     showTable?: boolean;
     outputJson?: boolean;
+    onTrace?: (sessionPulses: any[]) => void;
 }
 
 export const useMeshPulse = (options: MeshPulseOptions = {}) => {
-    const {
-        logPrefix = '🫀 MeshPulse',
-        showTable = true,
-        outputJson = true
-    } = options;
+    const { logPrefix = '🫀 MeshPulse', showTable = true, outputJson = true, onTrace } = options;
 
     const apply = (api: any) => {
-        // --- 核心状态 ---
-        let epochCounter = 0; // 纪元序号
-        let currentEpochEmits: Array<{ cause: string, impact: string, via: any }> = []; // 当前纪元的子弹
-        let sessionPulses: Array<{ epoch: string, timestamp: number, emits: any[] }> = []; // 整个 Flow 的脉冲快照
+        let epochCounter = 0;
+        let currentEpochEmits: any[] = [];
+        let sessionPulses: any[] = [];
         let currentTimeStrap = 0;
         let displayTimeStrap = '0';
-        // 可选：利用 token 防止并发污染
-        const activeTokens = new Set<symbol>();
+        
+        // 🌟 只需要这一个最核心的标志位
+        // 它的物理意义：主干代码（非异步回调部分）是否已经跑完了？
+        let hasMainTaskSucceeded = false; 
 
-        const on = <K extends keyof any>(event: K, cb: (data: any) => void) => {
-            api.on(event, cb);
+        const activeTokens = new Set<symbol>();
+        const on = <K extends keyof any>(event: K, cb: (data: any) => void) => api.on(event, cb);
+
+        const finalizeAndPrint = () => {
+            if (sessionPulses.length === 0) return;
+
+            if (typeof onTrace === 'function') {
+                onTrace(sessionPulses);
+            }
+
+            if (outputJson) {
+                console.groupCollapsed(
+                    `%c📦 ${logPrefix} Session Trace (Total Epochs: ${sessionPulses.length})`,
+                    "color: #00bcd4; font-weight: bold; border-bottom: 1px dashed #00bcd4; padding-bottom: 2px;"
+                );
+                console.log(JSON.stringify(sessionPulses, null, 2));
+                console.groupEnd();
+            }
+            
+            // 打印完清空，防止被重复触发
+            sessionPulses = []; 
         };
 
-        // 1. 引擎启动：重置脉冲记录器
         on(MeshFlowEventsName.FlowStart, ({ token }) => {
             activeTokens.add(token);
             epochCounter = 0;
             currentEpochEmits = [];
             sessionPulses = [];
             currentTimeStrap = 0;
+            hasMainTaskSucceeded = false; // 🚦 任务开始，灯变红
 
             if (showTable) {
                 console.log(`%c${logPrefix} %cTracker Activated...`, "color: #bada55; font-weight: bold; background: #222; padding: 2px 4px; border-radius: 3px;", "color: #909399; font-style: italic;");
             }
         });
 
-        // 2. 收集子弹：只要有发射，就塞进当前纪元的弹夹
         on(MeshFlowEventsName.EntangleEmitCalled, (payload) => {
-            currentEpochEmits.push({
-                cause: payload.observer,
-                impact: payload.target,
-                via: payload.via
-            });
+            currentEpochEmits.push({ cause: payload.observer, impact: payload.target, via: payload.via });
         });
 
-        // 3. 纪元结算（发令枪）：将当前弹夹打包成一个 Pulse，并推入快照
+        // 🌟 核心：所有判定全在 EpochChange 里完成
         on(MeshFlowEventsName.EntangleEpochChange, (payload) => {
-            if (currentEpochEmits.length === 0) return; // 空转的纪元不记录
+            // 1. 如果有子弹，正常打包当前纪元
+            if (currentEpochEmits.length > 0) {
+                const pulseSnapshot = {
+                    epoch: `T${epochCounter}`,
+                    timestamp: payload.timestamp,
+                    emits: [...currentEpochEmits]
+                };
+                sessionPulses.push(pulseSnapshot);
 
-            const pulseSnapshot = {
-                epoch: `T${epochCounter}`,
-                timestamp: payload.timestamp,
-                emits: [...currentEpochEmits]
-            };
-            
-            sessionPulses.push(pulseSnapshot);
+                displayTimeStrap = (payload.timestamp - currentTimeStrap).toFixed(1);
+                if (currentTimeStrap === 0) {
+                    displayTimeStrap = '0';
+                    currentTimeStrap = payload.timestamp;
+                }
 
-            displayTimeStrap = (payload.timestamp - currentTimeStrap).toFixed(1);
-            if(currentTimeStrap===0){
-                displayTimeStrap = '0';
-                currentTimeStrap = payload.timestamp;
+                if (showTable) {
+                    console.groupCollapsed(
+                        `%c${logPrefix} [Epoch ${pulseSnapshot.epoch}] %c TimeStrap ${displayTimeStrap}- Settled ${currentEpochEmits.length} entanglements`,
+                        "background: #1e1e1e; color: #bada55; font-weight: bold; border-radius: 2px; padding: 2px 4px;",
+                        "color: #a6e22e; font-style: italic;"
+                    );
+                    console.table(currentEpochEmits);
+                    console.groupEnd();
+                }
+
+                epochCounter++;
+                currentEpochEmits = [];
             }
-          
-            // 🌟 装逼时刻：控制台实时打印带折叠的脉冲表
-            if (showTable) {
-                console.groupCollapsed(
-                    `%c${logPrefix} [Epoch ${pulseSnapshot.epoch}] %c TimeStrap ${displayTimeStrap}- Settled ${currentEpochEmits.length} entanglements`, 
-                    "background: #1e1e1e; color: #bada55; font-weight: bold; border-radius: 2px; padding: 2px 4px;", 
-                    "color: #a6e22e; font-style: italic;"
-                );
-                console.table(currentEpochEmits);
-                console.groupEnd();
-            }
 
-            // 清空弹夹，准备迎接下一个纪元
-            epochCounter++;
-            currentEpochEmits = []; 
+            // 2. 🌟 终极收网判定 🌟
+            // 既然能走到这里（不管是空转还是打完了子弹），说明内核在尝试结算。
+            // 如果主任务已经跑完了（hasMainTaskSucceeded === true）
+            // 且这次结算之后，弹夹里没新东西了
+            // 那就是真结束了！因为你的 monitor 只有在幽灵归零时才会发这个事件。
+            if (hasMainTaskSucceeded && currentEpochEmits.length === 0) {
+                finalizeAndPrint();
+            }
         });
 
-        // 4. 引擎停机：吐出最终的 JSON 数据，证明收敛
-        const handleFlowEnd = (token: symbol) => {
+        // 这个事件在主干 flushQueue 走完时触发
+        on(MeshFlowEventsName.FlowSuccess, ({ token }) => {
             if (!activeTokens.has(token)) return;
+            hasMainTaskSucceeded = true; // 🚦 主任务跑完，灯变绿
+
+            // 针对纯同步任务的特判：
+            // 如果它是纯同步的，FlowSuccess 时根本没有在飞的幽灵，
+            // 也就不会再有下一次的 EpochChange 了，所以这里直接帮它收网。
+            if (currentEpochEmits.length === 0) {
+                finalizeAndPrint();
+            }
+        });
+
+        on(MeshFlowEventsName.FlowAbort, ({ token }) => {
+            if (!activeTokens.has(token)) return;
+            // Abort 时强行收网（如果还有没打印的纪元，直接放弃，输出已有的 Session）
+            finalizeAndPrint(); 
             activeTokens.delete(token);
-
-            // 如果还有没结算的“残影”（理论上不会有，但在强制终止时可能存在）
-            if (currentEpochEmits.length > 0) {
-                sessionPulses.push({
-                    epoch: `T${epochCounter} (Abort/Flush)`,
-                    timestamp: performance.now(),
-                    emits: [...currentEpochEmits]
-                });
-            }
-
-            if (sessionPulses.length > 0 && outputJson) {
-                console.groupCollapsed(
-                    `%c📦 ${logPrefix} Session Trace (Total Epochs: ${sessionPulses.length})`, 
-                    "color: #00bcd4; font-weight: bold; border-bottom: 1px dashed #00bcd4; padding-bottom: 2px;"
-                );
-                // 打印出完美的 JSON 结构，可以直接复制到文档里
-                console.log(JSON.stringify(sessionPulses, null, 2));
-                console.groupEnd();
-            }
-        };
-
-        on(MeshFlowEventsName.FlowSuccess, ({ token }) => handleFlowEnd(token));
-        on(MeshFlowEventsName.FlowAbort, ({ token }) => handleFlowEnd(token));
+        });
     };
 
     return { apply };

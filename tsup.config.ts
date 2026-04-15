@@ -116,6 +116,26 @@ export default defineConfig([
   },
   {
     entry:{
+      index:'utils/plugins/meshPulse/useMeshPulse.ts'
+    },
+    outDir: 'lib-plugins/meshPulse',
+    format: ['cjs', 'esm'],
+    external: ["@meshflow/core"],
+    dts: true,
+    minify: true,
+    clean: true,
+    onSuccess: async () => {
+      // 拷贝 package.json 的逻辑保持不变
+      const pkgPath = path.resolve(__dirname, "utils/plugins/meshPulse/package.json");
+      const destPath = path.resolve(__dirname, "lib-plugins/meshPulse/package.json");
+      if (fs.existsSync(pkgPath)) {
+        fs.copyFileSync(pkgPath, destPath);
+      }
+ 
+    },
+  },
+  {
+    entry:{
       index:'utils/forms/useMeshForm.ts'
     },
     outDir:'lib-form',
