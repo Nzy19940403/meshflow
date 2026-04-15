@@ -80,7 +80,7 @@ export const useMeshPulse = (options: MeshPulseOptions = {}) => {
 
                 if (showTable) {
                     console.groupCollapsed(
-                        `%c${logPrefix} [Epoch ${pulseSnapshot.epoch}] %c TimeStrap ${displayTimeStrap}- Settled ${currentEpochEmits.length} entanglements`,
+                        `%c${logPrefix} [Epoch ${pulseSnapshot.epoch}] %c TimeStrap ${displayTimeStrap}ms - Settled ${currentEpochEmits.length} entanglements`,
                         "background: #1e1e1e; color: #bada55; font-weight: bold; border-radius: 2px; padding: 2px 4px;",
                         "color: #a6e22e; font-style: italic;"
                     );
@@ -110,9 +110,36 @@ export const useMeshPulse = (options: MeshPulseOptions = {}) => {
             // 针对纯同步任务的特判：
             // 如果它是纯同步的，FlowSuccess 时根本没有在飞的幽灵，
             // 也就不会再有下一次的 EpochChange 了，所以这里直接帮它收网。
-            if (currentEpochEmits.length === 0) {
-                finalizeAndPrint();
+            // if (currentEpochEmits.length === 0) {
+            //     finalizeAndPrint();
+            // }
+            // 🌟 核心：同步补偿逻辑 🌟
+            // 如果弹夹里还有子弹，说明这是没有心跳的纯同步任务，或者最后一波没结算的残留
+            if (currentEpochEmits.length > 0) {
+                const pulseSnapshot = {
+                    epoch: `T${epochCounter}`, // 标明这是同步收尾
+                    timestamp: performance.now(),
+                    emits: [...currentEpochEmits]
+                };
+                sessionPulses.push(pulseSnapshot);
+
+                if (showTable) {
+                    console.groupCollapsed(
+                        `%c${logPrefix} [Epoch ${pulseSnapshot.epoch}] %c Settled ${currentEpochEmits.length} entanglements`,
+                        "background: #1e1e1e; color: #bada55; font-weight: bold; border-radius: 2px; padding: 2px 4px;",
+                        "color: #a6e22e; font-style: italic;"
+                    );
+                    console.table(currentEpochEmits);
+                    console.groupEnd();
+                }
+                
+                // 清空弹夹
+                currentEpochEmits = [];
             }
+
+            // 既然已经到了 FlowSuccess，且我们手动把剩余的子弹都打包清空了
+            // 此时直接调用收网函数，吐出 JSON
+            finalizeAndPrint();
         });
 
         on(MeshFlowEventsName.FlowAbort, ({ token }) => {
