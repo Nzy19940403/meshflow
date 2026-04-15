@@ -76,6 +76,7 @@ function useMeshTask<P extends MeshPath, NM>(
         error: null as any,
         token: null as any,
         duration: null as any,
+        timestamp:null as any,
         detail: SHARED_DETAIL // 嵌套对象也必须是复用的
     };
 
@@ -1746,6 +1747,10 @@ function useMeshTask<P extends MeshPath, NM>(
                             
                                     // 账平了！重新调起主引擎收割
                                     applyStageValue();
+                                    //发射纪元变更事件
+                                    SHARED_PAYLOAD.timestamp = performance.now();
+                                    hooks.emit(MeshFlowEventsName.EntangleEpochChange,SHARED_PAYLOAD);
+                                    
                                     nextMacroTick(() => {
                                         if (globalLatestSessionToken === curToken) {
                                             // 如果在 tick 期间又冒出幽灵了，交给下一次 flushQueue 的 finally 处理

@@ -6,12 +6,14 @@ import {
   MeshEmit,
   MeshErrorContext,
   GhostProposalApi,
-  EntangleOp
+  EntangleOp,
+  MeshFlowEventsName
 } from "../types/types";
 import { createScheduler } from "../utils/util";
 
 type EntangleLink<P extends MeshPath,NM> = {
   impact: P;
+  triggerKey: MeshPath;
   filter?: (obs: any, tgt: any) => boolean;
   emit:(src:any,tgt:any,propose:GhostProposalApi<any,NM>) => void | EntangleGhost<any> | undefined | Promise<void | EntangleGhost<any> | undefined>; 
   count: number;
@@ -48,6 +50,16 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   let currentEpoch = 0;
 
   const MESH_CAPACITY = 100;
+
+  const EMIT_PAYLOAD  = {
+    observer: "" as any,
+    target: "" as any,
+    via: null as any,
+    count:0 ,
+    path:'' as any,
+    error:null as any,
+    type:'' as "no_keys" | "no_level"
+  };
 
   const createPoolCell = () => {
     const cell: any = {
@@ -118,13 +130,16 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   const processLink = (
     link: EntangleLink<P,NM>, 
     causeNode: MeshFlowTaskNode<P, any, NM>, 
-    hitTargetUids: number[]
+    hitTargetUids: number[],
   ): Promise<void> | void => {
     const causePath = causeNode.path;
     const impactPath = link.impact;
 
     if (link.count >= MAX_ENTANGLE_DEPTH) {
-      hooks.emit('entangle:blocked' as any, { observer: causePath as string, target: impactPath as string, count: link.count });
+      EMIT_PAYLOAD.observer = causePath;
+      EMIT_PAYLOAD.target = impactPath;
+      EMIT_PAYLOAD.count = link.count;
+      hooks.emit(MeshFlowEventsName.EntangleBlocked, EMIT_PAYLOAD);
       return;
     }
 
@@ -155,14 +170,19 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     cell.hitTargetUids = hitTargetUids;
 
     const emitResult = link.emit(causeArg, impactArg, cell.propose);
-
+    EMIT_PAYLOAD.observer = causePath;
+    EMIT_PAYLOAD.target = impactPath;
+    EMIT_PAYLOAD.via = link.triggerKey;
+    hooks.emit(MeshFlowEventsName.EntangleEmitCalled,EMIT_PAYLOAD);
     if (emitResult instanceof Promise || (emitResult && typeof (emitResult as any).then === 'function')) {
       activeAsyncCount++;
       return (async () => {
         try {
           await emitResult; 
         } catch (e) {
-          hooks.emit('node:error' as any, { path: causePath as string, error: e });
+          EMIT_PAYLOAD.path = causePath;
+          EMIT_PAYLOAD.error = e;
+          hooks.emit(MeshFlowEventsName.NodeError, EMIT_PAYLOAD);
           hooks.onError({ path: causePath as string, error: e as Error });
         } finally {
           // activeAsyncCount--;
@@ -196,7 +216,9 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     const { cause, impact, via, emit, filter, isProxy } = config;
     
     if (!via || via.length === 0) {
-      hooks.emit('entangle:warn' as any, { path: cause as string, type: 'no_keys' });
+      EMIT_PAYLOAD.path = cause;
+      EMIT_PAYLOAD.type = 'no_keys';
+      hooks.emit(MeshFlowEventsName.EntangleWarn , EMIT_PAYLOAD);
       return;
     }
 
@@ -212,7 +234,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     for (let i = 0; i < via.length; i++) {
       const key = via[i];
       if (!causeMap.has(key)) causeMap.set(key, []);
-      causeMap.get(key)!.push({ impact, emit: emit as any, filter, count: 0, isProxy: !!isProxy });
+      causeMap.get(key)!.push({ triggerKey:key,impact, emit: emit as any, filter, count: 0, isProxy: !!isProxy });
     }
   };
 

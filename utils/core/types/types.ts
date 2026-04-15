@@ -31,6 +31,9 @@ export const enum MeshFlowEventsName {
   
   EntangleWarn = 16,
   EntangleBlocked = 17,
+
+  EntangleEpochChange = 18,
+  EntangleEmitCalled = 19,
 }
 
 /**
@@ -56,6 +59,9 @@ export interface BaseMeshEvents {
 
   [MeshFlowEventsName.EntangleWarn]: { path: string; type: 'no_keys' | 'no_level' };
   [MeshFlowEventsName.EntangleBlocked]: { observer: string; target: string; count: number };
+
+  [MeshFlowEventsName.EntangleEpochChange]:{timestamp:number}
+  [MeshFlowEventsName.EntangleEmitCalled]:{observer: string; target: string;via:any}
 }
 
 /**
@@ -70,6 +76,7 @@ export interface MeshEvents extends BaseMeshEvents {
 
   // 逆转未来时候的事件
   [MeshFlowEventsName.NodeRevive]: { path: MeshPath; triggerPath: MeshPath };
+
 }
  /**
  * @internal
