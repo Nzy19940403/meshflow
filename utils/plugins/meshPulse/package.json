@@ -1,0 +1,47 @@
+{
+  "name": "@meshflow/pulse",
+  "version": "1.0.0",
+  "description": "Logical observability plugin for MeshFlow. High-fidelity epoch-based tracing and causal monitoring.",
+  "main": "./index.js",
+  "module": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./index.d.mts",  
+        "default": "./index.mjs"
+      },
+      "require": {
+        "types": "./index.d.ts",   
+        "default": "./index.js"
+      }
+    }
+  },
+  "keywords": [
+    "meshflow",
+    "observability",
+    "tracing",
+    "dag",
+    "reactive",
+    "epoch",
+    "determinism"
+  ],
+  "author": "nzy",
+  "license": "MIT",
+  "peerDependencies": {
+    "@meshflow/core": ">=0.5.5" 
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nzy19940403/meshflow.git",
+    "directory": "packages/pulse"
+  },
+  "bugs": {
+    "url": "https://github.com/Nzy19940403/meshflow/issues"
+  },
+  "homepage": "https://meshflow-docs.nzyhave.fun/"
+}
