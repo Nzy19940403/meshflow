@@ -2,7 +2,7 @@ import { it, expect, vi, describe, beforeEach, afterEach } from "vitest";
 import {
   useMeshFlow,
   deleteEngine,
-} from "@meshflow/core";
+} from "@/utils/core/engine/useEngineManager";
 import { setupTestNodes } from "./testmodule";
  
 
