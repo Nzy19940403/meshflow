@@ -3,6 +3,7 @@ import { MeshEmit, MeshFlowEventsName, TransactionArray } from "../types/types";
 
 export const createTransactionScheduler = (
     initBatchNotify:any,
+    initNotify:any,
     hooks:{
         emit:MeshEmit,
         callOnError:any
@@ -11,6 +12,7 @@ export const createTransactionScheduler = (
     let updateTokenFn:()=>symbol;
     let curToken:symbol|null;
     let batchNotify:any = null;
+    let notify:any = null;
 
     let tasks:TransactionArray = [];
     let isTaskProcessing:boolean = false;
@@ -19,6 +21,9 @@ export const createTransactionScheduler = (
     const settleTasks = ( array: TransactionArray )=>{
         if(!batchNotify){
             batchNotify = initBatchNotify();
+        }
+        if(!notify){
+            notify = initNotify();
         }
         reset();
 
@@ -46,10 +51,20 @@ export const createTransactionScheduler = (
                 reset();
             }
         });
-         
-        batchNotify(res);
+  
+        if (res === undefined) {
+            return false;
+        };
+ 
+        if (Array.isArray(res)) {
+            if (res.length > 0) {
+                batchNotify(res);
+            }
+        } else if (typeof res === 'object' && res !== null) {
+            notify(res); 
+        };
         
-        return false
+        return false;
     }
   
     const apply = (fn:()=>symbol)=>{

@@ -784,4 +784,4 @@ export type SuggestKey<T> = IsAny<T> extends true
     : (T extends any ? keyof T : never) | (string & {});
 
 
-export type TransactionArray = Array<(resolve: (res:any)=>any,reject: (error:any)=>any)=>any>
+export type TransactionArray = Array<(resolve: (res?:any)=>any,reject: (error?:any)=>any)=>any>

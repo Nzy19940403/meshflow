@@ -46,6 +46,7 @@ export function useScheduler<
     const timeScheduler = createTimeScheduler();
     const taskSchduler = createTransactionScheduler(
         ()=>batchNotify,
+        ()=>notify,
         {
             emit: hooks.emit,
             callOnError:hooks.callOnError
