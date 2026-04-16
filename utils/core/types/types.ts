@@ -638,7 +638,7 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
     hasRenderGate: () => boolean;
     
     /** 挂载量子纠缠 (Entanglement) 机制 */
-    useEntangle: <State>(entangleFn: any) => void;
+    useEntangle: <State=any>(entangleFn: any) => void;
   };
 
   /**
