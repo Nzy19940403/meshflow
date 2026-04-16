@@ -1,4 +1,4 @@
-import { createScheduler, nextMacroTick } from "../utils/util";
+import {  createTimeScheduler, nextMacroTick } from "../utils/util";
 import {
     MeshPath,
     MeshEmit,
@@ -9,6 +9,7 @@ import {
     SuggestKey,
 } from "../types/types";
 import { SchemaBucket } from "./bucket";
+import {createTransactionScheduler} from './useTransactionSchduler'
 
 function useMeshTask<P extends MeshPath, NM>(
     config: {
@@ -40,7 +41,8 @@ function useMeshTask<P extends MeshPath, NM>(
         requestUpdate: () => void;
         flushPathSet: Set<number>;
     },
-    timeScheduler: ReturnType<typeof createScheduler>
+    timeScheduler: ReturnType<typeof createTimeScheduler>,
+    taskSchduler:ReturnType<typeof createTransactionScheduler>
 ) {
     const currentExecutionToken: Map<P, symbol> = new Map();
 
@@ -85,10 +87,7 @@ function useMeshTask<P extends MeshPath, NM>(
     const stageBuffer: Array<{ uid: number, key: SuggestKey<NM>, value: any }> = [];
     let ignitionTimer: Promise<void> | null = null;
     const stageValueFn = (uid: number, key: SuggestKey<NM>, value: any) => {
-        // stageBuffer.push({ uid, key, value });
-        // if (!isTaskActive) {
-        //     TaskRunner(null, []);
-        // }
+   
         // 1. 无论如何，数据先入库
         stageBuffer.push({ uid, key, value });
 
@@ -109,13 +108,28 @@ function useMeshTask<P extends MeshPath, NM>(
             }
         });
     }
+    let isTransactionChain = false; // 新增：事务链标志位
+    let transactionToken:symbol;
+    const setTransactionTrue = () => {
+        isTransactionChain = true;
+        transactionToken = Symbol('task');
+        return transactionToken;
+    };
+    
+    taskSchduler.apply(setTransactionTrue);
 
     //运行调用入口
     const TaskRunner = async (triggerUid: number | null, initialNodes: number[]) => {
         //最大并发数
         const MAX_CONCURRENT_TASKS = 40;
+        let isTaskTakeOver = false;
+        if(isTransactionChain){
+            //看看是否被taskschduler接管了
+            isTaskTakeOver = taskSchduler.takeover(transactionToken);
+            isTransactionChain = false; 
+        }
 
-        const curToken = Symbol("token");
+        const curToken =isTaskTakeOver?transactionToken: Symbol("token");
 
         const triggerToken = (typeof triggerUid === 'number'? triggerUid : "__NOTIFY_ALL__") as unknown as P ;
  
@@ -129,7 +143,7 @@ function useMeshTask<P extends MeshPath, NM>(
 
         //scheduler重置
         timeScheduler.reset();
-        data.Turnstile.nextEpoch()
+        data.Turnstile.nextEpoch();
 
         const maxUid = data.GetMaxUid() + 3;
       
@@ -1697,15 +1711,21 @@ function useMeshTask<P extends MeshPath, NM>(
                         quantumWatermark = -1;
                         currentExecutionToken.delete(triggerToken);
                         
+                        if(isTaskTakeOver){
+ 
+                            taskSchduler.runNext();
+                            return
+                             
+                          
+                        }else{
+                            taskSchduler.reset();
+                        }
 
-                        // hooks.emit(  MeshFlowEventsName.FlowSuccess , {
-                        //     token:curToken,
-                        //     duration: (endTime - startTime).toFixed(2.1) + "ms",
-                        // });
+                      
                         SHARED_PAYLOAD.token = curToken;
                         SHARED_PAYLOAD.duration = (endTime - startTime).toFixed(2.1) + "ms";
                         hooks.emit(MeshFlowEventsName.FlowSuccess,SHARED_PAYLOAD)
-                        console.log('success')
+                        console.log('success');
                         Promise.resolve().then(() => {
                              
                             hooks.callOnSuccess();
@@ -1766,7 +1786,7 @@ function useMeshTask<P extends MeshPath, NM>(
                             
                                 } else {
                                     // 🌟 证明：只有在幽灵还在飞 (>0) 时，才会执行这里的打印和递归
-                                    console.log('monitor flighting:', turnstile.inFlightCount);
+                                    // console.log('monitor flighting:', turnstile.inFlightCount);
                                     requestAnimationFrame(monitor); 
                                 }
                             };

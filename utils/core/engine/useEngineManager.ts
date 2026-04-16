@@ -23,6 +23,7 @@ export type BaseEngine<T> = {
     GetGroupByPath: T extends { GetGroupByPath: infer F } ? F : never;
     StageValue: T extends { StageValue: infer F } ? F : never;
     SilentSet: T extends { SilentSet: infer F } ? F : never;
+    SettleTasks:T extends { SettleTasks: infer F } ? F : never;
   };
   config: {
     SetRule: T extends { SetRule: infer F } ? F : never;
@@ -30,7 +31,7 @@ export type BaseEngine<T> = {
     SetStrategy: T extends { SetStrategy: infer F } ? F : never;
 
     notifyAll: T extends { notifyAll: infer F } ? F : never;
-    SetTrace: T extends { SetTrace: infer F } ? F : never;
+    // SetTrace: T extends { SetTrace: infer F } ? F : never;
     usePlugin: T extends { usePlugin: infer F } ? F : never;
 
     hasRenderGate: T extends { hasRenderGate: infer F } ? F : never;
@@ -188,7 +189,7 @@ const useMeshFlow = <
 
       GetGroupByPath,
       notifyAll,
-      SetTrace,
+      // SetTrace,
       GetAllDependency,
       GetDependencyOrder,
       // AddNewSchema,
@@ -211,7 +212,9 @@ const useMeshFlow = <
       destroyPlugin,
       CancelTask,
       StageValue,
-      SilentSet
+      SilentSet,
+
+      SettleTasks
     } = EngineInstance;
 
     const baseEngine: BaseEngine<SchedulerType<T, P, S, M, NM>> = {
@@ -220,12 +223,12 @@ const useMeshFlow = <
         SetRules,
         SetStrategy,
         notifyAll,
-        SetTrace,
+        // SetTrace,
         usePlugin,
         hasRenderGate,
         useEntangle 
       },
-      data: { SetValue, GetValue, SetValues, GetGroupByPath,StageValue,SilentSet },
+      data: { SetValue, GetValue, SetValues, GetGroupByPath,StageValue,SilentSet,SettleTasks },
       dependency: { GetAllDependency, GetDependencyOrder },
       hooks: { onError, onSuccess, onStart },
     };

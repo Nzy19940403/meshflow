@@ -1,9 +1,11 @@
 import { DependOnContext, MeshEmit, MeshError, MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, StandardUITrigger, SuggestKey } from "../types/types";
 import { useMeshTask } from "./useMeshTask";
 import { createMeshNode } from './useMeshNode';
-import { KeysOfUnion, createScheduler } from "../utils/util";
+import { KeysOfUnion,   createTimeScheduler } from "../utils/util";
 import { UseSetEntangle } from "../dependency/useSetEntangle";
 import { SchemaBucket } from "./bucket";
+import {createTransactionScheduler} from './useTransactionSchduler';
+
 /**
  * @group Core Api
  * @category 内部实现
@@ -41,7 +43,14 @@ export function useScheduler<
     UITrigger:  B , 
 ) {
 
-    const timeScheduler = createScheduler();
+    const timeScheduler = createTimeScheduler();
+    const taskSchduler = createTransactionScheduler(
+        ()=>batchNotify,
+        {
+            emit: hooks.emit,
+            callOnError:hooks.callOnError
+        }
+    );
 
     let uid: number = 0;
     const PathToUidMap = new Map<MeshPath, number>();
@@ -56,7 +65,7 @@ export function useScheduler<
     let isPending = false;
     const flushPathSet = new Set<number>();
  
-    let isInitializing:boolean = false;
+    // let isInitializing:boolean = false;
  
 
     const flushUpdate = async () => {
@@ -128,7 +137,8 @@ export function useScheduler<
             requestUpdate,
             flushPathSet,
         },
-        timeScheduler
+        timeScheduler,
+        taskSchduler
     );
  
     const DuplicatePathError = (path:string)=>{
@@ -142,6 +152,7 @@ export function useScheduler<
         }
 
         const currentId = ++uid;
+ 
 
         const dependOnContext: DependOnContext<P> = {
             path: nodeMeta.path,
@@ -296,14 +307,17 @@ export function useScheduler<
         requestUpdate();
 
         let nextOrder = dependency.GetNextDependency(inDegree.uid);
-      
-        runNotifyTask( inDegree.uid,nextOrder);
+        
+        
+        // runNotifyTask( inDegree.uid,nextOrder);
+        TaskRunner(inDegree.uid, nextOrder);
  
     };
 
-    function runNotifyTask( triggerUid: number,initialNodes: number[]) {
-        TaskRunner(triggerUid, initialNodes);
-    };
+    // function runNotifyTask( triggerUid: number,initialNodes: number[]) {
+
+    //     TaskRunner(triggerUid, initialNodes);
+    // };
 
     const notifyAll = async () => {
        
@@ -318,7 +332,7 @@ export function useScheduler<
             const roots = order[0];
 
             // 初始化期间，可以加上你之前的防打扰锁
-            isInitializing = true;
+            // isInitializing = true;
            
             try {
                 
@@ -335,7 +349,7 @@ export function useScheduler<
                 hooks.callOnError(error);
                 throw error; // 继续抛出或者根据业务吞掉
             } finally {
-                isInitializing = false;
+                // isInitializing = false;
 
                 // 4. 全部算完后，发起一次性的 UI 刷新
                 requestUpdate();
@@ -418,7 +432,8 @@ export function useScheduler<
         CancelTask,
         stageValueFn,
         refresTarget,
-        
+        SettleTasks:taskSchduler.settleTasks,
+
         UITrigger,
         UidToNodeMap
     }

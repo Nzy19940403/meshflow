@@ -2,8 +2,6 @@
 import { useSetRule } from "../dependency/useSetRule";
 import { useSetStrategy } from '../dependency/useStrategy';
  
-
-import { useExecutionTrace } from "../plugins/useExecutionTrace";
 import { useDependency, useCheckCycleInGraph } from "../dependency/useDepenency";
  
 import { useOnError } from "../hooks/useOnError";
@@ -176,11 +174,6 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
     //插入插件管理
     const { emit, usePlugin,destroyPlugin } = usePluginManager();
-
-    const { SetTrace, useTrace } = useExecutionTrace<P>();
-
-    const Trace = useTrace();
-    usePlugin(Trace);
  
     const uiTriggerFn = (isRenderGateRegistered
         ? { ...batchRenderExport }
@@ -228,6 +221,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         CancelTask,
         stageValueFn,
         refresTarget,
+        SettleTasks
     } = scheduler;
 
     if(isRenderGateRegistered){
@@ -432,7 +426,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
  
         useEntangle:useEntangleWrapper,
 
-        SetTrace,
+       
         usePlugin,
  
 
@@ -463,7 +457,9 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         destroyPlugin,
         CancelTask,
         StageValue,
-        SilentSet
+        SilentSet,
+
+        SettleTasks
     };
  
 

@@ -95,7 +95,7 @@ export type InferLeafPath<T, Prefix extends string = ""> =
 export type KeysOfUnion<T> = T extends any ? keyof T : never;
 
 
-export const createScheduler = (config = { frameQuota: 12 }) => {
+export const createTimeScheduler = (config = { frameQuota: 12 }) => {
   let lastYieldTime = performance.now();
   let taskCounter = 0;
   

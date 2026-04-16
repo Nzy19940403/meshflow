@@ -9,7 +9,7 @@ import {
   EntangleOp,
   MeshFlowEventsName
 } from "../types/types";
-import { createScheduler } from "../utils/util";
+import { createTimeScheduler } from "../utils/util";
 
 type EntangleLink<P extends MeshPath,NM> = {
   impact: P;
@@ -22,7 +22,7 @@ type EntangleLink<P extends MeshPath,NM> = {
 
 export const UseSetEntangle = <P extends MeshPath, NM>(
   config: { useEntangleStep: number },
-  timeScheduler: ReturnType<typeof createScheduler>,
+  timeScheduler: ReturnType<typeof createTimeScheduler>,
   GetUidToLevelMap: () => Map<number, number>,
   GetNodeByPath: (path: P) => MeshFlowTaskNode<P, any, NM>,
   GetNodeByUid: (uid: number) => MeshFlowTaskNode<P, any, NM>,

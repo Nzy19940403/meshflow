@@ -34,6 +34,8 @@ export const enum MeshFlowEventsName {
 
   EntangleEpochChange = 18,
   EntangleEmitCalled = 19,
+
+  TransactionAbort = 20
 }
 
 /**
@@ -62,6 +64,7 @@ export interface BaseMeshEvents {
 
   [MeshFlowEventsName.EntangleEpochChange]:{timestamp:number}
   [MeshFlowEventsName.EntangleEmitCalled]:{observer: string; target: string;via:any}
+  [MeshFlowEventsName.TransactionAbort]:0
 }
 
 /**
@@ -87,7 +90,7 @@ export type MeshEventName = keyof MeshEvents;
  */
 export type MeshEmit = <K extends MeshEventName>(
   event: K,
-  data: MeshEvents[K]
+  data?: MeshEvents[K]
 ) => void;
 /**
  * @group 类型管理
@@ -779,3 +782,6 @@ export type SuggestKey<T> = IsAny<T> extends true
   : IsNever<T> extends true 
     ? MeshPath 
     : (T extends any ? keyof T : never) | (string & {});
+
+
+export type TransactionArray = Array<(resolve: (res:any)=>any,reject: (error:any)=>any)=>any>
