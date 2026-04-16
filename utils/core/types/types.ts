@@ -694,6 +694,10 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
     /** 根据路径获取对应分组的数据 */
     GetGroupByPath: (path: P) => any;
 
+     /**
+      * 事务性任务列表，支持传入回调，回调的入参是resolve和reject，在回调里面调用resolve就会启动task，这个task执行完就会执行下一个回调
+     */
+    SettleTasks: (array: TransactionArray) => void;
   };
 
   /**
