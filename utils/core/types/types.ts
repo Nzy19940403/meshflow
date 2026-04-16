@@ -631,9 +631,6 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
  */
     notifyAll: () => void;
     
-    
-    SetTrace: (path:P,callback:(status:any)=>void) => void;
-    
     /** 挂载外部插件 */
     usePlugin: (plugin: any) => void;
     
@@ -641,7 +638,7 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
     hasRenderGate: () => boolean;
     
     /** 挂载量子纠缠 (Entanglement) 机制 */
-    useEntangle: (entangleFn: any) => void;
+    useEntangle: <State>(entangleFn: any) => void;
   };
 
   /**
