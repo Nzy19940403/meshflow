@@ -9,7 +9,7 @@ on:
       - 'utils/forms/package.json'
       - 'utils/plugins/logger/package.json'
       - 'utils/plugins/meshPulse/package.json'
-      - 'utils/plugins/rendergate/package.json'
+      - 'utils/plugins/meshRenderGate/package.json'
       
   # 🌟 2. 手动触发：支持在 GitHub Actions 页面手动点击运行，并选择要强制发布的包
   workflow_dispatch:
@@ -55,7 +55,7 @@ jobs:
             forms: 'utils/forms/package.json'
             logger: 'utils/plugins/logger/package.json'
             meshPulse: 'utils/plugins/meshPulse/package.json'
-            rendergate: 'utils/plugins/rendergate/package.json'
+            rendergate: 'utils/plugins/meshRenderGate/package.json'
 
   # 📦 发布 Core 包
   publish-core:
