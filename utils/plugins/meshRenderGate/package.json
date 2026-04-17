@@ -1,13 +1,25 @@
 {
   "name": "@meshflow/rendergate",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "The official rendering gateway plugin for MeshFlow",
   "main": "./index.js",
   "module": "./index.mjs",
   "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./index.d.mts",  
+        "default": "./index.mjs"
+      },
+      "require": {
+        "types": "./index.d.ts",   
+        "default": "./index.js"
+      }
+    }
+  },
   "author": "nzy",
   "peerDependencies": {
-    "@meshflow/core": ">=0.3.2"
+    "@meshflow/core": ">=0.5.9"
   },
   "publishConfig": {
     "access": "public",
