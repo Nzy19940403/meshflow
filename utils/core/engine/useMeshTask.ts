@@ -14,6 +14,7 @@ import {createTransactionScheduler} from './useTransactionSchduler'
 function useMeshTask<P extends MeshPath, NM>(
     config: {
         useGreedy: boolean;
+        NODE_QUOTA_PER_FRAME:number
     },
     dependency: {
         GetAllNextDependency: (targetUid: number) => number[];
@@ -1127,16 +1128,17 @@ function useMeshTask<P extends MeshPath, NM>(
             // 1. 定义名额决策函数
             const getNodeQuota = () => {
                 // A. 如果是非贪婪模式，名额给无限（由水位线逻辑自己控制节奏）
-                if (!isGreedy) return 30;
+                if (!isGreedy) return config.NODE_QUOTA_PER_FRAME;
 
                 // C. 普通贪婪模式，首帧严苛限流，后续稍微放开
-                return isFirstFrame ? 30 : 30;
+                return isFirstFrame ? 30 : config.NODE_QUOTA_PER_FRAME;
             };
 
             // 新增：帧内计数器
             let nodesProcessedInFrame = 0;
             // 新增：硬指标，一帧最多只算 10 个 (你可以根据实际测试调整为 20 或 50)
             const NODE_QUOTA_PER_FRAME = getNodeQuota();
+         
 
             try {
                 while (true) {

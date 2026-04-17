@@ -21,6 +21,7 @@ export function useScheduler<
     config: {
         useGreedy: boolean,
         useEntangleStep:number
+        NODE_QUOTA_PER_FRAME:number
     },
     dependency: {
         GetDependencyOrder: () => number[][];
@@ -106,7 +107,7 @@ export function useScheduler<
 
     const { useEntangle,updateEntangleLevel, Turnstile } = UseSetEntangle<P, NM>(
         {
-            useEntangleStep:config.useEntangleStep
+            useEntangleStep:config.useEntangleStep,
         },
         timeScheduler,
         dependency.GetUidToLevelMap,
@@ -122,7 +123,8 @@ export function useScheduler<
 
     const {TaskRunner,CancelTask,stageValueFn} = useMeshTask<P,NM>(
         {
-            useGreedy: config.useGreedy
+            useGreedy: config.useGreedy,
+            NODE_QUOTA_PER_FRAME:config.NODE_QUOTA_PER_FRAME
         },
         dependency,
         {

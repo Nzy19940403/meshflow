@@ -148,7 +148,8 @@ const useMeshFlow = <
     metaType?: NM;
     config?: {
       useGreedy: boolean;
-      useEntangleStep?:number
+      useEntangleStep?:number,
+      NODE_QUOTA_PER_FRAME?:number
     };
     modules?: M;
     UITrigger?: {

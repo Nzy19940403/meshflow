@@ -33,7 +33,7 @@ type HistoryTool ={
 export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record<string, any> = {},NM = any>(
     data:S,
     options:{
-        config: { useGreedy: boolean;useEntangleStep?:number },
+        config: { useGreedy: boolean;useEntangleStep?:number,NODE_QUOTA_PER_FRAME?:number },
         UITrigger?: {
             signalCreator: () => T;
             signalTrigger: (signal: T) => void;
@@ -189,7 +189,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         // data,
         {
             useGreedy: options.config.useGreedy,
-            useEntangleStep:options.config.useEntangleStep||100
+            useEntangleStep:options.config.useEntangleStep||100,
+            NODE_QUOTA_PER_FRAME:options.config.useEntangleStep||100
         },
         {
             GetDependencyOrder: () => dependencyOrder,
