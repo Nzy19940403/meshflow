@@ -1,6 +1,6 @@
 {
   "name": "@meshflow/rendergate",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "The official rendering gateway plugin for MeshFlow",
   "main": "./index.js",
   "module": "./index.mjs",
