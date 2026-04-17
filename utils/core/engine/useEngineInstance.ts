@@ -146,8 +146,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
     const isRenderGateRegistered:boolean = !!options.modules.useMeshRenderGate
   
-    type RenderGateFactory = <PathType, NodeType>(
-        getResolver: () => (path: PathType) => NodeType
+    type RenderGateFactory = <NodeType>(
+        getResolver: () => (uid: number) => NodeType
     ) => {
         init:any
     }
@@ -161,7 +161,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         const rawModule = options.modules.useMeshRenderGate;
         const initFn = (isRenderGateInited ? rawModule : rawModule()) as RenderGateFactory;
 
-        batchRenderExport = initFn<P, MeshFlowTaskNode<P, any, NM>>(() => GetNodeByPath);
+        batchRenderExport = initFn<MeshFlowTaskNode<P, any, NM>>(() => GetNodeByUid);
     }
 
    
@@ -214,6 +214,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         GetBucket,
         GetGroupByPath,
         GetNodeByPath,
+        GetNodeByUid,
         notifyAll,
         useEntangle,
         updateEntangleLevel,

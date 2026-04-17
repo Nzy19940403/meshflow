@@ -420,6 +420,7 @@ export function useScheduler<
         registerNode,
         registerGroupNode,
         GetNodeByPath,
+        GetNodeByUid,
         GetGroupByPath,
         notify,
         notifyAll,
