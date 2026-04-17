@@ -1143,7 +1143,7 @@ function useMeshTask<P extends MeshPath, NM>(
                     
                     // 令牌检查
                     if (currentExecutionToken.get(triggerToken) !== curToken) break;
-                 
+                  
                     // ==========================================================
                     // 修改点 1：双重检查 (时间到了 OR 数量够了 -> 都要休息)
                     // ==========================================================
@@ -1171,15 +1171,20 @@ function useMeshTask<P extends MeshPath, NM>(
 
                         isFirstFrame = timeScheduler.getIsFirstFrame();
                     }
-
+                    console.log('test1')
                     if (readyActiveCount > 0 && processingCount < MAX_CONCURRENT_TASKS) {
                         // 🌟 保持原样：快照发车前的长度
                         const originalReadyCount = readyCount;
                         let nextReadyCount = 0; 
-                    
+                        let isMidFlightAborted = false;
+
                         for (let i = 0; i < originalReadyCount; i++) {
                             const targetUid = readyQueue[i];
-                            if ((flagArray[targetUid] & NodeStatus.READY) === 0) continue;
+                            if ((flagArray[targetUid] & NodeStatus.READY) === 0) {
+                                readyActiveCount--;  
+                           
+                                continue;
+                            };
                     
                             // --- 核心修改点 1：名额满了或时间到了的“救火”搬运 ---
                             if (processingCount >= MAX_CONCURRENT_TASKS || nodesProcessedInFrame >= NODE_QUOTA_PER_FRAME || timeScheduler.shouldYield()) {
@@ -1196,6 +1201,7 @@ function useMeshTask<P extends MeshPath, NM>(
                                 // 搬运完后，立刻同步物理指针和逻辑计数，然后跳出
                                 readyCount = nextReadyCount;
                                 readyActiveCount = nextReadyCount; 
+                                isMidFlightAborted = true;
                                 break; 
                             }
                     
@@ -1274,29 +1280,31 @@ function useMeshTask<P extends MeshPath, NM>(
                         // --- 核心修改点 2：正常跑完一轮后的扫尾 ---
                         // 只有在没触发上面那个 break 的情况下，才执行这里的合并
                         // 这里的上限同样要看动态的 readyCount
-                        if (readyCount > originalReadyCount) {
-                            for (let k = originalReadyCount; k < readyCount; k++) {
-                                const newlyAddedUid = readyQueue[k];
-                                if (flagArray[newlyAddedUid] & NodeStatus.READY) {
-                                    readyQueue[nextReadyCount++] = newlyAddedUid;
+                        if(!isMidFlightAborted){
+ 
+                            if (readyCount > originalReadyCount) {
+                                for (let k = originalReadyCount; k < readyCount; k++) {
+                                    const newlyAddedUid = readyQueue[k];
+                                    if (flagArray[newlyAddedUid] & NodeStatus.READY) {
+                                        readyQueue[nextReadyCount++] = newlyAddedUid;
+                                    }
                                 }
+                                readyCount = nextReadyCount;
+                                // 注意：这里的 readyActiveCount 已经在上面 shouldIntercept 或发车时减过了
+                                // 所以物理长度和逻辑计数在这里应该是对齐的
+                                readyActiveCount = readyCount; 
+                            } else {
+                                // 如果没有新节点产生，也要更新物理指针
+                                readyCount = nextReadyCount;
                             }
-                            readyCount = nextReadyCount;
-                            // 注意：这里的 readyActiveCount 已经在上面 shouldIntercept 或发车时减过了
-                            // 所以物理长度和逻辑计数在这里应该是对齐的
-                            readyActiveCount = readyCount; 
-                        } else {
-                            // 如果没有新节点产生，也要更新物理指针
-                            readyCount = nextReadyCount;
                         }
-                    
                         // --- 核心修改点 3：解除“熄火”的关键点 ---
                         // 🌟 必须放开这个 continue！只要还有人没跑，且发车位没满，就要立刻回到 while 顶部
                         if (readyActiveCount > 0 && processingCount < MAX_CONCURRENT_TASKS) {
                             continue;
                         }
                     }
-
+                    console.log('test2')
                     // ==========================================================
                     // 阶段二：贪婪捞取 (Greedy Catch-up)
                     // ==========================================================
@@ -1373,7 +1381,7 @@ function useMeshTask<P extends MeshPath, NM>(
                             continue;
                         }
                     }
-
+                    console.log('test3')
                     // ==========================================================
                     // 阶段三：水位推进 (逻辑出口 A)
                     // ==========================================================
@@ -1658,7 +1666,7 @@ function useMeshTask<P extends MeshPath, NM>(
                         SHARED_PAYLOAD.type = 2;
                         hooks.emit(MeshFlowEventsName.FlowWait,SHARED_PAYLOAD)
                     }
-
+                    
                     // 实在没活了，或者正在等异步任务返回
                     break;
                 }
@@ -1710,7 +1718,7 @@ function useMeshTask<P extends MeshPath, NM>(
                         const endTime = performance.now();
                         quantumWatermark = -1;
                         currentExecutionToken.delete(triggerToken);
-                        
+                       
                         if(isTaskTakeOver){
  
                             taskSchduler.runNext();
