@@ -121,54 +121,18 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
     },
 
     shouldYield() {
-      // const now = performance.now();
-      
-      // // =================================================================
-      // // 简化点：不再区分首帧/非首帧的时间策略
-      // // 因为首帧已经被 flushQueue 里的 (count >= 8) 给锁死了，
-      // // 这里只需要兜底防止后续帧(Infinity)跑太久。
-      // // =================================================================
-      
-      // taskCounter++;
-      
-      // // 采样率：每 5 次查一下时间，或者首帧每一次都查（虽然首帧通常跑不到第5次就break了）
-      // // 如果你想极简，甚至可以去掉 taskCounter，每次都查 performance.now() 也没多大开销
-      // if (taskCounter >= 5 || isFirstFrame) {
-      //     taskCounter = 0; // 重置计数
-          
-      //     const elapsed = now - lastYieldTime;
-
-      //     // 统一的时间底线 (12ms)，保证 FPS
-      //     if (elapsed > config.frameQuota) {
-      //       return true;
-      //     }
-  
-      //     // 输入嗅探 (有用户交互就让路)
-      //     if (checkInputPending()) {
-      //       return true;
-      //     }
-      // }
-      // return false;
+ 
       if (!isFirstFrame && (++taskCounter & 15) !== 0) {
         return false;
       }
 
       const now = performance.now();
       const elapsed = now - lastYieldTime;
-
-      // =================================================================
-      // 🚀 核心优化 2：渐进式嗅探
-      // 只有在时间确实逼近红线时（比如已经跑了 12ms），才要求强制交出控制权
-      // =================================================================
+ 
       if (elapsed > config.frameQuota) {
         return true;
       }
 
-      // =================================================================
-      // 🚀 核心优化 3：把最昂贵的 API 放在最后
-      // 只有在时间还没超标，但可能处于边缘状态时，才去查是否有用户输入。
-      // 这个 API 调用开销相对较大，放在兜底逻辑最合适。
-      // =================================================================
       if (checkInputPending()) {
         return true;
       }
@@ -194,12 +158,23 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
   };
 };
 
-export const nextMacroTick = (fn: () => void) => {
-  // MessageChannel 比 setTimeout(0) 快，且优先级略高，完美适合做任务切断
-  const { port1, port2 } = new MessageChannel();
-  port1.onmessage = fn;
-  port2.postMessage(null);
+// export const nextMacroTick = (fn: () => void) => {
+//   // MessageChannel 比 setTimeout(0) 快，且优先级略高，完美适合做任务切断
+//   const { port1, port2 } = new MessageChannel();
+//   port1.onmessage = fn;
+//   port2.postMessage(null);
+// };
+
+
+const channel = new MessageChannel();
+const macroTaskQueue: Array<() => void> = [];
+
+channel.port1.onmessage = () => {
+    const task = macroTaskQueue.shift();
+    if (task) task();
 };
 
-
-
+export const nextMacroTick = (fn: () => void) => {
+    macroTaskQueue.push(fn);
+    channel.port2.postMessage(null);
+};
