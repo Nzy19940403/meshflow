@@ -1,3 +1,4 @@
+import { ExecuteMeshRule } from "../dependency/useSetRule";
 import { InternalKeys ,DefaultStrategy} from "../types/types";
 
 type ContractType = "boolean" | "scalar" | "array" | "object";
@@ -27,10 +28,11 @@ export class StrategyStore {
     if (!isDirty) {
       return rule._lastResult;
     }
-
+   
     // 真正执行业务逻辑
-    const p = rule.logic(api);
-
+    // const p = rule.logic(api);
+    const p = ExecuteMeshRule(rule,api)
+    
     // 只保存结果，不再维护 deps 快照（Bucket 统管了）
     if (!(p instanceof Promise)) {
       rule._lastResult = p;
@@ -56,7 +58,7 @@ export class StrategyStore {
 
         // 🌟 替换：使用智能执行器
         const p = this.getRuleResult(rule, api, checkRuleDirty);
-
+       
         if (p instanceof Promise) {
           return (async () => {
             let val = await p;
@@ -112,7 +114,7 @@ export class StrategyStore {
     PRIORITY: (api: any, version: number, checkRuleDirty: Function) => {
       let res = undefined;
       const allRules = this.computedRules;
-
+   
       for (let i = 0; i < allRules.length; i++) {
         const rule = allRules[i];
 
@@ -571,7 +573,7 @@ export class SchemaBucket<P> {
       }
       return false;
     };
-
+     
     // 🌟 4. 将 checkRuleDirty 传递给 StrategyStore
     const p = this.strategy.evaluate(api, currentVersion, checkRuleDirty);
 
