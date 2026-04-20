@@ -167,11 +167,16 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
 
 
 const channel = new MessageChannel();
+if (typeof window === 'undefined') {
+  // 只有在非浏览器环境（即 Node 环境）尝试调用
+  (channel.port1 as any).unref?.();
+  (channel.port2 as any).unref?.();
+}
 const macroTaskQueue: Array<() => void> = [];
 
 channel.port1.onmessage = () => {
-    const task = macroTaskQueue.shift();
-    if (task) task();
+  const task = macroTaskQueue.shift();
+  if (task) task();
 };
 
 export const nextMacroTick = (fn: () => void) => {
