@@ -52,6 +52,89 @@ function useMeshTask<P extends MeshPath, NM>(
     // const scheduler = createScheduler();
     let globalLatestSessionToken: symbol | null = null;
 
+    // ==========================================================
+    // 🌟 全局内存池与容量管理 (GC 优化 & 支持动态节点)
+    // ==========================================================
+    let currentCapacity = 0;
+    let flagArray: Uint8Array;
+    let resistanceArray: Int32Array;
+    let levelArray: Int32Array;
+    
+    let readyQueue: Int32Array;
+    let stagingQueue: Int32Array;
+    let resureQueue: Int32Array;
+    
+    let AllAffectedPaths: Uint8Array; // 优化：替换原生 Array
+    
+    //背压参数
+    const BACKPRESSURE_LIMIT = 30;
+    //最大并发数
+    const MAX_CONCURRENT_TASKS = 40;
+
+    // 普通数组池
+    let ghostBaton: Array<MeshPath[] | null> = [];
+    // let dirtyKeysPool: Array<Array<MeshPath>> = [];
+    // let promisesPool: Array<Array<Promise<void>>> = [];
+    // let effectsPool: Array<Array<{ fn: (args: any) => any; args: any[] }>> = [];
+
+    const slotDirtyKeys = Array.from({ length: MAX_CONCURRENT_TASKS }, () => [] as MeshPath[]);
+    const slotPromises = Array.from({ length: MAX_CONCURRENT_TASKS }, () => [] as Promise<void>[]);
+    const slotEffects = Array.from({ length: MAX_CONCURRENT_TASKS }, () => [] as Array<{ fn: (args: any) => any; args: any[] }>);
+    // 可用工位栈 [0, 1, ..., 39]
+    const availableSlots = Array.from({ length: MAX_CONCURRENT_TASKS }, (_, i) => i);
+
+    const ensureCapacity = (requiredMaxUid: number) => {
+        if (requiredMaxUid <= currentCapacity) return;
+
+        // 扩容策略：首次给 256，之后翻倍扩容，避免频繁分配内存
+        const newCapacity = Math.max(currentCapacity === 0 ? 256 : currentCapacity * 2, requiredMaxUid);
+
+        // TypedArray 扩容并保留老数据 (V8 .set 底层是 memmove，极快)
+        const nextFlagArray = new Uint8Array(newCapacity);
+        if (flagArray) nextFlagArray.set(flagArray);
+        flagArray = nextFlagArray;
+
+        const nextResistanceArray = new Int32Array(newCapacity);
+        if (resistanceArray) nextResistanceArray.set(resistanceArray);
+        resistanceArray = nextResistanceArray;
+
+        const nextLevelArray = new Int32Array(newCapacity);
+        if (levelArray) nextLevelArray.set(levelArray);
+        levelArray = nextLevelArray;
+
+        // 队列需要预留两倍空间 (根据你原代码逻辑)
+        const nextReadyQueue = new Int32Array(newCapacity * 2);
+        if (readyQueue) nextReadyQueue.set(readyQueue);
+        readyQueue = nextReadyQueue;
+
+        const nextStagingQueue = new Int32Array(newCapacity * 2);
+        if (stagingQueue) nextStagingQueue.set(stagingQueue);
+        stagingQueue = nextStagingQueue;
+
+        const nextResureQueue = new Int32Array(newCapacity * 2);
+        if (resureQueue) nextResureQueue.set(resureQueue);
+        resureQueue = nextResureQueue;
+
+        const nextAllAffectedPaths = new Uint8Array(newCapacity);
+        if (AllAffectedPaths) nextAllAffectedPaths.set(AllAffectedPaths);
+        AllAffectedPaths = nextAllAffectedPaths;
+
+        // 对象数组扩容
+        const oldCapacity = currentCapacity;
+        // ghostBaton.length = newCapacity;
+        // dirtyKeysPool.length = newCapacity;
+        // promisesPool.length = newCapacity;
+
+        for (let i = oldCapacity; i < newCapacity; i++) {
+            ghostBaton[i] = null;
+            // dirtyKeysPool[i] = [];
+            // promisesPool[i] = [];
+            // effectsPool[i] = [];
+        }
+
+        currentCapacity = newCapacity;
+    };
+
     const CancelTask = ()=>{
         currentExecutionToken.clear();
     }
@@ -121,8 +204,7 @@ function useMeshTask<P extends MeshPath, NM>(
 
     //运行调用入口
     const TaskRunner = async (triggerUid: number | null, initialNodes: number[]) => {
-        //最大并发数
-        const MAX_CONCURRENT_TASKS = 40;
+        
         let isTaskTakeOver = false;
         if(isTransactionChain){
             //看看是否被taskschduler接管了
@@ -147,34 +229,33 @@ function useMeshTask<P extends MeshPath, NM>(
         data.Turnstile.nextEpoch();
 
         const maxUid = data.GetMaxUid() + 3;
-      
-        console.log('task start')
-        // const processed = new Set<number>();
-        // const processingSet = new Set<number>();
-        // const AllAffectedPaths = new Set<number>();
+        ensureCapacity(maxUid);
 
-        // const processed:Array<number> = new Array(maxUid).fill(0);
-        // const processingSet:Array<number> = new Array(maxUid).fill(0);
-        const AllAffectedPaths:Array<number> = new Array(maxUid).fill(0);
+        flagArray.fill(0, 0, maxUid);
+        resistanceArray.fill(0, 0, maxUid);
+        levelArray.fill(0, 0, maxUid);
+        AllAffectedPaths.fill(0, 0, maxUid);
+
+        // const AllAffectedPaths:Array<number> = new Array(maxUid).fill(0);
         let processingCount:number = 0;
 
         // 🌟 2. 状态大盘（位运算专用，极其省内存，极速查状态）
-        const flagArray = new Uint8Array(maxUid); 
+        // const flagArray = new Uint8Array(maxUid); 
 
-        // 🌟 3. 数值大盘（防溢出专用）
-        const resistanceArray = new Int32Array(maxUid);
-        const levelArray = new Int32Array(maxUid);
+        // // 🌟 3. 数值大盘（防溢出专用）
+        // const resistanceArray = new Int32Array(maxUid);
+        // const levelArray = new Int32Array(maxUid);
 
         // 🌟 4. 遍历队列（负责极速 for 循环）
-        const readyQueue = new Int32Array(maxUid*2);
+        // const readyQueue = new Int32Array(maxUid*2);
         let readyCount = 0;
         let readyActiveCount = 0;
 
-        const stagingQueue = new Int32Array(maxUid*2);
+        // const stagingQueue = new Int32Array(maxUid*2);
         let stagingCount = 0;
         let stagingActiveCount = 0;
 
-        const resureQueue = new Int32Array(maxUid*2);
+        // const resureQueue = new Int32Array(maxUid*2);
         let resureCount = 0;
         let resureActiveCount = 0;
 
@@ -186,16 +267,9 @@ function useMeshTask<P extends MeshPath, NM>(
                     AllAffectedPaths[childUid] = 1
                 });
         });
-
-        //等待执行区,直接上游发生变化了会把节点加入这里
-        // const stagingArea = new Map<number, number>();
-        // // 等待捕捞区,上游没有变但是不好直接扔所以把这个先扔在这里等待捕捞
-        // const resureArea = new Map<number, Set<number>>();
-
-        // 幽灵接力棒：暂存 resolveGhosts 真正修改了哪些 Key，交给 executor 使用，用完即焚
-        // const ghostBaton = new Map<P, string[]>();
-        // const ghostBaton = new Map<number, string[]>();
-        const ghostBaton: Array<MeshPath[] | null> = new Array(maxUid).fill(null);
+ 
+        // const ghostBaton: Array<MeshPath[] | null> = new Array(maxUid).fill(null);
+        ghostBaton.fill(null,0,maxUid)
 
         // ==========================================================
         // 预言弹药库：只在阶段三集中引爆
@@ -205,8 +279,8 @@ function useMeshTask<P extends MeshPath, NM>(
         const turnstile = data.Turnstile;
 
 
-        const dirtyKeysPool:Array<Array<MeshPath>> = new Array(maxUid).fill(null).map(() => []);
-        const promisesPool:Array<Array<Promise<void>>> = new Array(maxUid).fill(null).map(() => []);
+        // const dirtyKeysPool:Array<Array<MeshPath>> = new Array(maxUid).fill(null).map(() => []);
+        // const promisesPool:Array<Array<Promise<void>>> = new Array(maxUid).fill(null).map(() => []);
 
         const stagedBufferUids: number[] = [];
 
@@ -438,15 +512,24 @@ function useMeshTask<P extends MeshPath, NM>(
 
         let isFlowFinished = false;
 
-        //背压参数
-        const BACKPRESSURE_LIMIT = 30;
 
         const executorNodeCalculate = (targetUid: number, currentTriggerUid: number | null) => {
          
+            const slotId = availableSlots.pop()!;
+
+            // 2. 映射当前工位的物理内存
+            const dirtyEntangleKeys = slotDirtyKeys[slotId];
+            const pendingPromises = slotPromises[slotId];
+            const effectsToRun = slotEffects[slotId];
+
+            // 物理清空
+            dirtyEntangleKeys.length = 0;
+            pendingPromises.length = 0;
+            effectsToRun.length = 0;
+
     
             let hasValueChanged = false;  // 仅负责：决定是否触发 uitrigger.flushPathSet
             let hasNotifyKeyTriggered = false; // 🌟 负责：判断是否推高水位和通知下游
-
             let notifyNext = false;
 
             const targetSchema = data.GetNodeByUid(targetUid);
@@ -462,8 +545,8 @@ function useMeshTask<P extends MeshPath, NM>(
             // // 收集所有的异步 Promise
             // const pendingPromises: Promise<void>[] = [];
 
-            const dirtyEntangleKeys = dirtyKeysPool[targetUid];
-            dirtyEntangleKeys.length = 0; // 物理清空
+            // const dirtyEntangleKeys = dirtyKeysPool[targetUid];
+            // dirtyEntangleKeys.length = 0; // 物理清空
 
             const isNodeWatched = hasObserver(targetUid);
             const watchedKeys = isNodeWatched ? getTriggerKeys(targetUid) : [];
@@ -476,8 +559,8 @@ function useMeshTask<P extends MeshPath, NM>(
                 }
             };
 
-            const pendingPromises = promisesPool[targetUid];
-            pendingPromises.length = 0;
+            // const pendingPromises = promisesPool[targetUid];
+            // pendingPromises.length = 0;
 
             // ==========================================================
             // 幽灵装甲 (Ghost Armor)
@@ -500,6 +583,10 @@ function useMeshTask<P extends MeshPath, NM>(
                     ghostBaton[targetUid] = null;
                 }
             }
+
+            const releaseSlot = () => {
+                availableSlots.push(slotId);
+            };
 
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
             //reasontype -> 1:上游 ${targetPath} 值变了 2: 当上游值没有变但是下游节点已经在stagingArea的时候`上游 ${targetPath} 完成(穿透)`
@@ -547,7 +634,6 @@ function useMeshTask<P extends MeshPath, NM>(
                 if (!( flagArray[childUid] & NodeStatus.STAGING )) {
                     if (
                         childLevel > currentLevel &&
-                        // stagingArea.size > BACKPRESSURE_LIMIT
                         stagingActiveCount > BACKPRESSURE_LIMIT
                     ) {
                         // if (!resureArea.has(childLevel))
@@ -1042,7 +1128,9 @@ function useMeshTask<P extends MeshPath, NM>(
             try {
                 // --- 循环遍历开始 ---
                 //副作用列表
-                const effectsToRun: Array<{ fn: (args: any) => any; args: any[] }> = [];
+                // const effectsToRun: Array<{ fn: (args: any) => any; args: any[] }> = [];
+                // const effectsToRun = effectsPool[targetUid];
+                // effectsToRun.length = 0;
 
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName as SuggestKey<NM>]);
@@ -1063,7 +1151,7 @@ function useMeshTask<P extends MeshPath, NM>(
                         }
                         continue;
                     }
-                    
+                  
                     // 1. 启动计算
                     const resultOrPromise = bucket.evaluate({
                         affectKey: bucketName,
@@ -1100,17 +1188,20 @@ function useMeshTask<P extends MeshPath, NM>(
                         .then(() => {
                             // 全部异步桶都回来了，开始收尾
                             finalizeExecution(effectsToRun);
+                            releaseSlot();
                         })
                         .catch(handleError);
                 } else {
                     // -> 同步路径：极速穿透！
                     // 没有任何异步桶，直接收尾，无需微任务延迟
                     finalizeExecution(effectsToRun);
+                    releaseSlot();
                     // 返回 void，这在 flushQueue 的 while 循环里意味着可以立即跑下一个
                     return;
                 }
             } catch (err) {
                 handleError(err);
+                releaseSlot();
             }
         };
 
@@ -1173,7 +1264,7 @@ function useMeshTask<P extends MeshPath, NM>(
 
                         isFirstFrame = timeScheduler.getIsFirstFrame();
                     }
-                    console.log('test1')
+                    // console.log('test1')
                     if (readyActiveCount > 0 && processingCount < MAX_CONCURRENT_TASKS) {
                         // 🌟 保持原样：快照发车前的长度
                         const originalReadyCount = readyCount;
@@ -1306,7 +1397,7 @@ function useMeshTask<P extends MeshPath, NM>(
                             continue;
                         }
                     }
-                    console.log('test2')
+                    // console.log('test2')
                     // ==========================================================
                     // 阶段二：贪婪捞取 (Greedy Catch-up)
                     // ==========================================================
@@ -1383,7 +1474,7 @@ function useMeshTask<P extends MeshPath, NM>(
                             continue;
                         }
                     }
-                    console.log('test3')
+                    // console.log('test3')
                     // ==========================================================
                     // 阶段三：水位推进 (逻辑出口 A)
                     // ==========================================================
