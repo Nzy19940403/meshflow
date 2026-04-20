@@ -166,20 +166,29 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
 // };
 
 
-const channel = new MessageChannel();
-if (typeof window === 'undefined') {
-  // 只有在非浏览器环境（即 Node 环境）尝试调用
-  (channel.port1 as any).unref?.();
-  (channel.port2 as any).unref?.();
-}
-const macroTaskQueue: Array<() => void> = [];
+const isBrowser = typeof window !== 'undefined' && typeof MessageChannel !== 'undefined';
 
-channel.port1.onmessage = () => {
-  const task = macroTaskQueue.shift();
-  if (task) task();
-};
+const macroTaskQueue: Array<() => void> = [];
+let channel: MessageChannel;
+
+if (isBrowser) {
+  // 🌟 2. 只有在浏览器环境，才去实例化这个“性能怪兽”
+  channel = new MessageChannel();
+  channel.port1.onmessage = () => {
+    const task = macroTaskQueue.shift();
+    if (task) task();
+  };
+}
 
 export const nextMacroTick = (fn: () => void) => {
-    macroTaskQueue.push(fn);
-    channel.port2.postMessage(null);
+  if (!isBrowser) {
+    // 🌟 3. Node.js 环境 (SSR 构建阶段) 的兜底方案
+    // setTimeout 跑完就会被垃圾回收，绝对不会阻止 VitePress 的进程退出！
+    setTimeout(fn, 0);
+    return;
+  }
+
+  // 浏览器环境的高性能通道
+  macroTaskQueue.push(fn);
+  channel.port2.postMessage(null);
 };
