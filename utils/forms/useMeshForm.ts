@@ -11,6 +11,7 @@ import {
   } from "@meshflow/core";
 import { useInternalForm } from "./useForm";
 import { useSchemaValidators } from "./schema/schema-validators";
+import { useExecutionTrace } from "./plugins/useExecutionTrace";
  
 
 export type NormalizeFormSchema<T> = T extends Function
@@ -23,6 +24,9 @@ export type NormalizeFormSchema<T> = T extends Function
       -readonly [K in keyof T as K extends 'name' ? 'name' | 'path' : K]: NormalizeFormSchema<T[K]>
     }
   : T;
+
+
+type tracePlugin<P> = ReturnType< typeof useExecutionTrace<P> > ;
 
 /**
  * NM: NodeMeta 的类型定义
@@ -75,6 +79,13 @@ const S extends Record<string, any>,
       ...options.modules,
     } as any, // 这里的 as any 是为了绕过复杂的对象合并校验，泛型已经保证了外部拿到的类型是正确的
   });
+
+  const { SetTrace, useTrace } = useExecutionTrace<P>();
+
+  const Trace = useTrace();
+  engine.config.usePlugin(Trace);
+
+  (engine as any).plugins = {SetTrace};
  
   return engine as Engine<
     SchedulerType<T,P,S,M,NM>, 
@@ -86,7 +97,11 @@ const S extends Record<string, any>,
       
     },
     P
-  >;
+  > & {
+    plugins:{
+      SetTrace:tracePlugin<P>['SetTrace']
+    }
+  };
 
 }
 
@@ -112,12 +127,17 @@ export const useEngine = <
         internalForm:typeof useInternalForm,
         schemaValidators:typeof useSchemaValidators
       }
-    }, NM>, M & {
+    }, NM> , 
+    M & {
       internalModules:{
         internalForm:typeof useInternalForm,
         schemaValidators:typeof useSchemaValidators
       }
-    }, P>; 
+    }, P>& {
+      plugins:{
+        SetTrace:tracePlugin<P>['SetTrace']
+      }
+    }; 
 }
 
 export const deleteEngine = (id:MeshPath)=>{

@@ -133,9 +133,7 @@ export function useInternalForm<T, P extends MeshPath>(
     if('signalCreator' in scheduler.UITrigger && typeof scheduler.UITrigger.signalCreator === 'function'){
       dirtySignal = scheduler.UITrigger.signalCreator();
     }
-
-    // const dirtySignal = scheduler.UITrigger.signalCreator();
-
+ 
     // === 分支 A: 处理 Group ===
     if (data.type === "group") {
       const groupData = data as GroupField;
@@ -152,19 +150,14 @@ export function useInternalForm<T, P extends MeshPath>(
       const registeredGroup = scheduler.registerGroupNode({
         path: currentPath as P,
         type: 'group',
-        // uid: 0,
-        // dirtySignal,
-        // Scheduler 只需要知道子节点的路径索引，不需要整个对象树
+ 
         children: renderedChildren.map(c => c.path),
         meta: groupData as any
       });
  
 
       const proxyGroup = registeredGroup.createView({
-        // path: currentPath,
-        // type: 'group',
-        // uid: registeredGroup.uid,
-        // dirtySignal,
+ 
         
         children: renderedChildren // 将转换后的 Proxy 子树挂载到视图上
       });
@@ -194,51 +187,14 @@ export function useInternalForm<T, P extends MeshPath>(
       meta: data,
       // nodeBucket: buckets,
       notifyKeys: new Set(),
-      // dirtySignal,
-      // calledBy:TriggerCause.CAUSALITY,
-      // dependOn: null as any // Scheduler 会填充
+
     });
 
     const proxyNode = registeredNode.createView({
-      // 这里只需要注入一些 UI 必需的、但在 meta 里可能没有的“骨架”属性
-      // path: currentPath,
-      // type: data.type,
-      // dependOn: registeredNode.dependOn,
-      // nodeBucket: registeredNode.nodeBucket
     });
  
     return proxyNode;
-    // 4. 构造 UI 用的 RenderSchema
-    // 这里我们要把 Scheduler 返回的强大能力 (registeredNode) 
-    // 和原始 UI 属性 (data) 结合起来
-    // const uiNode: any = {
-    //   ...data, // label, placeholder 等
-    //   path: currentPath,
-    //   type: data.type,
-    //   uid: registeredNode.uid, // 使用 Scheduler 分配的 ID
-    //   dirtySignal, // UI 监听这个
-
-    //   // 🌟 关键：RenderSchema 的 value 必须是指向 Scheduler state 的引用
-    //   // 或者通过 getter/setter 代理。
-    //   // 既然你的 RenderSchema 定义里有 value，我们这里直接透传引用
-    //   // (注意：这里取决于你是否希望 UI 直接改 state，还是必须走 dependOn)
-
-    //   // 为了兼容旧代码，我们让 uiNode.value 实际上是 state.value 的快照
-    //   // 但因为这是对象引用，所以其实是一致的
-    //   get value() { return registeredNode.state.value },
-    //   set value(v) { registeredNode.state.value = v }, // ⚠️ UI 直接赋值不会触发 notify，必须走 dependOn
-
-    //   // 注入 buckets 以便 UI 或插件访问
-    //   nodeBucket: registeredNode.nodeBucket,
-
-    //   // 🌟 把 Scheduler 注入的 dependOn 暴露给 UI (如果有需要)
-    //   dependOn: registeredNode.dependOn,
-
-    //   // 绑定 meta
-    //   meta: registeredNode.meta
-    // };
-    // console.log(uiNode)
-    // return uiNode as RenderSchema;
+  
   };
 
   function initFormData<T>(data: T, res: any = {}): FormResultType<T> {
