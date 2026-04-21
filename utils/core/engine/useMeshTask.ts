@@ -11,7 +11,13 @@ import {
 import { SchemaBucket } from "./bucket";
 import {createTransactionScheduler} from './useTransactionSchduler'
 
-function useMeshTask<P extends MeshPath, NM>(
+type MeshTask<NM> = {
+    TaskRunner: (triggerUid: number | null, initialNodes: number[]) => Promise<void>,
+    CancelTask: () => void,
+    stageValueFn: (uid: number, key: SuggestKey<NM>, value: any) => void
+}
+
+function useMeshTask<P extends MeshPath, NM> (
     config: {
         useGreedy: boolean;
         NODE_QUOTA_PER_FRAME:number
@@ -44,7 +50,7 @@ function useMeshTask<P extends MeshPath, NM>(
     },
     timeScheduler: ReturnType<typeof createTimeScheduler>,
     taskSchduler:ReturnType<typeof createTransactionScheduler>
-) {
+): MeshTask<NM> {
     const currentExecutionToken: Map<P, symbol> = new Map();
 
     const isGreedy = config.useGreedy;
@@ -202,6 +208,8 @@ function useMeshTask<P extends MeshPath, NM>(
     
     taskSchduler.apply(setTransactionTrue);
 
+    
+
     //运行调用入口
     const TaskRunner = async (triggerUid: number | null, initialNodes: number[]) => {
         
@@ -342,6 +350,25 @@ function useMeshTask<P extends MeshPath, NM>(
             }
         
             return hasInjected;
+        };
+
+        const resetEngineState = () => {
+            readyCount = 0;
+            readyActiveCount = 0;
+            stagingCount = 0;
+            stagingActiveCount = 0;
+            resureCount = 0;
+            resureActiveCount = 0;
+            processingCount = 0;
+        
+            // 定型数组或连续内存的物理清零
+            flagArray.fill(0);
+
+
+            turnstile.resetCounters();   
+            ghostBaton.fill(null);
+            isTaskActive = false; 
+            quantumWatermark = -1;
         };
 
         // ==========================================================
@@ -1044,30 +1071,26 @@ function useMeshTask<P extends MeshPath, NM>(
             
                 const abortToken = Symbol("abort");
                 currentExecutionToken.set(triggerToken, abortToken);
+ 
 
-                // 物理清空
-                // readyToRunBuffer.clear();
-                // stagingArea.clear();
-
-                readyCount = 0;
-                readyActiveCount = 0;
+                // readyCount = 0;
+                // readyActiveCount = 0;
                 
-                stagingCount = 0;
-                stagingActiveCount = 0;
+                // stagingCount = 0;
+                // stagingActiveCount = 0;
                 
-                resureCount = 0;
-                resureActiveCount = 0;
-                flagArray.fill(0);
+                // resureCount = 0;
+                // resureActiveCount = 0;
+                // flagArray.fill(0);
 
-                // processingSet.clear();
-                // processingSet.fill(0);
+ 
 
-                processingCount = 0;
-         
-                // ghostBaton.clear();
-                ghostBaton.fill(null);
-                isTaskActive = false;
+                // processingCount = 0;
+          
+                // ghostBaton.fill(null);
+                // isTaskActive = false;
 
+                resetEngineState();
                 hooks.callOnError(err);
 
                 // 错误发生后，依然要执行收尾（清理 processingSet 等）
@@ -1795,21 +1818,23 @@ function useMeshTask<P extends MeshPath, NM>(
                     ) {
  
                         isFlowFinished = true;
-                        // hooks.emit( MeshFlowEventsName.FlowEnd , {
-                        //     type: 1,
-                        // });
+             
 
                         SHARED_PAYLOAD.type = 1;
                         hooks.emit(MeshFlowEventsName.FlowEnd,SHARED_PAYLOAD)
 
-                        // uitrigger.requestUpdate();
+                    
                         turnstile.resetCounters();
-                        // ghostBaton.clear();
+                 
                         ghostBaton.fill(null);
                         isTaskActive = false; 
-                        
-                        const endTime = performance.now();
+                    
                         quantumWatermark = -1;
+                        
+
+                        // resetEngineState()
+
+
                         currentExecutionToken.delete(triggerToken);
                        
                         if(isTaskTakeOver){
@@ -1824,7 +1849,7 @@ function useMeshTask<P extends MeshPath, NM>(
 
                       
                         SHARED_PAYLOAD.token = curToken;
-                        SHARED_PAYLOAD.duration = (endTime - startTime).toFixed(2.1) + "ms";
+                        SHARED_PAYLOAD.duration = (performance.now() - startTime);
                         hooks.emit(MeshFlowEventsName.FlowSuccess,SHARED_PAYLOAD)
                         console.log('success');
                         Promise.resolve().then(() => {

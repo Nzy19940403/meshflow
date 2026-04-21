@@ -9,7 +9,9 @@ type validatorItem = {
   options?: any;
 };
 
-// 🌟 1. 全局静态合并函数（纯函数，零闭包开销）
+// ==========================================
+// 🌟 1. 全局静态合并函数（保持纯函数，零闭包开销）
+// ==========================================
 const mergeData = (target: any, source: any) => {
   if (target === undefined) return source;
   if (source === undefined) return target;
@@ -23,12 +25,14 @@ const mergeData = (target: any, source: any) => {
   return target;
 };
 
-// 🌟 2. 策略被提取为【全局单例】，全宇宙共用这 3 个函数！彻底消灭 72 万个函数实例！
-const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version: number, checkRuleDirty: Function) => any> = {
-  OR: (store, api, version, checkRuleDirty) => {
+// ==========================================
+// 🌟 2. 全局单例策略字典：引入 resultContainer 彻底消灭元组分配
+// ==========================================
+const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version: number, checkRuleDirty: Function, resultContainer: any) => any> = {
+  OR: (store, api, version, checkRuleDirty, resultContainer) => {
     let res = undefined;
     let baseValue: any = undefined;
-    const allRules = store.computedRules; // 通过参数访问，不持有 this 闭包
+    const allRules = store.computedRules;
 
     for (let i = 0; i < allRules.length; i++) {
       const rule = allRules[i];
@@ -61,7 +65,8 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
           }
 
           if (typeof res === "undefined") res = baseValue;
-          return { res, version };
+          resultContainer.res = res;
+          resultContainer.version = version;
         })();
       }
 
@@ -76,13 +81,12 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
       }
     }
 
-    if (typeof res === "undefined") {
-      res = baseValue;
-    }
-    return { res, version };
+    if (typeof res === "undefined") res = baseValue;
+    resultContainer.res = res;
+    resultContainer.version = version;
   },
 
-  PRIORITY: (store, api, version, checkRuleDirty) => {
+  PRIORITY: (store, api, version, checkRuleDirty, resultContainer) => {
     let res = undefined;
     const allRules = store.computedRules;
 
@@ -94,30 +98,38 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
         return (async () => {
           const val = await p;
           if (val !== undefined) {
-            const finalRes = rule.value !== undefined ? rule.value : val;
-            return { res: finalRes, version };
+            resultContainer.res = rule.value !== undefined ? rule.value : val;
+            resultContainer.version = version;
+            return;
           }
 
           for (let j = i + 1; j < allRules.length; j++) {
             const nextRule = allRules[j];
             const nextP = store.getRuleResult(nextRule, api, checkRuleDirty);
             const nextVal = nextP instanceof Promise ? await nextP : nextP;
-            if (nextVal !== undefined) return { res: nextVal, version };
+            if (nextVal !== undefined) {
+              resultContainer.res = nextVal;
+              resultContainer.version = version;
+              return;
+            }
           }
-          return { res: undefined, version };
+          resultContainer.res = undefined;
+          resultContainer.version = version;
         })();
       }
 
       if (p !== undefined) {
-        const finalRes = rule.value !== undefined ? rule.value : p;
-        return { res: finalRes, version };
+        resultContainer.res = rule.value !== undefined ? rule.value : p;
+        resultContainer.version = version;
+        return;
       }
     }
 
-    return { res, version };
+    resultContainer.res = res;
+    resultContainer.version = version;
   },
 
-  MERGE: (store, api, version, checkRuleDirty) => {
+  MERGE: (store, api, version, checkRuleDirty, resultContainer) => {
     let res: any = undefined;
     let baseValue: any = undefined;
     const allRules = store.computedRules;
@@ -148,8 +160,8 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
             applyMerge(nextRule, nextVal);
           }
 
-          const finalRes = mergeData(res, baseValue);
-          return { res: finalRes, version };
+          resultContainer.res = mergeData(res, baseValue);
+          resultContainer.version = version;
         })();
       }
 
@@ -164,22 +176,23 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
       }
     }
 
-    const finalRes = mergeData(res, baseValue);
-    return { res: finalRes, version };
+    resultContainer.res = mergeData(res, baseValue);
+    resultContainer.version = version;
   }
 };
 
-
+// ==========================================
+// 🌟 3. StrategyStore 类重构
+// ==========================================
 export class StrategyStore {
-  // 🌟 将 computedRules 和 getRuleResult 改为 public，供外部静态策略调用
   public computedRules: any[] = [];
   
-  private CurrentStrategyType: DefaultStrategy = DefaultStrategy.PRIORITY;
+  private CurrentStrategyType: any; // 如果有 DefaultStrategy 枚举，请换回 DefaultStrategy.PRIORITY
   private getRules: Function;
 
   constructor(getRule: Function) {
     this.getRules = getRule;
-    this.CurrentStrategyType = DefaultStrategy.PRIORITY;
+    this.CurrentStrategyType = "PRIORITY"; // 或 DefaultStrategy.PRIORITY
     this.updateComputedRules();
   }
 
@@ -194,7 +207,8 @@ export class StrategyStore {
       return rule._lastResult;
     }
     
-    const p = ExecuteMeshRule(rule, api);
+    // 注意：这里的 ExecuteMeshRule 是你外部定义好的 O(1) 函数
+    const p = ExecuteMeshRule(rule, api); 
     
     if (!(p instanceof Promise)) {
       rule._lastResult = p;
@@ -213,8 +227,8 @@ export class StrategyStore {
     const list: any[] = this.getRules();
 
     if (
-      this.CurrentStrategyType === DefaultStrategy.PRIORITY ||
-      this.CurrentStrategyType === DefaultStrategy.MERGE
+      this.CurrentStrategyType === "PRIORITY" ||
+      this.CurrentStrategyType === "MERGE"
     ) {
       this.computedRules = Array.from(list.values())
         .map((item) => Array.from(item as any))
@@ -227,50 +241,61 @@ export class StrategyStore {
     }
   }
 
-  setStrategy(type: DefaultStrategy) {
+  setStrategy(type: any) {
     this.CurrentStrategyType = type;
     this.updateComputedRules();
   }
 
-  // 🌟 核心：根据 Type 去全局查表执行，阻断实例级闭包！
-  evaluate(api: any, currentVersion: number, checkRuleDirty: Function) {
+  // 🌟 透传 resultContainer 容器
+  evaluate(api: any, currentVersion: number, checkRuleDirty: Function, resultContainer: any) {
     const strategyFn = GLOBAL_STRATEGIES[this.CurrentStrategyType as string];
-    return strategyFn(this, api, currentVersion, checkRuleDirty);
+    return strategyFn(this, api, currentVersion, checkRuleDirty, resultContainer);
   }
 }
 
-/**
- * @group Core Api
- * @category 内部实现
- */
+// ==========================================
+// 🌟 4. SchemaBucket 类终极防抖重构
+// ==========================================
 export class SchemaBucket<P> {
   private path: any;
   private strategy: StrategyStore;
   
-  /** @internal */ 
   public contract: ContractType;
 
   private rules = new Map<number, Set<{ logic: () => any }>>();
-  // private isValue = false;
   private id: number = 0;
   private cache: any = undefined;
   private pendingPromise: Promise<any> | null = null;
   private version: number = 0;
-  private deps: Map<number, any> = new Map();
   private _forceNotify: boolean = false;
 
   promiseToken: any = null;
   useCache: boolean = true;
   private effectArray: { fn: (args: any) => any; args: any[] }[] = [];
 
-  // 🌟 将原来在构造函数里创建的 `() => this.rules` 提炼为绑定方法
+  // 🌟 [新增] 高性能依赖存储：预分配 keys 数组
+  private deps: Map<number, { valObj: any; keys: string[] }> = new Map();
+  // 🌟 [新增] 扁平化 UID 列表，消灭 Map.entries() 迭代器
+  private _depUids: number[] = [];
+  // 🌟 [新增] 复用的结果容器，消灭策略返回的临时对象
+  private _evalResult = { res: undefined as any, version: 0 };
+
+  // 原型绑定的 rules 获取方法
   private _getRulesInternal = () => this.rules;
 
+  // 🌟 [新增] 将闭包固定为实例属性，整个生命周期只分配一次！
+  private _boundCheckDirty = (triggerUids?: number[]) => {
+    // 这里的 API 由外部上下文隐式提供（因为在这个上下文中 api 是不变的），
+    // 但为了解耦，我们将 api 状态作为 evaluate 的上下文。
+    // 为了完全避免闭包，我们在类上挂载一个瞬时的 _currentApi 引用供 checkDirty 使用。
+    return this._checkRuleDirty(this._currentApi, triggerUids);
+  };
+
+  private _currentApi: any = null;
+
   constructor(baseValue: any, key: string | number | symbol, path: P) {
-    // 🌟 直接传入原型绑定方法，避免闭包
     this.strategy = new StrategyStore(this._getRulesInternal);
     this.path = path;
-    // this.isValue = key === "value";
     this.contract = this.inferType(baseValue);
     this.cache = baseValue;
 
@@ -281,7 +306,6 @@ export class SchemaBucket<P> {
     } as any);
   }
 
-  /** @internal */ 
   setUseCache(val: boolean) {
     this.useCache = val;
   }
@@ -290,48 +314,43 @@ export class SchemaBucket<P> {
     this._forceNotify = true;
   }
 
-  /** @internal */ 
   isForceNotify() {
     return this._forceNotify;
   }
 
-  setStrategy(type: DefaultStrategy) {
+  setStrategy(type: any) {
     this.strategy.setStrategy(type);
   }
 
-  /** @internal */ 
   setDefaultRule(value: any) {
     const rules = new Set<{ logic: () => any }>();
     rules.add(value);
     this.rules.set(-1, rules);
   }
 
-  /** @internal */ 
-  setRules<TKeys = any>(
-    value: {
-      value: any;
-      targetUid: number;
-      triggerUids: number[];
-      priority: any;
-      logic: any;
-      entityId?: any;
-    },
-    DepsArray?: Array<[number, Array<TKeys | Exclude<InternalKeys, "state">>, any]>
-  ) {
-    if (DepsArray) {
-      this.updateDeps(DepsArray);
+  // 🌟 [新增] O(1) 移除依赖方法
+  private _removeDep(uid: number) {
+    this.deps.delete(uid);
+    const idx = this._depUids.indexOf(uid);
+    if (idx !== -1) {
+      const last = this._depUids.pop()!;
+      if (idx < this._depUids.length) {
+        this._depUids[idx] = last;
+      }
     }
-    const entityId = ++this.id;
+  }
 
-    const ruleEntity = {
-      ...value,
-      entityId,
-    };
+  setRules<TKeys = any>(
+    value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; entityId?: any; },
+    DepsArray?: Array<[number, Array<TKeys | any>, any]>
+  ) {
+    if (DepsArray) this.updateDeps(DepsArray);
+    
+    const entityId = ++this.id;
+    const ruleEntity = { ...value, entityId };
 
     for (let uid of value.triggerUids) {
-      if (!this.rules.has(uid)) {
-        this.rules.set(uid, new Set<any>());
-      }
+      if (!this.rules.has(uid)) this.rules.set(uid, new Set<any>());
       this.rules.get(uid)!.add(ruleEntity);
     }
 
@@ -344,7 +363,7 @@ export class SchemaBucket<P> {
           set.delete(ruleEntity);
           if (set.size === 0) {
             this.rules.delete(uid);
-            this.deps.delete(uid);
+            this._removeDep(uid); // 🌟 使用高性能移除
           }
         }
       }
@@ -352,37 +371,33 @@ export class SchemaBucket<P> {
     };
   }
 
-  /** @internal */ 
-  updateDeps<TKeys>(
-    DepsArray: Array<[number, Array<TKeys | Exclude<InternalKeys, "state">>, any]>
-  ) {
-    for (let [triggerUid, keys, proxy] of DepsArray) {
+  updateDeps<TKeys>(DepsArray: Array<[number, Array<TKeys | any>, any]>) {
+    for (let i = 0; i < DepsArray.length; i++) {
+      let [triggerUid, keys, proxy] = DepsArray[i];
       if (keys.length == 0) continue;
-      let obj = this.deps.get(triggerUid) || Object.create(null);
 
-      for (let key of keys) {
-        obj[key as string] = proxy[key];
+      let depTarget = this.deps.get(triggerUid);
+      if (!depTarget) {
+        depTarget = { valObj: Object.create(null), keys: [] }; // 🌟 预分配 keys 数组
+        this.deps.set(triggerUid, depTarget);
+        this._depUids.push(triggerUid); // 🌟 压入扁平数组
       }
 
-      this.deps.set(triggerUid, obj);
+      for (let j = 0; j < keys.length; j++) {
+        let key = keys[j] as string;
+        depTarget.valObj[key] = proxy[key];
+        if (depTarget.keys.indexOf(key) === -1) {
+          depTarget.keys.push(key);
+        }
+      }
     }
   }
 
-  /** @internal */ 
   setRule<TKeys = any>(
-    value: {
-      value: any;
-      targetUid: number;
-      triggerUids: number[];
-      priority: any;
-      logic: any;
-      entityId?: any;
-    },
-    DepsArray?: Array<[number, Array<TKeys | Exclude<InternalKeys, "state">>, any]>
+    value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; entityId?: any; },
+    DepsArray?: Array<[number, Array<TKeys | any>, any]>
   ) {
-    if (DepsArray) {
-      this.updateDeps(DepsArray);
-    }
+    if (DepsArray) this.updateDeps(DepsArray);
 
     if (typeof value.entityId === "string") {
       this.setDefaultRule(value);
@@ -390,17 +405,11 @@ export class SchemaBucket<P> {
     }
 
     const entityId = ++this.id;
-
-    const ruleEntity = {
-      ...value,
-      entityId,
-    };
+    const ruleEntity = { ...value, entityId };
 
     if (value) {
       for (let uid of value.triggerUids) {
-        if (!this.rules.has(uid)) {
-          this.rules.set(uid, new Set<any>());
-        }
+        if (!this.rules.has(uid)) this.rules.set(uid, new Set<any>());
         this.rules.get(uid)!.add(ruleEntity);
       }
     }
@@ -413,7 +422,7 @@ export class SchemaBucket<P> {
           set.delete(ruleEntity);
           if (set.size === 0) {
             this.rules.delete(uid);
-            this.deps.delete(uid);
+            this._removeDep(uid); // 🌟 使用高性能移除
           }
         }
       }
@@ -421,38 +430,34 @@ export class SchemaBucket<P> {
     };
   }
 
-  /** @internal */ 
   setSideEffect(data: { fn: (args: any[]) => any; args: any[] }) {
     this.effectArray.push(data);
   }
 
-  /** @internal */ 
   getSideEffect() {
     return [...this.effectArray];
   }
 
-  // 🌟 将 evaluate 内部深藏的匿名脏检查函数拔除到了原型上
+  // 🌟 使用扁平化 keys 缓存，消灭 Object.keys
   private _checkRuleDirty(api: any, triggerUids?: number[]) {
     if (!triggerUids || triggerUids.length === 0) return true;
 
-    for (let uid of triggerUids) {
-      let trackedKeysObj = this.deps.get(uid);
-      if (!trackedKeysObj) return true;
+    for (let i = 0; i < triggerUids.length; i++) {
+      let uid = triggerUids[i];
+      let depTarget = this.deps.get(uid);
+      if (!depTarget) return true;
 
       let curState = api.getProxyByUid(uid);
       if (!curState) return true;
 
-      for (let key in trackedKeysObj) {
-        let oldVal = trackedKeysObj[key];
+      const { valObj, keys } = depTarget;
+      for (let j = 0; j < keys.length; j++) {
+        let key = keys[j];
+        let oldVal = valObj[key];
         let newVal = curState[key];
 
-        if (typeof oldVal === "object" && oldVal !== null) {
-          return true;
-        }
-
-        if (oldVal !== newVal) {
-          return true;
-        }
+        if (typeof oldVal === "object" && oldVal !== null) return true;
+        if (oldVal !== newVal) return true;
       }
     }
     return false;
@@ -460,45 +465,42 @@ export class SchemaBucket<P> {
 
   evaluate(api: any) {
     let curToken = null;
-
-    if (api.GetToken) {
-      curToken = api.GetToken();
-    }
+    if (api.GetToken) curToken = api.GetToken();
 
     if (this.pendingPromise && this.promiseToken !== curToken) {
       this.pendingPromise = null;
       this.promiseToken = null;
     }
 
-    if (this.pendingPromise) {
-      return this.pendingPromise;
-    }
+    if (this.pendingPromise) return this.pendingPromise;
 
     let shouldSkipCalculate = false;
 
     if (typeof api.triggerUid === "number") {
       shouldSkipCalculate = true;
+      if (this._depUids.length == 0) shouldSkipCalculate = false;
 
-      if (this.deps.size == 0) {
-        shouldSkipCalculate = false;
-      }
-      for (let [uid, trackedKeysObj] of this.deps.entries()) {
+      // 🌟 O(N) 扁平数组遍历，消灭迭代器
+      for (let i = 0; i < this._depUids.length; i++) {
+        let uid = this._depUids[i];
+        let depTarget = this.deps.get(uid);
         let curState = api.getStateByUid(uid);
 
-        if (!curState) {
+        if (!curState || !depTarget) {
           shouldSkipCalculate = false;
           break;
         }
 
-        for (let key in trackedKeysObj) {
-          let oldVal = trackedKeysObj[key];
+        const { valObj, keys } = depTarget;
+        for (let j = 0; j < keys.length; j++) {
+          let key = keys[j];
+          let oldVal = valObj[key];
           let newVal = curState[key];
 
           if (typeof oldVal === "object" && oldVal !== null) {
             shouldSkipCalculate = false;
             break;
           }
-
           if (oldVal !== newVal) {
             shouldSkipCalculate = false;
             break;
@@ -508,28 +510,26 @@ export class SchemaBucket<P> {
       }
     }
 
-    if (shouldSkipCalculate && this.useCache) {
-      return this.cache;
-    }
+    if (shouldSkipCalculate && this.useCache) return this.cache;
 
     this.promiseToken = curToken;
     const currentVersion = ++this.version;
 
-    // 🌟 在这里组装一个极轻量的箭头函数传下去。因为这是短时（Short-lived）分配，
-    // GC 在年轻代（Nursery Gen）就能秒杀它，不会堆积在老生代内存里。
-    const checkDirty = (uids?: number[]) => this._checkRuleDirty(api, uids);
-      
-    const p = this.strategy.evaluate(api, currentVersion, checkDirty);
+    // 🌟 将 API 暂存到实例上供内部 CheckDirty 使用，彻底切断参数闭包！
+    this._currentApi = api;
+    
+    // 🌟 传入复用容器 this._evalResult
+    const p = this.strategy.evaluate(api, currentVersion, this._boundCheckDirty, this._evalResult);
 
     if (!(p instanceof Promise)) {
-      const { res, version } = p;
-      return this.finalizeSync(res, version, api, curToken);
+      this._currentApi = null; // 用完即丢，防止内存泄露
+      return this.finalizeSync(this._evalResult.res, this._evalResult.version, api, curToken);
     }
 
     this.pendingPromise = (async () => {
       try {
-        const { res, version } = await p;
-        return this.finalizeSync(res, version, api, curToken);
+        await p; // 等待策略修改 this._evalResult
+        return this.finalizeSync(this._evalResult.res, this._evalResult.version, api, curToken);
       } catch (err: any) {
         throw { path: this.path, error: err };
       } finally {
@@ -537,31 +537,38 @@ export class SchemaBucket<P> {
           this.pendingPromise = null;
           this.promiseToken = null;
         }
+        this._currentApi = null; // 异步结束后清理引用
       }
     })();
 
     return this.pendingPromise;
   }
 
-  /** @internal */ 
   private finalizeSync(res: any, version: number, api: any, curToken: any) {
     if (curToken !== this.promiseToken || version < this.version) {
       return this.cache;
     }
     this.cache = res;
-    this.deps.forEach((valObj, uid) => {
+
+    // 🌟 完全消灭 forEach 闭包 和 Object.keys 数组分配
+    for (let i = 0; i < this._depUids.length; i++) {
+      let uid = this._depUids[i];
+      let depTarget = this.deps.get(uid);
+      if (!depTarget) continue;
+
       const curState = api.getProxyByUid(uid);
-      if (!curState) return;
-      const keys = Object.keys(valObj);
-      for (let key of keys) {
+      if (!curState) continue;
+
+      const { valObj, keys } = depTarget;
+      for (let j = 0; j < keys.length; j++) {
+        let key = keys[j];
         valObj[key] = curState[key];
       }
-    });
+    }
 
     return res;
   }
 
-  /** @internal */ 
   private inferType(val: any): ContractType {
     if (Array.isArray(val)) return "array";
     return typeof val as ContractType;

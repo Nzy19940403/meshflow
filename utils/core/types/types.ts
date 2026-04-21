@@ -481,12 +481,13 @@ export const enum NodeStatus {
  * @group 类型管理
  * @category 错误类型
  */
-export const enum MeshError {
-  cycle = "Circular dependency detected",
-  EngineNotFound = "Engine not found.",
-  EngineIdRepeated = "engineID repeated",
-  WrongId = "Wrong id"
-}
+export const MeshError = {
+  cycle : "Circular dependency detected",
+  EngineNotFound : "Engine not found.",
+  EngineIdRepeated : "engineID repeated",
+  WrongId : "Wrong id",
+  DuplicatePath: (path: any) => `[MeshFlow] Duplicate Path: ${String(path)}`
+} as const;
 /**
  * 引擎预设的桶计算策略
  * @description 决定了当一个节点绑定了多个规则时，引擎如何处理冲突、优先级以及最终值的推导。

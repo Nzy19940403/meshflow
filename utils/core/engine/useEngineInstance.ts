@@ -222,7 +222,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
         CancelTask,
         stageValueFn,
-        refresTarget,
+        refreshTarget,
         SettleTasks
     } = scheduler;
 
@@ -415,7 +415,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
         // 3. 物理覆写（不触碰任何引擎核心依赖）
         node.state[key] = value;
-        refresTarget(node.uid);
+        refreshTarget(node.uid);
         return true; 
     }
 
