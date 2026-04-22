@@ -220,7 +220,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         useEntangle,
         updateEntangleLevel,
 
-        CancelTask,
+        dispose,
         stageValueFn,
         refreshTarget,
         SettleTasks
@@ -457,7 +457,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         scheduler,
 
         destroyPlugin,
-        CancelTask:()=>CancelTask(),
+        dispose,
         StageValue,
         SilentSet,
 

@@ -211,7 +211,7 @@ const useMeshFlow = <
 
       scheduler,
       destroyPlugin,
-      CancelTask,
+      dispose,
       StageValue,
       SilentSet,
 
@@ -305,7 +305,7 @@ const useMeshFlow = <
     const finalEngine: any = {
       ...baseEngine,
       destroyPlugin,
-      CancelTask,
+      dispose,
       modules: {},
     };
     const modules = options.modules;
@@ -413,7 +413,7 @@ const useEngine = <
 const deleteEngine = (id: MeshPath) => {
   const engine = engineMap.get(id) ;
   engine.destroyPlugin();    
-  engine.CancelTask();
+  engine.dispose();
 
   engineMap.delete(id);
 };

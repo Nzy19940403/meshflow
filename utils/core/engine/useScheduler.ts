@@ -476,7 +476,7 @@ export class MeshScheduler<
 
     public useEntangle: any;
     public updateEntangleLevel: any;
-    public CancelTask: typeof this.meshTaskSystem.CancelTask;
+    public dispose: ()=>void;
     public stageValueFn: typeof this.meshTaskSystem.stageValueFn;
     public SettleTasks: typeof this.taskSchduler.settleTasks;
 
@@ -537,7 +537,31 @@ export class MeshScheduler<
             this.timeScheduler,
             this.taskSchduler
         );
-        this.CancelTask = ()=>this.meshTaskSystem.CancelTask(); // 压平
+        this.dispose = ()=>{
+            this.meshTaskSystem.CancelTask();
+            for (let i = 0; i < this.UidToNodeMap.length; i++) {
+                const node = this.UidToNodeMap[i];
+                if (node) {
+                    (node as any).dispose();
+                }
+            }
+        
+            // 2. 【清空容器】使用物理清空法
+            this.UidToNodeMap.length = 0;   // 物理清空数组
+            this.UidToGroupMap.length = 0;  
+            this.UidToPathMap.length = 0;
+            this.AllBuckets.length = 0;
+        
+            // 3. 【清空集合与映射】
+            this.PathToUidMap.clear();      // Map 必须用 clear()
+            this.flushPathSet.clear();      // Set 必须用 clear()
+        
+            // 4. 【重置状态】
+            this.uid = 0;
+            this.isPending = false;
+            console.log('清理成功')
+
+        }; // 压平
         this.stageValueFn = this.meshTaskSystem.stageValueFn; // 压平
         this.SettleTasks = this.taskSchduler.settleTasks;
     }
