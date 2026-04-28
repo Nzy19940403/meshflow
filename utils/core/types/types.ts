@@ -218,15 +218,23 @@ export interface DependOnContext<P extends MeshPath> {
   getNode: (path: P) => MeshFlowTaskNode<P>;
   // 你可以根据需要扩展，比如 getValue, emit 等
 }
+
+ 
+
 /** 
 * @group 参数类型
 * @category 依赖设置
 * @description 桶计算的逻辑块入参类型
 */
-export interface logicApi<TKeys extends MeshPath> {
+export interface logicApi<NM,TKeys extends SuggestKey<NM>> {
   slot: {
-    triggerTargets: Array<Record<TKeys | InternalKeys , any>>;
+    triggerTargets: Array<
+      // 🌟 核心修改：将属性映射与 { proxy: any } 进行交叉
+      (Record<IsNever<TKeys> extends true ? (InternalKeys | SuggestKey<NM>) : TKeys, any>) 
+      & { proxy: any } 
+    >;
     affectedTatget: any;
+    targetMeta:any
   };
 }
  /**
@@ -244,7 +252,7 @@ export type InternalKeys = 'path'|'uid'|'type'|'meta'|'state'
  * @typeParam TKeys - 当前节点关联的键集合
  * @params logic - 桶计算的逻辑块，一个桶里面可以装多个逻辑块，根据策略进行计算，逻辑块入参参考{}
  */
-export interface SetRuleOptions<NM, TKeys extends SuggestKey<NM>> {
+export interface SetRuleOptions<NM, TKeys extends (SuggestKey<NM> | Exclude<InternalKeys, 'state'>)  > {
 /**
    * 结果覆盖值 (静态产出)
    * * @description
@@ -271,7 +279,7 @@ export interface SetRuleOptions<NM, TKeys extends SuggestKey<NM>> {
    * - **MERGE (增量聚合)**: 执行所有逻辑片段，并将结果进行深度合并 (Object/Array)。
    * * @param api 注入的运行上下文 {@link logicApi}
    */
-  logic: (api: logicApi<TKeys>) => any;
+  logic: (api: logicApi<NM,TKeys>) => any;
  /**
    * 后置副作用 (Post-Settlement Effect)
    * * @description 
@@ -303,7 +311,7 @@ export interface SetRuleOptions<NM, TKeys extends SuggestKey<NM>> {
    * - **已定义**：仅当列表中的 Key 发生变更时，才执行 `logic`。实现精准的按需计算。
    * - **未定义 (Default)**：源节点（TriggerPath）内的**任意**字段变更都会唤醒本条逻辑。
    */
-  triggerKeys?: Array<TKeys| Exclude<InternalKeys,'state'> >;
+  triggerKeys?: Array<TKeys>;
 }
 
 /** 

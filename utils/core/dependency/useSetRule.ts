@@ -2,7 +2,7 @@
  
 import {  SchemaBucket } from "../engine/bucket"; 
 import { InternalKeys, MeshError, MeshFlowTaskNode, MeshPath, SetRuleOptions, SuggestKey, logicApi } from "../types/types";
-import { KeysOfUnion } from '../utils/util';
+// import { KeysOfUnion } from '../utils/util';
  
 // const CreateRule = <
 
@@ -306,24 +306,60 @@ import { KeysOfUnion } from '../utils/util';
 //     }
 // }
 
-// const GLOBAL_SLOT = {
-//     triggerTargets: [] as any[],
-//     affectedTatget: undefined as any // 保持原拼写防止业务报错
-// };
+//task执行参数
+//背压参数
+const BACKPRESSURE_LIMIT = 30;
+//最大并发数
+const MAX_CONCURRENT_TASKS = 40;
 
-// const GLOBAL_API_WRAPPER = { slot: GLOBAL_SLOT };
+const POOL_SIZE = BACKPRESSURE_LIMIT + MAX_CONCURRENT_TASKS + 10; // 留 10 个作为弹性冗余，共 80
+ 
+// ==========================================
+// 🌟 享元对象池：杜绝 48 万次的 API Wrapper 分配
+// ==========================================
+class ApiWrapperPool {
+    private pool: any[] = [];
 
-// 2. 全局唯一执行器：彻底替代原先 260万个 logic 闭包
+    constructor(size: number) {
+        for (let i = 0; i < size; i++) {
+            this.pool.push({
+                slot: {
+                    triggerTargets: null,
+                    affectedTatget: undefined, 
+                    targetMeta: undefined
+                }
+            });
+        }
+    }
+
+    acquire() {
+        return this.pool.pop() || {
+            slot: { triggerTargets: null, affectedTatget: undefined, targetMeta: undefined }
+        };
+    }
+
+    release(wrapper: any) {
+        // 🌟 释放时切断引用
+        wrapper.slot.triggerTargets = null;
+        wrapper.slot.affectedTatget = undefined;
+        wrapper.slot.targetMeta = undefined;
+        this.pool.push(wrapper);
+    }
+}
+export const globalWrapperPool = new ApiWrapperPool(POOL_SIZE);
+
+ 
 export const ExecuteMeshRule = (rule: any, api: any) => {
-    const { triggerUids, triggerKeys, targetUid, targetKey, logic, preAllocatedDeps,apiWrapper } = rule;
+    const { triggerUids, triggerKeys, targetUid, targetKey, logic, preAllocatedDeps } = rule;
     
     const hasTriggerKeys = triggerKeys && triggerKeys.length > 0;
+ 
 
     // 纯粹的 O(1) 指针赋值，没有任何数组或对象的重新分配
     for (let i = 0; i < triggerUids.length; i++) {
         const uid = triggerUids[i];
         const node = api.getProxyByUid(uid);
-        
+ 
         if (!hasTriggerKeys) {
             preAllocatedDeps[i] = node;
         } else {
@@ -332,13 +368,29 @@ export const ExecuteMeshRule = (rule: any, api: any) => {
                 const key = triggerKeys[j];
                 snap[key] = node[key];
             }
+            //万一需要triggernodes上其他信息就从这个proxy节点上找
+            snap['proxy'] = node;
         }
     }
+    const wrapper = globalWrapperPool.acquire();
 
-    apiWrapper.slot.affectedTatget = api.getProxyByUid(targetUid)[targetKey];
+    wrapper.slot.triggerTargets = preAllocatedDeps;
+    wrapper.slot.affectedTatget = api.getProxyByUid(targetUid)[targetKey];
+    wrapper.slot.targetMeta = api.getProxyByUid(targetUid).meta;
 
-    // 将自己专属的包裹传给业务逻辑！
-    return logic(apiWrapper);
+    // 🌟 3. 将包裹传给业务逻辑！
+    const result = logic(wrapper);
+ 
+    if (result && typeof result.then === 'function') {
+        // 如果是异步任务，等待执行完毕后释放
+        return result.finally(()=>{
+            globalWrapperPool.release(wrapper);
+        });
+    } else {
+        // 同步任务，立刻释放
+        globalWrapperPool.release(wrapper);
+        return result;
+    }
 };
 
 // ==========================================
@@ -351,7 +403,7 @@ const CreateRule = <
 >(targetUid: number, targetKey: K, options: {
     value?: any;
     priority?: number;
-    logic: (api: logicApi<TKeys>) => any;
+    logic: (api: logicApi<NM,TKeys>) => any;
     triggerUids: number[];
     triggerKeys: Array<TKeys | InternalKeys>;
 }) => {
@@ -364,12 +416,7 @@ const CreateRule = <
             preAllocatedDeps[i] = Object.create(null);
         }
     }
-    const apiWrapper = {
-        slot: {
-            triggerTargets: preAllocatedDeps, // 永远指向自己的坑位
-            affectedTatget: undefined as any
-        }
-    };
+ 
     return {
         value: options.value,
         targetUid: targetUid,
@@ -380,7 +427,7 @@ const CreateRule = <
         priority: options.priority ?? basePriority,
         _hasRun: false,
         preAllocatedDeps, // 将预分配的空间挂载在 rule 实体上
-        apiWrapper
+    
     };
 }
 
@@ -428,7 +475,7 @@ export const useSetRule = <P extends MeshPath, NM>(
         K extends SuggestKey<NM>,
         TKeys extends SuggestKey<NM> = SuggestKey<NM>
     >(outDegreePath: P, inDegreePath: P, key: K, options: SetRuleOptions<NM, TKeys>) => {
-        
+ 
         const outDegree = GetByPath(outDegreePath);
         const inDegree = GetByPath(inDegreePath);
         
@@ -451,7 +498,7 @@ export const useSetRule = <P extends MeshPath, NM>(
         ];
        
         updateGraphRelation(outDegree.uid, inDegree.uid);
-
+      
         if (typeof inDegree.nodeBucket[key] === 'number') {
             const node = GetBucket(inDegree.nodeBucket[key]);
             node.setRule(newRule, DepsArray);
@@ -479,8 +526,8 @@ export const useSetRule = <P extends MeshPath, NM>(
     }
  
     const SetRules = <
-        K extends KeysOfUnion<NM>,
-        TKeys extends KeysOfUnion<NM>
+        K extends SuggestKey<NM>,
+        TKeys extends SuggestKey<NM>
     >(
         outDegreePaths: P[],
         inDegreePath: P,

@@ -628,7 +628,7 @@ export class MeshScheduler<
         this.notify(path);
     }
 
-    public registerNode = (nodeMeta: Omit<MeshFlowTaskNode<P>, 'createView' | 'proxy' | 'dependOn' | 'calledBy' | 'uid' | 'dirtySignal' | 'nodeBucket'>)=> {
+    public registerNode =  (nodeMeta: Omit<MeshFlowTaskNode<P>, 'createView' | 'proxy' | 'dependOn' | 'calledBy' | 'uid' | 'dirtySignal' | 'nodeBucket'>)=> {
         if (this.PathToUidMap.has(nodeMeta.path)) {
             throw new Error(MeshError.DuplicatePath(String(nodeMeta.path)))
         }

@@ -1,5 +1,5 @@
 import { ExecuteMeshRule } from "../dependency/useSetRule";
-import { InternalKeys, DefaultStrategy } from "../types/types";
+// import { InternalKeys, DefaultStrategy } from "../types/types";
 
 type ContractType = "boolean" | "scalar" | "array" | "object";
 

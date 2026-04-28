@@ -255,7 +255,20 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         const { SetValidators } = options.modules.useSchemaValidators<P>(GetNodeByPath);
         validatorExports = { SetValidators };
     }
- 
+    const SilentSet = (path: P,key:SuggestKey<NM>, value: any)=>{
+    
+        const node = GetNodeByPath(path);
+        if (!node) {
+            return false;
+        }
+
+        if (Object.is(node.state[key], value)) return false;
+
+        // 3. 物理覆写（不触碰任何引擎核心依赖）
+        node.state[key] = value;
+        refreshTarget(node.uid);
+        return true; 
+    }
  
  
     const { SetRule, SetRules } = useSetRule<P,NM>(
@@ -335,26 +348,26 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
     const setRuleWrapper = <
     K extends SuggestKey<NM>, // 🌟 直接用这个最强王者
-    TKeys extends SuggestKey<NM> = SuggestKey<NM>
+    TKeys extends SuggestKey<NM>  
     >(
     outDegreePath: P, 
     inDegreePath: P, 
     key: K  , 
     options: SetRuleOptions<NM,TKeys>) => {
-        SetRule(outDegreePath, inDegreePath, key as KeysOfUnion<NM> , options);
+        SetRule(outDegreePath, inDegreePath, key as SuggestKey<NM> , options);
         isRulesChanged = true;
         
      
         requestGraphUpdate();
        
     };
-    const setRulesWrapper = <TKeys extends KeysOfUnion<NM>>(
+    const setRulesWrapper = <TKeys extends SuggestKey<NM>>(
         outDegreePaths: P[],
         inDegreePath: P,
-        key: KeysOfUnion<NM> | (string & {})  ,
+        key: SuggestKey<NM> | (string & {})  ,
         options: SetRuleOptions<NM,TKeys>
     ) => {
-        SetRules(outDegreePaths, inDegreePath, key as KeysOfUnion<NM>, options);
+        SetRules(outDegreePaths, inDegreePath, key as SuggestKey<NM>, options);
         isRulesChanged = true;
         
         requestGraphUpdate();
@@ -386,7 +399,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         },key as SuggestKey<NM>);
     };
 
-    const GetValue = (path: P, key = "value") => {
+    const GetValue = (path: P, key:SuggestKey<NM> = "value") => {
         const node = GetNodeByPath(path).proxy;
         
         return node[key as keyof typeof node];
@@ -404,20 +417,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         stageValueFn(node.uid,key,value)
     }
   
-    const SilentSet = (path: P,key:SuggestKey<NM>, value: any)=>{
-    
-        const node = GetNodeByPath(path);
-        if (!node) {
-            return false;
-        }
-
-        if (Object.is(node.state[key], value)) return false;
-
-        // 3. 物理覆写（不触碰任何引擎核心依赖）
-        node.state[key] = value;
-        refreshTarget(node.uid);
-        return true; 
-    }
+   
 
     const instance = {
       

@@ -117,6 +117,7 @@ export class MeshTaskNodeImpl<P extends MeshPath, V = any, NM = any> extends Mes
     public notifyKeys: Set<SuggestKey<NM>>;
     public calledBy: number = 0;
     public type:string
+    
  
     public dependOn:(cb: (val: V) => V, key?: SuggestKey<NM> ) => void;
 
@@ -126,7 +127,9 @@ export class MeshTaskNodeImpl<P extends MeshPath, V = any, NM = any> extends Mes
         this.notifyKeys = config.notifyKeys;
         this.calledBy = 0;
         this.type = config.type
-        this.dependOn = config.dependOn
+        this.dependOn = (cb: (val: V) => V, key?: SuggestKey<NM>)=>{
+            config.dependOn(cb,key)
+        }
     }
 
     // 复写基类 dispose，增加自身容器的清理
