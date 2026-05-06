@@ -3,84 +3,248 @@ export type HistoryActionItem = {
   redoAction: () => void;
 };
 
+// 🌟 引擎注入给历史模块的执行上下文：现在只需要唯一的正门 batchNotify
+export type EngineContext = {
+  batchNotify: (updates: { path: string; key: string; value: any }[]) => void;
+};
+
+export type MutationData = { path: string; key: string; oldVal: any; newVal: any };
+
 export interface HistoryMethods {
   Undo: () => void;
   Redo: () => void;
-  PushIntoHistory: (action: HistoryActionItem, cleanRedo?: boolean) => void;
-  CreateHistoryAction: (
-    metadata: [{ path: string; value: any }, { path: string; value: any }],
-    cb: (meta: { path: string; value: any }) => void
-  ) => HistoryActionItem;
-  updateUndoSize: (cb: (newVal: number) => any) => void;
-  updateRedoSize: (cb: (newVal: number) => any) => void;
+  updateUndoSize: (cb: (newVal: number) => void) => void;
+  updateRedoSize: (cb: (newVal: number) => void) => void;
+
+  StartTransaction: () => void;
+  CommitTransaction: (version: number) => void;
+  AbortTransaction: () => void;
+
+  GetCurrentVersion: () => number;
+
+  // 🌟 神级重载：单点更新 0 内存分配，批量更新支持数组
+  RecordMutation(path: string, key: string, oldVal: any, newVal: any): void;
+  RecordMutation(mutations: MutationData[]): void;
+
+  // 🌟 专供 SilentSet 使用的潜行记账 API
+  RecordSilentMutation(path: string, key: string, oldVal: any, newVal: any): void;
 }
 
-// 🌟 重新定义 Factory 类型，确保它返回的是纯粹的 HistoryMethods
-export type HistoryModuleFactory = {
-  (maxStep?: number): HistoryMethods; // 明确只返回 Methods
+export type HistoryInitializer = (getEngineCtx: () => EngineContext) => HistoryMethods;
+
+export type HistoryModuleFactory = HistoryInitializer & {
   isMeshModuleInited: boolean;
 };
 
 const useHistory = (maxStep?: number): HistoryModuleFactory => {
-  const historyUndoList: Array<HistoryActionItem> = [];
-  const historyRedoList: Array<HistoryActionItem> = [];
-  let currentMaxStep = 100;
-  if (maxStep !== undefined) currentMaxStep = maxStep;
-  const status = {
-    canRedo: () => {},
-    canUndo: () => {},
-  };
-
-  // 1. 定义核心逻辑函数
-  const historyModule = ((): HistoryMethods => {
- 
-    const PushIntoRedoHistory = (action: HistoryActionItem) => {
-      historyRedoList.push(action);
-      if (historyRedoList.length > currentMaxStep) historyRedoList.shift();
-      status.canRedo();
-      status.canUndo();
+  let currentMaxStep = maxStep !== undefined ? maxStep : 100;
+   
+  const initHistory: HistoryInitializer = (getEngineCtx) => {
+    const historyUndoList: Array<HistoryActionItem> = [];
+    const historyRedoList: Array<HistoryActionItem> = [];
+    const status = {
+      canRedo: () => {},
+      canUndo: () => {},
     };
 
-    const PushIntoHistory = (action: HistoryActionItem, cleanRedo: boolean = true) => {
-      if (cleanRedo) historyRedoList.length = 0;
-      historyUndoList.push(action);
-      if (historyUndoList.length > currentMaxStep) historyUndoList.shift();
-      status.canUndo();
-      status.canRedo();
+    let isTransactionActive = false;
+    let isRestoring = false; 
+    
+    let currentVersion = 0;
+
+    const currentMutations = new Map<string, MutationData>();
+
+    // ==========================================
+    // 潜行装备：用于缓冲 SilentSet 的孤立修改
+    // ==========================================
+    const silentBuffer: MutationData[] = [];
+    let silentTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // 内部方法：引擎启动时，将潜行区的战利品压平进大账本
+    const flushSilentBuffer = () => {
+      if (silentBuffer.length > 0) {
+        for (let i = 0; i < silentBuffer.length; i++) {
+          const m = silentBuffer[i];
+          const compositeKey = `${m.path}::${m.key}`;
+          if (currentMutations.has(compositeKey)) {
+            currentMutations.get(compositeKey)!.newVal = m.newVal;
+          } else {
+            currentMutations.set(compositeKey, { ...m });
+          }
+        }
+        silentBuffer.length = 0; // 提货完毕即清空
+      }
     };
 
-    // 🌟 返回纯粹的对象，不带任何 factory 的元属性
+    const abortInternal = () => {
+      isTransactionActive = false;
+      currentMutations.clear();
+      silentBuffer.length = 0; // 发生中止时，也清空潜行区
+    };
+
     return {
       Undo: () => {
-        if (!historyUndoList.length) return;
+        if (!historyUndoList.length || isRestoring) return;
         const actionItem = historyUndoList.pop()!;
+        
+        isRestoring = true; // 🌟 同步上锁！拦截引擎在撤销期间产生的一切记录
         actionItem.undoAction();
-        PushIntoRedoHistory(actionItem);
+        isRestoring = false; // 🌟 同步解锁！干脆利落
+        
+        historyRedoList.push(actionItem);
+        if (historyRedoList.length > currentMaxStep) historyRedoList.shift();
+        status.canRedo();
+        status.canUndo();
       },
-      Redo: () => {
-        if (!historyRedoList.length) return;
-        const actionItem = historyRedoList.pop()!;
-        actionItem.redoAction();
-        PushIntoHistory(actionItem, false);
-      },
-      PushIntoHistory,
-      CreateHistoryAction: (metadata, cb) => {
-        const [oldMeta, newMeta] = metadata;
-        return {
-          undoAction: () => cb(oldMeta),
-          redoAction: () => cb(newMeta),
-        };
-      },
-      updateUndoSize: (cb) => { status.canUndo = () => cb(historyUndoList.length); },
-      updateRedoSize: (cb) => { status.canRedo = () => cb(historyRedoList.length); },
-    };
-  }) as HistoryModuleFactory; // 🌟 强制断言为 Factory 类型
 
-  historyModule.isMeshModuleInited = true;
-  return historyModule;
+      Redo: () => {
+        if (!historyRedoList.length || isRestoring) return;
+        const actionItem = historyRedoList.pop()!;
+        
+        isRestoring = true;
+        actionItem.redoAction();
+        isRestoring = false;
+        
+        historyUndoList.push(actionItem);
+        if (historyUndoList.length > currentMaxStep) historyUndoList.shift();
+        status.canUndo();
+        status.canRedo();
+      },
+
+      StartTransaction: () => {
+        if (isTransactionActive) return; // 🌟 无缝上车：已激活则不重置
+        isTransactionActive = true;
+        currentVersion++;
+        
+        // 大门开启，立刻提取潜行区的数据
+        flushSilentBuffer();
+      },
+      
+      AbortTransaction: abortInternal,
+
+      RecordMutation: (arg1: string | MutationData[], key?: string, oldVal?: any, newVal?: any) => {
+        if (isRestoring) return; 
+        
+        // 自动补票：不管有没有手动 Start，只要有真实变更就强行开门建档
+        if (!isTransactionActive) {
+          isTransactionActive = true;
+          currentVersion++;
+          flushSilentBuffer(); // 开门的同时，合并以前藏好的 SilentSet 变更
+        }
+          
+        if (typeof arg1 === 'string') {
+          const compositeKey = `${arg1}::${key}`;
+          if (currentMutations.has(compositeKey)) {
+            // 已有初恋值，仅更新 newVal
+            currentMutations.get(compositeKey)!.newVal = newVal;
+          } else {
+            currentMutations.set(compositeKey, { path: arg1, key: key!, oldVal, newVal });
+          }
+        } else {
+          arg1.forEach(m => {
+            const compositeKey = `${m.path}::${m.key}`;
+            if (currentMutations.has(compositeKey)) {
+              currentMutations.get(compositeKey)!.newVal = m.newVal;
+            } else {
+              currentMutations.set(compositeKey, { ...m });
+            }
+          });
+        }
+      },
+
+      // 🌟 SilentSet 专用口：潜行与自动合并逻辑的核心
+      RecordSilentMutation: (path: string, key: string, oldVal: any, newVal: any) => {
+        if (isRestoring) return;
+
+        // 场景 A：如果事务正在进行，当作普通的 Mutation 直接记账
+        if (isTransactionActive) {
+          const compositeKey = `${path}::${key}`;
+          if (currentMutations.has(compositeKey)) {
+            currentMutations.get(compositeKey)!.newVal = newVal;
+          } else {
+            currentMutations.set(compositeKey, { path, key, oldVal, newVal });
+          }
+          return;
+        }
+
+        // 场景 B：事务未启动，存入潜行区。处理对同一个 key 的重复修改
+        let found = false;
+        for (let i = 0; i < silentBuffer.length; i++) {
+          if (silentBuffer[i].path === path && silentBuffer[i].key === key) {
+            silentBuffer[i].newVal = newVal;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          silentBuffer.push({ path, key, oldVal, newVal });
+        }
+
+        // 兜底清道夫：利用宏任务，如果没有任何微任务引发事务启动，则原谅并销毁！
+        if (!silentTimer) {
+          silentTimer = setTimeout(() => {
+            silentTimer = null;
+            if (!isTransactionActive && silentBuffer.length > 0) {
+              silentBuffer.length = 0; 
+            }
+          }, 0);
+        }
+      },
+
+      CommitTransaction: (version: number) => {
+        if (!isTransactionActive || version !== currentVersion) return;
+        isTransactionActive = false; // 关门结算
+         
+        // 核心过滤：剔除所有一顿操作猛如虎，一看位移零点五的节点
+        const finalMutations = Array.from(currentMutations.values())
+          .filter(m => !Object.is(m.oldVal, m.newVal));
+
+        // 账本已生成，物理清空 Map 准备下一次点火
+        currentMutations.clear();
+
+        if (finalMutations.length === 0) return;
+
+        const ctx = getEngineCtx();
+
+        const batchedAction: HistoryActionItem = {
+          undoAction: () => {
+            ctx.batchNotify(
+              finalMutations.map(m => ({ path: m.path, key: m.key, value: m.oldVal }))
+            );
+          },
+          redoAction: () => {
+            ctx.batchNotify(
+              finalMutations.map(m => ({ path: m.path, key: m.key, value: m.newVal }))
+            );
+          }
+        };
+
+        historyRedoList.length = 0;
+        historyUndoList.push(batchedAction);
+        if (historyUndoList.length > currentMaxStep) historyUndoList.shift();
+        
+        status.canUndo();
+        status.canRedo();
+      },
+      
+      GetCurrentVersion:()=>{
+        return currentVersion;
+      },
+      updateUndoSize: (cb) => { 
+        status.canUndo = () => cb(historyUndoList.length); 
+        status.canUndo(); 
+      },
+      updateRedoSize: (cb) => { 
+        status.canRedo = () => cb(historyRedoList.length); 
+        status.canRedo(); 
+      },
+    };
+  };
+
+  (initHistory as HistoryModuleFactory).isMeshModuleInited = true;
+  return initHistory as HistoryModuleFactory;
 };
 
-// 静态标记
 (useHistory as any).isMeshModuleInited = false;
 
 export { useHistory };
