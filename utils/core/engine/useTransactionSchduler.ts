@@ -39,7 +39,7 @@ export const createTransactionScheduler = (
             isTaskProcessing = false;
             return true
         };
-        console.log('runNext')
+         
         if(updateTokenFn){
             curToken = updateTokenFn();
         }

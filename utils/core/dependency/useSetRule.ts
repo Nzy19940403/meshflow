@@ -520,8 +520,8 @@ export const useSetRule = <P extends MeshPath, NM>(
         
         (inDegree.state as any)[key] = (inDegree.meta as any)[key];
         const bucket = GetBucket(inDegree.nodeBucket[key]);
-
-        if (options.forceNotify) bucket.forceNotify(); 
+ 
+        if (options.forceNotify||triggerKeys.length===0) bucket.forceNotify(); 
         if (options.cacheStrategy == 'none') bucket.setUseCache(false);
     }
  
@@ -581,8 +581,8 @@ export const useSetRule = <P extends MeshPath, NM>(
 
         (inDegree.state as any)[key] = (inDegree.meta as any)[key];
         const bucket = GetBucket(inDegree.nodeBucket[key]);
-
-        if (options.forceNotify) bucket.forceNotify(); 
+ 
+        if (options.forceNotify||triggerKeys.length===0) bucket.forceNotify(); 
         if (options.cacheStrategy == 'none') bucket.setUseCache(false);
     }
 
