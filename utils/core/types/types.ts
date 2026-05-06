@@ -106,21 +106,39 @@ export type HistoryActionItem = {
  * @category 历史类型
  * 
 */
+// export type MeshFlowHistory = {
+//   Undo: () => void;
+//   Redo: () => void;
+//   updateUndoSize: any; // 如果是 Vue 可以是 Ref<boolean>
+//   updateRedoSize: any;
+//   PushIntoHistory: (action: HistoryActionItem, cleanRedo?: boolean) => void;
+//   CreateHistoryAction: (
+//     metadata: [{ path: string; value: any }, { path: string; value: any }],
+//     cb: any
+//   ) => {
+//     undoAction: () => any;
+//     redoAction: () => any;
+//   };
+// };
 export type MeshFlowHistory = {
   Undo: () => void;
   Redo: () => void;
   updateUndoSize: any; // 如果是 Vue 可以是 Ref<boolean>
   updateRedoSize: any;
-  PushIntoHistory: (action: HistoryActionItem, cleanRedo?: boolean) => void;
-  CreateHistoryAction: (
-    metadata: [{ path: string; value: any }, { path: string; value: any }],
-    cb: any
-  ) => {
-    undoAction: () => any;
-    redoAction: () => any;
-  };
+ 
 };
 
+export type InternalMeshFlowHistory = {
+  StartTransaction: () => void;
+  CommitTransaction: (version:number) => void;
+  RecordMutation: (path: MeshPath, key: any, oldVal: any, newVal: any) => void;
+  RecordSilentMutation:(path: string, key: string, oldVal: any, newVal: any)=>void
+  GetCurrentVersion:()=>number;
+}
+ /**
+ * @internal
+ */
+export type FullHistory = MeshFlowHistory & InternalMeshFlowHistory;
 /**
  * @group 类型管理
  * @category 错误类型

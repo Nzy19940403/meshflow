@@ -8,21 +8,33 @@ import { useOnError } from "../hooks/useOnError";
 import { useOnSuccess } from "../hooks/useOnSuccess";
 import { usePluginManager } from "../plugins/usePlugin";
 import { useOnStart } from "../hooks/useOnStart";
-import { EntangleArgType, MeshFlowHistory, MeshFlowTaskNode, MeshPath, SetRuleOptions, SuggestKey } from "../types/types";
+import { EntangleArgType, FullHistory, InternalMeshFlowHistory, MeshFlowHistory, MeshFlowTaskNode, MeshPath, SetRuleOptions, SuggestKey } from "../types/types";
 import { useScheduler } from "./useScheduler";
-import { KeysOfUnion } from "../utils/util";
+ 
  
  
 
+// type HistoryFactory = {
+//     (maxStep?: number): ()=>MeshFlowHistory;
+//     isMeshModuleInited: boolean;
+// } 
+// type HistoryTool ={
+//     (): MeshFlowHistory;
+//     isMeshModuleInited: boolean;
+// }
+
+type HistoryTool = {
+    (getEngineCtx: () => {
+        batchNotify: (updates: any[]) => void;
+    }): FullHistory;
+    isMeshModuleInited: boolean;
+};
+  
+  // 🌟 历史模块的默认工厂函数（未初始化状态）
 type HistoryFactory = {
-    (maxStep?: number): ()=>MeshFlowHistory;
+    (maxStep?: number): HistoryTool; // 执行后返回 HistoryTool
     isMeshModuleInited: boolean;
-} 
-type HistoryTool ={
-    (): MeshFlowHistory;
-    isMeshModuleInited: boolean;
-}
- 
+};
 
 /**
  * 🌟 入口函数
@@ -84,7 +96,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
 
     let uidToLevelMap: Map<number, number> = new Map();
 
-    let isReady: boolean = false;
+    // let isReady: boolean = false;
 
     const {
         GetNextDependency,
@@ -102,39 +114,53 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
        
     );
 
-    const historyInternalModule: {
-        pushIntoHistory?: MeshFlowHistory['PushIntoHistory'];
-        createHistoryAction?: MeshFlowHistory['CreateHistoryAction'];
-    } = {};
-    let historyExports:Partial<Exclude<MeshFlowHistory,'pushIntoHistory'|'createHistoryAction'>> = {}
+    const historyInternalModule: InternalMeshFlowHistory = {} as any;
+
+    // 2. 暴露给 UI 的 API (白名单模式)
+    let historyExports: MeshFlowHistory = {} as MeshFlowHistory;
    
     if (options.modules.useHistory) {
         
         const historyFactory = options.modules.useHistory;
-        let historyApi: ()=>MeshFlowHistory;
+    
+        // 定义严格的注入签名：只允许访问 batchNotify
+        let initHistoryFn: (getEngineCtx: () => {
+            batchNotify: (updates: any[]) => void;
+        }) => FullHistory;
 
         // 核心逻辑：检测是否已经手动初始化
         if (historyFactory.isMeshModuleInited) {
-            // 已初始化：无参调用获取当前实例
-            historyApi = (historyFactory as HistoryTool); 
+            // 已初始化：比如用户传了 useHistory(50)
+            initHistoryFn = historyFactory as HistoryTool;; 
         } else {
-            // 未初始化：由引擎以默认 100 步进行初始化
-            historyApi = (historyFactory as HistoryFactory)() ; 
+            // 未初始化：用户直接传了 useHistory，由引擎以默认 100 步进行初始化
+            initHistoryFn = (historyFactory as HistoryFactory)(); 
         }
  
+        // 🌟 核心大换血：执行依赖注入！
         const {
             Undo,
             Redo,
-            PushIntoHistory,
-            CreateHistoryAction,
+            StartTransaction,
+            CommitTransaction,
+            RecordMutation,
+            GetCurrentVersion,
+            RecordSilentMutation,
             updateUndoSize,
             updateRedoSize,
-        } = historyApi();
+        } = initHistoryFn(
+            // 💡 修复点：彻底移除 getNode 和 requestUpdate，只塞入 batchNotify
+            () => ({
+                batchNotify: (updates: any[]) => batchNotify(updates)
+            })
+        );
 
         // 内部调度使用
-        historyInternalModule.pushIntoHistory = PushIntoHistory;
-        historyInternalModule.createHistoryAction = CreateHistoryAction;
-     
+        historyInternalModule.StartTransaction = StartTransaction;
+        historyInternalModule.CommitTransaction = CommitTransaction;
+        historyInternalModule.RecordMutation = RecordMutation;
+        historyInternalModule.GetCurrentVersion = GetCurrentVersion
+        historyInternalModule.RecordSilentMutation = RecordSilentMutation
         // 外部 UI 使用
         historyExports = {
             Undo,
@@ -216,14 +242,16 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         GetGroupByPath,
         GetNodeByPath,
         GetNodeByUid,
+        batchNotify,
         notifyAll,
         useEntangle,
         updateEntangleLevel,
 
         dispose,
         stageValueFn,
-        refreshTarget,
-        SettleTasks
+ 
+        SettleTasks,
+        SilentSet,
     } = scheduler;
 
     if(isRenderGateRegistered){
@@ -255,21 +283,6 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         const { SetValidators } = options.modules.useSchemaValidators<P>(GetNodeByPath);
         validatorExports = { SetValidators };
     }
-    const SilentSet = (path: P,key:SuggestKey<NM>, value: any)=>{
-    
-        const node = GetNodeByPath(path);
-        if (!node) {
-            return false;
-        }
-
-        if (Object.is(node.state[key], value)) return false;
-
-        // 3. 物理覆写（不触碰任何引擎核心依赖）
-        node.state[key] = value;
-        refreshTarget(node.uid);
-        return true; 
-    }
- 
  
     const { SetRule, SetRules } = useSetRule<P,NM>(
         GetNodeByPath,
@@ -378,7 +391,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         
         CheckCycleInGraph();
         await notifyAll();
-        isReady = true;
+        // isReady = true;
     };
 
     const useEntangleWrapper = <State = any>(config: EntangleArgType<P,State,NM>)=>{

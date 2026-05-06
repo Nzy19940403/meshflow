@@ -7,9 +7,12 @@ import {
     MeshFlowEventsName,
     NodeStatus,
     SuggestKey,
+ 
+    InternalMeshFlowHistory,
 } from "../types/types";
 import { SchemaBucket } from "./bucket";
 import {createTransactionScheduler} from './useTransactionSchduler'
+
 
 type MeshTask<NM> = {
     TaskRunner: (triggerUid: number | null, initialNodes: number[]) => Promise<void>,
@@ -49,7 +52,8 @@ function useMeshTask<P extends MeshPath, NM> (
         flushPathSet: Set<number>;
     },
     timeScheduler: ReturnType<typeof createTimeScheduler>,
-    taskSchduler:ReturnType<typeof createTransactionScheduler>
+    taskSchduler:ReturnType<typeof createTransactionScheduler>,
+    history:InternalMeshFlowHistory,
 ): MeshTask<NM> {
     const currentExecutionToken: Map<P, symbol> = new Map();
 
@@ -234,7 +238,8 @@ function useMeshTask<P extends MeshPath, NM> (
 
         //scheduler重置
         timeScheduler.reset();
-        data.Turnstile.nextEpoch();
+        data.Turnstile.reset();
+   
 
         const maxUid = data.GetMaxUid() + 3;
         ensureCapacity(maxUid);
@@ -283,6 +288,7 @@ function useMeshTask<P extends MeshPath, NM> (
         // 预言弹药库：只在阶段三集中引爆
         // ==========================================================
         const currentEntangleArray: number[] = [];
+        const nextEntangleArray: number[] = [];
 
         const turnstile = data.Turnstile;
 
@@ -297,14 +303,21 @@ function useMeshTask<P extends MeshPath, NM> (
             
             let hasInjected = false;
             let minInjectedLevel = Infinity; // 记录注入节点的最低水位
-        
+            const recordFn = history.RecordMutation ? history.RecordMutation : null;
             while (stageBuffer.length > 0) {
                 const { uid, key, value } = stageBuffer.shift()!;
                 const node = data.GetNodeByUid(uid);
                 if (!stagedBufferUids.includes(uid)) stagedBufferUids.push(uid);
                 if (!Object.is(node.state[key], value)) {
                     hasInjected = true;
-                    
+                    if (recordFn) {
+                        recordFn(
+                            data.GetPathByUid(uid) as string, 
+                            key as string, 
+                            node.state[key], 
+                            value
+                        );
+                    }
                     // 1. 物理写值
                     node.state[key] = value;
                     uitrigger.flushPathSet.add(uid);
@@ -369,6 +382,9 @@ function useMeshTask<P extends MeshPath, NM> (
             ghostBaton.fill(null);
             isTaskActive = false; 
             quantumWatermark = -1;
+
+            currentEntangleArray.length = 0;
+            nextEntangleArray.length = 0;
         };
 
         // ==========================================================
@@ -405,7 +421,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
         // 获取初始水位线（触发点所在层级）
         const uidToLevelMap = dependency.GetUidToLevelMap();
-
+    
         // const triggerLevel = pathToLevelMap.get(triggerPath) ?? 0;
         let currentLevel = 0;
         let maxAffectedLevel = 0;
@@ -444,6 +460,7 @@ function useMeshTask<P extends MeshPath, NM> (
         if(timeScheduler.shouldYield()){
             uitrigger.requestUpdate();
             await timeScheduler.yieldToMain();
+            if (currentExecutionToken.get(triggerToken) !== curToken) return;
         }
         
 
@@ -618,15 +635,12 @@ function useMeshTask<P extends MeshPath, NM> (
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
             //reasontype -> 1:上游 ${targetPath} 值变了 2: 当上游值没有变但是下游节点已经在stagingArea的时候`上游 ${targetPath} 完成(穿透)`
             const tryActivateChild = (childUid: number, reasonType: number) => {
-                // if((targetPath as any).includes('Renew2')){
-                //     debugger
-                // }
                 const childLevel = uidToLevelMap.get(childUid) ?? 0;
                 //用uid拿到node节点
                 const childNode = data.GetNodeByUid(childUid);
          
                 const childPath = data.GetPathByUid(childUid);
-
+           
                 // 核心判断：当前这个子节点，是不是处于“震荡辐射区”？
                 const isInRepercussionZone =
                     (originalCause === TriggerCause.INVERSION ||
@@ -648,12 +662,14 @@ function useMeshTask<P extends MeshPath, NM> (
                 }
 
                 let newResistance = 0;
+
+                const currentStatus = flagArray[childUid];
                 // 1. 如果已经处理过或正在处理，直接忽略
                 if (
-                    flagArray[childUid] & (NodeStatus.PROCESSED | NodeStatus.PROCESSING | NodeStatus.READY)
+                    currentStatus & (NodeStatus.PROCESSED | NodeStatus.PROCESSING | NodeStatus.READY)
                 ) {
-                    // 这里可以 emit 一个 intercept，但对于性能优化可以省略
-                    return;
+                   
+                    return
                 }
 
                 // 2. 阻力计算策略：惰性初始化 vs 递减
@@ -849,11 +865,12 @@ function useMeshTask<P extends MeshPath, NM> (
                     if (currentExecutionToken.get(triggerToken) !== curToken) return;
                      
                     if (hitTargetUids && hitTargetUids.length > 0) {
-                        currentEntangleArray.push(...hitTargetUids);
-                        quantumWatermark = Math.max(
-                            quantumWatermark,
-                            uidToLevelMap.get(targetUid) || 0
-                        );
+                        nextEntangleArray.push(...hitTargetUids);
+                        // currentEntangleArray.push(...hitTargetUids);
+                        // quantumWatermark = Math.max(
+                        //     quantumWatermark,
+                        //     uidToLevelMap.get(targetUid) || 0
+                        // );
                     }
 
                     // 清理脏位回收池，避免影响下次使用
@@ -890,12 +907,13 @@ function useMeshTask<P extends MeshPath, NM> (
                     //  动态屏障判定 (本层有静态风险，或当前已有活跃的预言)
                     const targetLevel = uidToLevelMap.get(targetUid) ?? 0;
                     const isLevelBarrierActive =
-                        volatileLevels.has(targetLevel) || currentEntangleArray.length > 0;
+                        volatileLevels.has(targetLevel) || currentEntangleArray.length > 0 || nextEntangleArray.length>0 ;
 
                     // 3.2 激活下游 (Try Activate Children)
                     for (const childUid of directChildren) {
                         const childLevel = uidToLevelMap.get(childUid) ?? 0;
                         const childPath = data.GetPathByUid(childUid);
+                    
                         // 屏障拦截：本层有预言风险且孩子是下游，则绝对禁止穿透，直接强制挂起为平民
                         if (isLevelBarrierActive && childLevel >= targetLevel) {
                             // if (!resureArea.has(childLevel))
@@ -916,17 +934,29 @@ function useMeshTask<P extends MeshPath, NM> (
                             continue;
                         }
 
-                        
-                        // if (processed.has(childUid)) {
-                        // if (processed[childUid] === 1) {
+                        const shouldFire = hasNotifyKeyTriggered || notifyNext;
+           
                         if(flagArray[childUid] & NodeStatus.PROCESSED) {
-                            // hooks.emit( MeshFlowEventsName.NodeIntercept , { path: childPath, type: 2 });
 
-                            SHARED_PAYLOAD.path = childPath;
-                            SHARED_PAYLOAD.type = 2;
-                            hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
-
-                            continue;
+                            const childNode = data.GetNodeByUid(childUid);
+                            const isGhostlyNode = childNode.calledBy === TriggerCause.INVERSION;
+                             
+                            // 🌟 2. 核心后门：如果它是幽灵，并且上游传来了物理强信号，允许它重塑肉身！
+                            if (shouldFire) {
+     
+                                // 抹除幽灵的已处理状态，这样它就不会被 continue 掉
+                                // 并且后续进入 tryActivateChild 时，也会被当做正常节点计算阻力！
+                                flagArray[childUid] &= ~NodeStatus.PROCESSED; 
+                                SHARED_PAYLOAD.path = childPath;
+                                SHARED_PAYLOAD.triggerPath = targetPath;
+                                hooks.emit(MeshFlowEventsName.NodeRevive, SHARED_PAYLOAD);
+                            } else {
+                                // 正常情况下的已处理节点，或者虽然是幽灵但只是弱信号，老老实实拦截
+                                SHARED_PAYLOAD.path = childPath;
+                                SHARED_PAYLOAD.type = 2;
+                                hooks.emit(MeshFlowEventsName.NodeIntercept, SHARED_PAYLOAD);
+                                continue;
+                            }
                         }
                         if (
                             // processingSet.has(childUid) || 
@@ -949,11 +979,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
                             continue;
                         }
-                         
-
-                        // hasValueChanged
-                        const shouldFire = hasNotifyKeyTriggered || notifyNext;
-
+ 
                         if (shouldFire) {
                             // 强影响逻辑
 
@@ -1157,9 +1183,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName as SuggestKey<NM>]);
-
-                    effectsToRun.push(...bucket.getSideEffect());
-
+ 
                     // 🛡️ 预言拦截：如果被量子纠缠唤醒，跳过自身推演逻辑！
                     if (isGhostly) {
                         hooks.emit(MeshFlowEventsName.NodeBucketSuccess , {
@@ -1174,7 +1198,8 @@ function useMeshTask<P extends MeshPath, NM> (
                         }
                         continue;
                     }
-                  
+
+                    effectsToRun.push(...bucket.getSideEffect());
                     // 1. 启动计算
                     const resultOrPromise = bucket.evaluate({
                         affectKey: bucketName,
@@ -1469,17 +1494,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                     hooks.emit(MeshFlowEventsName.NodeRelease,SHARED_PAYLOAD)
                                     continue; // 捞起的不进 nextStagingCount
                                 }
-                                // 汇聚点守卫
-                                // if (level > currentLevel && staticParents.length > 1) continue;
-
-                                // stagingArea.delete(uid);
-                                // readyToRunBuffer.add(uid);
-                                // releasedCount++;
-                                // foundGreedy = true;
-                                // const path = data.GetPathByUid(uid)
-                                // hooks.emit(MeshFlowEventsName.NodeRelease , { path, type: 4 });
-
-                                // if (releasedCount >= NODE_QUOTA_PER_FRAME) break;
+ 
                             }
                             stagingQueue[nextStagingCount++] = uid;
                         }
@@ -1501,19 +1516,30 @@ function useMeshTask<P extends MeshPath, NM> (
                     // ==========================================================
                     // 阶段三：水位推进 (逻辑出口 A)
                     // ==========================================================
-                    // if (processingSet.size === 0 && readyToRunBuffer.size === 0) {
-                    // if (processingCount === 0 && readyToRunBuffer.size === 0) {
                     if (processingCount === 0 && readyActiveCount === 0) {    
-                        // ==========================================================
-                        // 量子纠缠处理：在水位提升前集中结算
-                        // ==========================================================
+                     
                       // 🛑 核心屏障：如果天上还有纠缠任务在飞，拒绝结算！
                         if (turnstile.inFlightCount > 0) {
                             // 直接跳出 while 循环！
                             // 引擎会顺滑地进入下方的 finally 块，触发 waitType = 3，
                             // 然后启动 requestAnimationFrame(monitor) 挂起等待。
-                            console.log('break')
+                            // console.log('break')
                             break; 
+                        }
+                        if(timeScheduler.shouldYield()){
+                            uitrigger.requestUpdate();
+                            await timeScheduler.yieldToMain();
+                            if (currentExecutionToken.get(triggerToken) !== curToken) break;
+                        }
+                        if (currentEntangleArray.length === 0 && nextEntangleArray.length > 0 ) {
+                            currentEntangleArray.push(...nextEntangleArray);
+                            nextEntangleArray.length = 0; // 清空未来缓冲区
+                            quantumWatermark = Math.max(
+                                ...currentEntangleArray.map(uid => uidToLevelMap.get(uid) || 0)
+                            );
+                            turnstile.nextEpoch();
+                            SHARED_PAYLOAD.timestamp = performance.now();
+                            hooks.emit(MeshFlowEventsName.EntangleEpochChange,SHARED_PAYLOAD);
                         }
                         if (currentEntangleArray.length > 0) {
                             let hasQuantumReversal = false;
@@ -1587,30 +1613,14 @@ function useMeshTask<P extends MeshPath, NM> (
                                 continue; // 有节点被唤醒，重新开始循环发车，绝不提升水位
                             }
                         }
-
-                        // // 找出最小的待处理层级
-                        // const pendingLevels = new Set<number>();
-                        // for (const lvl of resureArea.keys()) pendingLevels.add(lvl);
-                        // for (const [uid] of stagingArea) {
-                        //     const lvl = uidToLevelMap.get(uid) ?? 0;
-                        //     if (lvl > currentLevel) pendingLevels.add(lvl);
-                        // }
-
-                        // const sortedLevels = Array.from(pendingLevels).sort(
-                        //     (a, b) => a - b
-                        // );
-
+ 
                         // ==========================================================
                         // 极速优化：寻找最小的待处理层级 (Zero-Allocation 模式)
                         // ==========================================================
                         let nextLevel = Infinity; // 初始设为无限大
 
                         // 1. 从弱信号区 (resureArea) 找最低水位
-                        // for (const lvl of resureArea.keys()) {
-                        //     if (lvl < nextLevel) {
-                        //         nextLevel = lvl;
-                        //     }
-                        // }
+ 
                         for (let i = 0; i < resureCount; i++) {
                             const uid = resureQueue[i];
                             if ((flagArray[uid] & NodeStatus.RESURE)) {
@@ -1620,13 +1630,7 @@ function useMeshTask<P extends MeshPath, NM> (
                         }
 
                         // 2. 从强信号阻力区 (stagingArea) 找最低水位
-                        // for (const [uid] of stagingArea) { // 如果你已经把 stagingArea 改成了纯数组/Set，这里对应修改即可
-                        //     const lvl = uidToLevelMap.get(uid) ?? 0;
-                        //     // 条件：只有大于当前水位的节点才是合法阻力，且比当前找到的 nextLevel 还要小
-                        //     if (lvl > currentLevel && lvl < nextLevel) {
-                        //         nextLevel = lvl;
-                        //     }
-                        // }
+ 
                         for (let i = 0; i < stagingCount; i++) {
                             const uid = stagingQueue[i];
                             if ((flagArray[uid] & NodeStatus.STAGING)) {
@@ -1638,16 +1642,10 @@ function useMeshTask<P extends MeshPath, NM> (
                         }
 
                         if (nextLevel !== Infinity && nextLevel <= maxAffectedLevel) {
-                            // const nextLevel = sortedLevels[0];
-                            // if (nextLevel <= maxAffectedLevel) {
+ 
                                 currentLevel = nextLevel;
 
                                 // 捞弱信号
-                                // const rescueNodes = resureArea.get(nextLevel);
-                                // if (rescueNodes) {
-                                //     rescueNodes.forEach((p) => readyToRunBuffer.add(p));
-                                //     resureArea.delete(nextLevel);
-                                // }
                                 let nextResureCount = 0;
                                 for (let i = 0; i < resureCount; i++) {
                                     const uid = resureQueue[i];
@@ -1671,18 +1669,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                 resureCount = nextResureCount;
 
                                 // 捞被水位拦截的强信号
-                                // for (const [uid] of stagingArea) {
-                                //     if ((uidToLevelMap.get(uid) ?? 0) === nextLevel) {
-                                //         const path = data.GetPathByUid(uid);
-                                //         stagingArea.delete(uid);
-                                //         readyToRunBuffer.add(uid);
-                                //         hooks.emit( MeshFlowEventsName.NodeRelease , {
-                                //             path,
-                                //             type: 3,
-                                //             detail: { level: nextLevel },
-                                //         });
-                                //     }
-                                // }
+ 
                                 let nextStagingCount = 0;
                                 for (let i = 0; i < stagingCount; i++) {
                                     const uid = stagingQueue[i];
@@ -1711,18 +1698,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                 continue; // 推进水位后，重新循环发车
                             // }
                         } else {
-                            // resureArea.forEach((set, level) => {
-                            //     set.forEach((uid) => {
-                            //         // processed.add(uid);
-                            //         processed[uid] = 1;
-                            //         const path = data.GetPathByUid(uid);
-                            //         hooks.emit( MeshFlowEventsName.NodeIntercept , {
-                            //             path: path,
-                            //             type: 6,
-                            //         });
-                            //     });
-                            // });
-                            // resureArea.clear();
+ 
                             for (let i = 0; i < resureCount; i++) {
                                 const uid = resureQueue[i];
                                 if ((flagArray[uid] & NodeStatus.RESURE)) {
@@ -1738,16 +1714,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             resureCount = 0; resureActiveCount = 0;
 
                             // 2. 清除所有强信号 (StagingArea)
-                            // for (const [uid] of stagingArea) {
-                            //     // processed.add(uid);
-                            //     processed[uid] = 1;
-                            //     const path = data.GetPathByUid(uid);
-                            //     hooks.emit( MeshFlowEventsName.NodeIntercept , {
-                            //         path: path,
-                            //         type: 6,
-                            //     });
-                            // }
-                            // stagingArea.clear();
+ 
                             for (let i = 0; i < stagingCount; i++) {
                                 const uid = stagingQueue[i];
                                 if ((flagArray[uid] & NodeStatus.STAGING)) {
@@ -1812,6 +1779,21 @@ function useMeshTask<P extends MeshPath, NM> (
  
                 
                 if (remaining === 0 && asyncRemaining === 0) {
+                  
+                    if (stageBuffer.length > 0) {
+                        
+                        // 发现未处理的外部输入！
+                        applyStageValue(); // 把 stageBuffer 里的值并入节点，这会触发节点状态变为 READY
+                        
+                        // 并入之后，立刻安排下一波发车，千万不能结束！
+                        nextMacroTick(() => {
+                            if (globalLatestSessionToken === curToken) {
+                                flushQueue(); 
+                            }
+                        });
+                        return; // 截断下面的 FlowSuccess 逻辑！
+                    }
+
                     if (
                         currentExecutionToken.get(triggerToken) === curToken &&
                         !isFlowFinished
@@ -1852,8 +1834,10 @@ function useMeshTask<P extends MeshPath, NM> (
                         SHARED_PAYLOAD.duration = (performance.now() - startTime);
                         hooks.emit(MeshFlowEventsName.FlowSuccess,SHARED_PAYLOAD)
                         console.log('success');
+                        currentEntangleArray.length = 0;
+                        nextEntangleArray.length = 0;
                         Promise.resolve().then(() => {
-                             
+                            turnstile.commit()
                             hooks.callOnSuccess();
                         });
                     } 
@@ -1894,8 +1878,8 @@ function useMeshTask<P extends MeshPath, NM> (
                                     // 账平了！重新调起主引擎收割
                                     applyStageValue();
                                     //发射纪元变更事件
-                                    SHARED_PAYLOAD.timestamp = performance.now();
-                                    hooks.emit(MeshFlowEventsName.EntangleEpochChange,SHARED_PAYLOAD);
+                                    // SHARED_PAYLOAD.timestamp = performance.now();
+                                    // hooks.emit(MeshFlowEventsName.EntangleEpochChange,SHARED_PAYLOAD);
                                     
                                     nextMacroTick(() => {
                                         if (globalLatestSessionToken === curToken) {
@@ -1912,7 +1896,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             
                                 } else {
                                     // 🌟 证明：只有在幽灵还在飞 (>0) 时，才会执行这里的打印和递归
-                                    // console.log('monitor flighting:', turnstile.inFlightCount);
+                             
                                     requestAnimationFrame(monitor); 
                                 }
                             };

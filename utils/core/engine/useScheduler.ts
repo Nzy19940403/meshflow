@@ -445,7 +445,7 @@
 // }
 
 
-import { DependOnContext, MeshEmit, MeshError, MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, StandardUITrigger, SuggestKey, TransactionArray } from "../types/types";
+import { DependOnContext, InternalMeshFlowHistory, MeshEmit, MeshError, MeshFlowGroupNode, MeshFlowHistory, MeshFlowTaskNode, MeshPath, StandardUITrigger, SuggestKey, TransactionArray } from "../types/types";
 import { useMeshTask } from "./useMeshTask";
 import { createMeshNode } from './useMeshNode';
 import { KeysOfUnion, createTimeScheduler } from "../utils/util";
@@ -489,7 +489,7 @@ export class MeshScheduler<
     constructor(
         public config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number },
         public dependency: any, // 保持你的完整类型
-        public history: Partial<{ pushIntoHistory: any; createHistoryAction: any; }>,
+        public history:InternalMeshFlowHistory,
         public hooks: { callOnError: any; callOnSuccess: any; callOnStart: any; emit: MeshEmit; },
         public UITrigger: B
     ) {
@@ -504,7 +504,7 @@ export class MeshScheduler<
                 callOnError: this.hooks.callOnError
             }
         );
-
+ 
         // 🌟 初始化子系统，全部传入绑定了 this 的方法
         this.entangleSystem = UseSetEntangle<P, NM>(
             { useEntangleStep: this.config.useEntangleStep },
@@ -513,7 +513,8 @@ export class MeshScheduler<
             (p: P) => this.GetNodeByPath(p),
             (u: number) => this.GetNodeByUid(u),
             (u: number) => this.GetPathByUid(u),
-            { emit: this.hooks.emit, onError: this.hooks.callOnError }
+            { emit: this.hooks.emit, onError: this.hooks.callOnError },
+            history
         );
         this.useEntangle = this.entangleSystem.useEntangle;  
         this.updateEntangleLevel = this.entangleSystem.updateEntangleLevel;
@@ -535,7 +536,8 @@ export class MeshScheduler<
                 flushPathSet: this.flushPathSet,
             },
             this.timeScheduler,
-            this.taskSchduler
+            this.taskSchduler,
+            this.history
         );
         this.dispose = ()=>{
             this.meshTaskSystem.CancelTask();
@@ -606,25 +608,38 @@ export class MeshScheduler<
 
         const newVal = cb(dependOnContext);
         const schemaNode = this.GetNodeByUid(uid);
-        
-        if (Object.is(schemaNode.state[key as string], newVal)) return;
+        const oldVal = schemaNode.state[key];
+        if (Object.is(oldVal, newVal)) return;
 
-        if (this.history.createHistoryAction && this.history.pushIntoHistory) {
-            const item = this.history.createHistoryAction(
-                [
-                    { path: path, value: schemaNode.state[key as string] },
-                    { path: path, value: newVal },
-                ],
-                (metadata: { path: P; value: any }) => {
-                    let data = this.GetNodeByPath(metadata.path);
-                    data.state[key as string] = metadata.value;
-                    this.notify(metadata.path);
-                }
+        // if (this.history.createHistoryAction && this.history.pushIntoHistory) {
+        //     const item = this.history.createHistoryAction(
+        //         [
+        //             { path: path, value: schemaNode.state[key as string] },
+        //             { path: path, value: newVal },
+        //         ],
+        //         (metadata: { path: P; value: any }) => {
+        //             let data = this.GetNodeByPath(metadata.path);
+        //             data.state[key as string] = metadata.value;
+        //             this.notify(metadata.path);
+        //         }
+        //     );
+        //     this.history.pushIntoHistory(item);
+        // }
+        
+        if( this.history.StartTransaction){
+            this.history.StartTransaction();  
+        }
+        if (this.history.RecordMutation) {
+             
+            this.history.RecordMutation(
+                path, 
+                key, 
+                oldVal, 
+                newVal
             );
-            this.history.pushIntoHistory(item);
         }
 
-        schemaNode.state[key as string] = newVal;
+        schemaNode.state[key] = newVal;
         this.notify(path);
     }
 
@@ -729,6 +744,7 @@ export class MeshScheduler<
         this.requestUpdate();
 
         let nextOrder = this.dependency.GetNextDependency(inDegree.uid);
+
         this.meshTaskSystem.TaskRunner(inDegree.uid, nextOrder);
     }
 
@@ -750,48 +766,56 @@ export class MeshScheduler<
 
     public batchNotify = (updates: { path: P; key: SuggestKey<NM>; value: any }[]) => {
         if (!updates || updates.length === 0) return;
-
-        if (this.history.createHistoryAction && this.history.pushIntoHistory) {
-            const item = this.history.createHistoryAction(
-                [
-                    updates.map(u => ({ path: u.path, key: u.key, value: (this.GetNodeByPath(u.path).state as any)[u.key as string] })),
-                    updates.map(u => ({ path: u.path, key: u.key, value: u.value }))
-                ],
-                (metadataArray: any[]) => {
-                    const undoRoots = new Set<number>();
-                    metadataArray.forEach(meta => {
-                        let data = this.GetNodeByPath(meta.path);
-                        (data.state as any)[meta.key] = meta.value;
-                        this.flushPathSet.add(data.uid);
-                        undoRoots.add(data.uid);
-                    });
-                    this.requestUpdate();
-                    if (undoRoots.size > 0) {
-                        this.meshTaskSystem.TaskRunner(null, Array.from(undoRoots));
-                    }
-                }
-            );
-            this.history.pushIntoHistory(item);
-        }
-
+ 
         const updateRoots = new Set<number>();
         updates.forEach(update => {
             let node = this.GetNodeByPath(update.path);
-            (node.state as any)[update.key as string] = update.value;
+            const oldVal = (node.state as any)[update.key as string];
+            const newVal = update.value;
+
+            if (this.history.RecordMutation) {
+                this.history.RecordMutation(
+                    update.path, 
+                    update.key, 
+                    oldVal, 
+                    newVal
+                );
+            }
+
+            // 3. 真正修改节点的值
+            (node.state as any)[update.key as string] = newVal;
+            
+            // 4. 收集脏节点，准备触发推演
             this.flushPathSet.add(node.uid);
             updateRoots.add(node.uid);
         });
-
+         
         this.requestUpdate();
-
+       
         if (updateRoots.size > 0) {
             this.meshTaskSystem.TaskRunner(null, Array.from(updateRoots));
         }
     }
 
-    public refreshTarget = (uid: number)=> {
-        this.flushPathSet.add(uid);
+    public SilentSet = (path: P,key:SuggestKey<NM>, value: any)=>{
+     
+        const node = this.GetNodeByPath(path);
+        if (!node) {
+            return false;
+        }
+        const oldVal = node.state[key];
+        if (Object.is(oldVal, value)) return false;
+       
+        if (this.history.RecordSilentMutation) {
+            this.history.RecordSilentMutation(path as string, key as string, oldVal, value);
+        }
+        // 3. 物理覆写（不触碰任何引擎核心依赖）
+        node.state[key] = value;
+       
+        this.flushPathSet.add(node.uid);
+        return true; 
     }
+ 
 }
 
 /**
@@ -806,7 +830,8 @@ export function useScheduler<
 >(
     config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number },
     dependency: any,
-    history: Partial<{ pushIntoHistory: any; createHistoryAction: any; }>,
+    // history: Partial<{ pushIntoHistory: any; createHistoryAction: any; }>,
+    history:InternalMeshFlowHistory,
     hooks: { callOnError: any; callOnSuccess: any; callOnStart: any; emit: MeshEmit; },
     UITrigger: B
 ) {

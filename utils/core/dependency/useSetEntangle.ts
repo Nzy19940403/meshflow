@@ -7,7 +7,9 @@ import {
   MeshErrorContext,
   GhostProposalApi,
   EntangleOp,
-  MeshFlowEventsName
+  MeshFlowEventsName,
+  MeshFlowHistory,
+  InternalMeshFlowHistory
 } from "../types/types";
 import { createTimeScheduler } from "../utils/util";
 
@@ -30,13 +32,16 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   hooks: {
     emit: MeshEmit,
     onError: (error: MeshErrorContext) => void
-  }
+  },
+  history:InternalMeshFlowHistory
 ) => {
   const MAX_ENTANGLE_DEPTH = config.useEntangleStep;
 
   const _registry: Array<Map<MeshPath, EntangleLink<P,NM>[]>> = [];
   const _ghostBuffer: Array<EntangleGhost[]> = [];
   const _volatileLevels = new Set<number>();
+
+  const _entangleMutations = new Map<string, { path: any; key: any; oldVal: any; newVal: any }>();
 
   const _GetNodeByPath = GetNodeByPath;
   const _GetNodeByUid = GetNodeByUid;
@@ -252,11 +257,14 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
 
     nextEpoch: () => {
       currentEpoch++; // 历史长河往前走一步，之前的幽灵全部沦为“前朝丧尸”
+ 
+    },
+    reset:()=>{
+      currentEpoch=0;
       activeAsyncCount = 0; // 旋转门本朝计数瞬间清零
       pendingGhostNodesCount = 0; // 待结算幽灵节点数清零
-      _ghostBuffer.length = 0; // 极速清空数组，抹杀任何已经在缓冲区但还没 resolve 的前朝提议
+      _ghostBuffer.length = 0; 
     },
-
     hasObserver: (uid: number) => {
       return _registry[uid] !== undefined;
     },
@@ -367,7 +375,9 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       for (const key in proposalsByKey) {
         const proposals = proposalsByKey[key];
         let finalValue = node.state[key];
-        
+
+        const originalValue = finalValue;
+
         let bestSetVal: any;
         let bestSetWeight = -Infinity;
         let hasSet = false;
@@ -421,6 +431,19 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       
         if (!Object.is(node.state[key], finalValue)) {
           node.state[key] = finalValue;
+          const compositeKey = `${node.path as string}::${key}`;
+          if (!_entangleMutations.has(compositeKey)) {
+            // 如果是当前事务第一次修改这个节点，记录它的“初恋值”
+            _entangleMutations.set(compositeKey, {
+              path: node.path as string,
+              key: key,
+              oldVal: originalValue,
+              newVal: finalValue
+            });
+          } else {
+            // 如果这个节点已经被纠缠修改过多次（震荡中），只更新它的“现任值”
+            _entangleMutations.get(compositeKey)!.newVal = finalValue;
+          }
           changedKeys.push(key);
         }
       }
@@ -444,6 +467,38 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
         }
       }
     },
+    commit:()=>{
+       
+      if(!(history && history.GetCurrentVersion))  return;
+      if(!(history.CommitTransaction))  return;
+      if(!(history.RecordMutation))  return;
+  
+     
+      const ver = history.GetCurrentVersion();
+        
+      for (const mutation of _entangleMutations.values()) {
+        // 🛡️ 终极防线：如果一个节点在经历了 450 代震荡后，
+        // 最终算出来的值和最初的值居然一模一样（比如转了一圈抵消了）。
+        // 这种“无净位移”的变动，不需要塞进历史栈！
+         
+        if (!Object.is(mutation.oldVal, mutation.newVal)) {
+          
+          // 调用历史模块记录 (参数视你 History 模块实际接口而定，这里假设传对象)
+          history.RecordMutation(
+            mutation.path,
+            mutation.key,
+            mutation.oldVal,
+            mutation.newVal
+          );
+          
+        }
+      }
+
+      // 🌟 2. 极其重要：把本轮的事务快照物理清空，干干净净迎接下一次点火！
+      _entangleMutations.clear();
+      history.CommitTransaction(ver)
+   
+    }
   };
 
   return {
