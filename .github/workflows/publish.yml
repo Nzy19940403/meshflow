@@ -10,6 +10,7 @@ on:
       - 'utils/plugins/logger/package.json'
       - 'utils/plugins/meshPulse/package.json'
       - 'utils/plugins/meshRenderGate/package.json'
+      - 'utils/plugins/history/package.json'
       
   # 🌟 2. 手动触发：支持在 GitHub Actions 页面手动点击运行，并选择要强制发布的包
   workflow_dispatch:
@@ -30,8 +31,12 @@ on:
         description: '是否强制发布 MeshPulse 包?'
         type: boolean
         default: false
-      force_rendergate: # 🌟 新增：手动触发 rendergate
+      force_rendergate:  
         description: '是否强制发布 RenderGate 包?'
+        type: boolean
+        default: false
+      force_history: 
+        description: '是否强制发布 History 包?'
         type: boolean
         default: false
 
@@ -45,6 +50,7 @@ jobs:
       logger: ${{ steps.changes.outputs.logger }}
       meshPulse: ${{ steps.changes.outputs.meshPulse }}
       rendergate: ${{ steps.changes.outputs.rendergate }}
+      history: ${{ steps.changes.outputs.history }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -152,4 +158,23 @@ jobs:
       - run: npm install && npm run build:lib
       - name: 🚢 Publish RenderGate
         working-directory: ./lib-plugins/renderGate # ⚠️ 注意确认你的打包输出路径是否为这个
+        run: npm publish --access public --provenance
+        
+  publish-history:
+    needs: filter
+    if: ${{ needs.filter.outputs.history == 'true' || inputs.force_history == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install && npm run build:lib
+      - name: 🚢 Publish History
+        # ⚠️ 请确认你的打包输出路径。根据 meshPulse 的逻辑推测为：
+        working-directory: ./lib-plugins/history 
         run: npm publish --access public --provenance
