@@ -281,7 +281,6 @@ function useMeshTask<P extends MeshPath, NM> (
                 });
         });
  
-        // const ghostBaton: Array<MeshPath[] | null> = new Array(maxUid).fill(null);
         ghostBaton.fill(null,0,maxUid)
 
         // ==========================================================
@@ -291,10 +290,7 @@ function useMeshTask<P extends MeshPath, NM> (
         const nextEntangleArray: number[] = [];
 
         const turnstile = data.Turnstile;
-
-
-        // const dirtyKeysPool:Array<Array<MeshPath>> = new Array(maxUid).fill(null).map(() => []);
-        // const promisesPool:Array<Array<Promise<void>>> = new Array(maxUid).fill(null).map(() => []);
+ 
 
         const stagedBufferUids: number[] = [];
 
@@ -421,8 +417,6 @@ function useMeshTask<P extends MeshPath, NM> (
 
         // 获取初始水位线（触发点所在层级）
         const uidToLevelMap = dependency.GetUidToLevelMap();
-    
-        // const triggerLevel = pathToLevelMap.get(triggerPath) ?? 0;
         let currentLevel = 0;
         let maxAffectedLevel = 0;
         const updateWatermark = (uid: number) => {
@@ -434,6 +428,27 @@ function useMeshTask<P extends MeshPath, NM> (
                 }
             });
         };
+
+        //  锁定起始推演水位
+        if (typeof triggerUid==='number') {
+            currentLevel = uidToLevelMap.get(triggerUid) ?? 0;
+        } else {
+            currentLevel = Math.min(...initialNodes.map(p => uidToLevelMap.get(p) ?? 0));
+        }
+
+        const startTime = performance.now();
+        const p = typeof triggerToken==='number'?data.GetPathByUid(triggerToken):'__NOTIFY_ALL__'
+    
+        SHARED_PAYLOAD.path = p;
+        SHARED_PAYLOAD.token =curToken;
+        hooks.emit(MeshFlowEventsName.FlowStart,SHARED_PAYLOAD)
+
+        //调用开始钩子
+        hooks.callOnStart({
+            path: p,
+        });
+    
+        let isFlowFinished = false;
         applyStageValue();
        // ==========================================================
         // 阶段 0：源力探针 (Prime Mover Prophecy)
@@ -535,26 +550,26 @@ function useMeshTask<P extends MeshPath, NM> (
             }
         });
 
-        // 4. 锁定起始推演水位
-        if (typeof triggerUid==='number') {
-            currentLevel = uidToLevelMap.get(triggerUid) ?? 0;
-        } else {
-            currentLevel = Math.min(...initialNodes.map(p => uidToLevelMap.get(p) ?? 0));
-        }
+        // // 4. 锁定起始推演水位
+        // if (typeof triggerUid==='number') {
+        //     currentLevel = uidToLevelMap.get(triggerUid) ?? 0;
+        // } else {
+        //     currentLevel = Math.min(...initialNodes.map(p => uidToLevelMap.get(p) ?? 0));
+        // }
 
-        const startTime = performance.now();
-        const p = typeof triggerToken==='number'?data.GetPathByUid(triggerToken):'__NOTIFY_ALL__'
-        // hooks.emit(MeshFlowEventsName.FlowStart, { path: p , token:curToken });
-        SHARED_PAYLOAD.path = p;
-        SHARED_PAYLOAD.token =curToken;
-        hooks.emit(MeshFlowEventsName.FlowStart,SHARED_PAYLOAD)
+        // const startTime = performance.now();
+        // const p = typeof triggerToken==='number'?data.GetPathByUid(triggerToken):'__NOTIFY_ALL__'
+   
+        // SHARED_PAYLOAD.path = p;
+        // SHARED_PAYLOAD.token =curToken;
+        // hooks.emit(MeshFlowEventsName.FlowStart,SHARED_PAYLOAD)
 
-        //调用开始钩子
-        hooks.callOnStart({
-            path: p,
-        });
+        // //调用开始钩子
+        // hooks.callOnStart({
+        //     path: p,
+        // });
 
-        let isFlowFinished = false;
+        // let isFlowFinished = false;
 
 
         const executorNodeCalculate = (targetUid: number, currentTriggerUid: number | null) => {
