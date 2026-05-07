@@ -62,7 +62,8 @@ jobs:
             logger: 'utils/plugins/logger/package.json'
             meshPulse: 'utils/plugins/meshPulse/package.json'
             rendergate: 'utils/plugins/meshRenderGate/package.json'
-
+            history: 'utils/plugins/history/package.json'
+            
   # 📦 发布 Core 包
   publish-core:
     needs: filter
@@ -159,7 +160,7 @@ jobs:
       - name: 🚢 Publish RenderGate
         working-directory: ./lib-plugins/renderGate # ⚠️ 注意确认你的打包输出路径是否为这个
         run: npm publish --access public --provenance
-        
+
   publish-history:
     needs: filter
     if: ${{ needs.filter.outputs.history == 'true' || inputs.force_history == true }}
