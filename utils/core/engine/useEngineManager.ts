@@ -71,7 +71,7 @@ export type MapModuleToReturn<K, F, P extends MeshPath> =
           }
         ) => void;
       }
-    : K extends "useHistory" | "history" | "useMeshRenderGate" | "meshRenderGate"
+    : K extends "useHistory" | "useMeshRenderGate" | "meshRenderGate"
     ? F extends (...args: any) => infer R
       ? R extends (...args: any) => infer R2
         ? R2
@@ -147,7 +147,7 @@ const useMeshFlow = <
   options: {
     metaType?: NM;
     config?: {
-      useGreedy: boolean;
+      useGreedy?: boolean;
       useEntangleStep?:number,
       NODE_QUOTA_PER_FRAME?:number
     };
@@ -166,7 +166,7 @@ const useMeshFlow = <
     }
 
     const EngineInstance = useEngineInstance<T, P, S, M, NM>(Schema, {
-      config: options.config || { useGreedy: false },
+      config: { useGreedy: false,...(options.config||{}) },
       UITrigger: options.UITrigger,
       modules: options.modules ?? ({} as M),
       plugins: {},
@@ -322,6 +322,7 @@ const useMeshFlow = <
           render: batchRenderExport, // 将你的网关导出传递进去
         },
       });
+      
     }
  
     engineMap.set(id, finalEngine);
