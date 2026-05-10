@@ -16,18 +16,18 @@ export interface HistoryMethods {
   updateUndoSize: (cb: (newVal: number) => void) => void;
   updateRedoSize: (cb: (newVal: number) => void) => void;
 
-  StartTransaction: () => void;
-  CommitTransaction: (version: number) => void;
-  AbortTransaction: () => void;
+  // StartTransaction: () => void;
+  // CommitTransaction: (version: number) => void;
+  // AbortTransaction: () => void;
 
-  GetCurrentVersion: () => number;
+  // GetCurrentVersion: () => number;
 
-  // 🌟 神级重载：单点更新 0 内存分配，批量更新支持数组
-  RecordMutation(path: string, key: string, oldVal: any, newVal: any): void;
-  RecordMutation(mutations: MutationData[]): void;
+  // // 🌟 神级重载：单点更新 0 内存分配，批量更新支持数组
+  // RecordMutation(path: string, key: string, oldVal: any, newVal: any): void;
+  // RecordMutation(mutations: MutationData[]): void;
 
-  // 🌟 专供 SilentSet 使用的潜行记账 API
-  RecordSilentMutation(path: string, key: string, oldVal: any, newVal: any): void;
+  // // 🌟 专供 SilentSet 使用的潜行记账 API
+  // RecordSilentMutation(path: string, key: string, oldVal: any, newVal: any): void;
 }
 
 export type HistoryInitializer = (getEngineCtx: () => EngineContext) => HistoryMethods;
@@ -84,6 +84,7 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
 
     return {
       Undo: () => {
+         
         if (!historyUndoList.length || isRestoring) return;
         const actionItem = historyUndoList.pop()!;
         
@@ -192,6 +193,7 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
       },
 
       CommitTransaction: (version: number) => {
+         
         if (!isTransactionActive || version !== currentVersion) return;
         isTransactionActive = false; // 关门结算
          
@@ -218,7 +220,7 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
             );
           }
         };
-
+         
         historyRedoList.length = 0;
         historyUndoList.push(batchedAction);
         if (historyUndoList.length > currentMaxStep) historyUndoList.shift();
