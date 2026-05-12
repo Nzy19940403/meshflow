@@ -1029,11 +1029,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     }
 
                     // 3.3 清理现场 & 尝试点火 (Flush Queue)
-                    // processingSet.delete(targetUid);
-                    // if(processingSet[targetUid]===1){
-                    //    processingSet[targetUid] = 0; 
-                    //    processingCount-- ;
-                    // }
+ 
                     if( flagArray[targetUid] & NodeStatus.PROCESSING  ){
                         flagArray[targetUid] &= ~NodeStatus.PROCESSING;
                         processingCount--;
@@ -1051,18 +1047,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             // const pendingnums = readyToRunBuffer.size;
                             const pendingnums = readyActiveCount;
                             const blockednums = stagingActiveCount;
-
-                            // hooks.emit(MeshFlowEventsName.FlowFire , {
-                            //     path: targetPath,
-                            //     type: 1,
-                            //     detail: {
-                            //         active: activenums,
-                            //         pending: pendingnums,
-                            //         // blocked: stagingArea.size,
-                            //         blocked:blockednums
-                            //     },
-                            // });
-
+ 
                             SHARED_PAYLOAD.path = targetPath;
                             SHARED_PAYLOAD.type = 1;
                             SHARED_DETAIL.active = activenums;
@@ -1174,7 +1159,7 @@ function useMeshTask<P extends MeshPath, NM> (
                 }
 
                 const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName]);
-                if (bucket.isForceNotify()) notifyNext = true;
+                if (bucket._isForceNotify()) notifyNext = true;
 
                 if (hasNotifyKeyTriggered || notifyNext) {
                     updateWatermark(targetUid);
@@ -1207,16 +1192,16 @@ function useMeshTask<P extends MeshPath, NM> (
                             value: targetSchema.state[bucketName],
                             calledBy: targetSchema.calledBy,
                         });
-                        if (bucket.isForceNotify()) notifyNext = true;
+                        if (bucket._isForceNotify()) notifyNext = true;
                         if ( targetSchema.notifyKeys.size === 0 || targetSchema.notifyKeys.has(bucketName)) {
                             updateWatermark(targetUid);
                         }
                         continue;
                     }
 
-                    effectsToRun.push(...bucket.getSideEffect());
+                    effectsToRun.push(...bucket._getSideEffect());
                     // 1. 启动计算
-                    const resultOrPromise = bucket.evaluate({
+                    const resultOrPromise = bucket._evaluate({
                         affectKey: bucketName,
                         triggerUid: currentTriggerUid,
 
@@ -1848,7 +1833,7 @@ function useMeshTask<P extends MeshPath, NM> (
                         SHARED_PAYLOAD.token = curToken;
                         SHARED_PAYLOAD.duration = (performance.now() - startTime);
                         hooks.emit(MeshFlowEventsName.FlowSuccess,SHARED_PAYLOAD)
-                        console.log('success');
+                        // console.log('success');
                         currentEntangleArray.length = 0;
                         nextEntangleArray.length = 0;
                         Promise.resolve().then(() => {

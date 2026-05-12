@@ -354,7 +354,6 @@ export const ExecuteMeshRule = (rule: any, api: any) => {
     
     const hasTriggerKeys = triggerKeys && triggerKeys.length > 0;
  
-
     // 纯粹的 O(1) 指针赋值，没有任何数组或对象的重新分配
     for (let i = 0; i < triggerUids.length; i++) {
         const uid = triggerUids[i];
@@ -504,7 +503,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             node.setRule(newRule, DepsArray);
             
             if (options.effect) {
-                node.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                node._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
         } else {
             const baseValue = (inDegree.meta as any)[key];
@@ -512,7 +511,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             newBucket.setRule(newRule, DepsArray);
             
             if (options.effect) {
-                newBucket.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                newBucket._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
 
             inDegree.nodeBucket[key] = SetBucket(newBucket);
@@ -565,7 +564,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             node.setRules(newRule, DepsArray);
             
             if (options.effect) {
-                node.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                node._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
         } else {
             const baseValue = (inDegree.meta as any)[key];
@@ -573,7 +572,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             newBucket.setRules(newRule, DepsArray);
             
             if (options.effect) {
-                newBucket.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                newBucket._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
 
             inDegree.nodeBucket[key] = SetBucket(newBucket);

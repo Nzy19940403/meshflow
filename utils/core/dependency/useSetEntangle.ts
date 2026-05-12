@@ -19,7 +19,8 @@ type EntangleLink<P extends MeshPath,NM> = {
   filter?: (obs: any, tgt: any) => boolean;
   emit:(src:any,tgt:any,propose:GhostProposalApi<any,NM>) => void | EntangleGhost<any> | undefined | Promise<void | EntangleGhost<any> | undefined>; 
   count: number;
-  isProxy:boolean
+  isProxy:boolean;
+  _inBatch: boolean;
 };
 
 export const UseSetEntangle = <P extends MeshPath, NM>(
@@ -53,6 +54,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   let pendingGhostNodesCount = 0; 
 
   let currentEpoch = 0;
+
+  let _linkId = 0;
 
   const MESH_CAPACITY = 100;
 
@@ -235,11 +238,21 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     }
       
     const causeMap = _registry[causeUid];
-
+    _linkId++;
+    const sharedLink: EntangleLink<P, NM> = {
+      impact,
+      triggerKey: via as any, // 这里原本是单个 string，现在直接存 via 数组方便溯源
+      emit: emit as any,
+      filter,
+      count: 0,
+      isProxy: !!isProxy,
+      _inBatch:false
+    };
     for (let i = 0; i < via.length; i++) {
       const key = via[i];
       if (!causeMap.has(key)) causeMap.set(key, []);
-      causeMap.get(key)!.push({ triggerKey:key,impact, emit: emit as any, filter, count: 0, isProxy: !!isProxy });
+      // causeMap.get(key)!.push({ triggerKey:key,impact, emit: emit as any, filter, count: 0, isProxy: !!isProxy });
+      causeMap.get(key)!.push(sharedLink);
     }
   };
 
@@ -282,17 +295,26 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       if (!causeMap || changedKeys.length === 0) return hitTargetUids;
 
       const linksArray: EntangleLink<P,NM>[] = [];
-      
+    
       // 🌟 优化点 2：彻底砍掉 impactBuffer 的 new Set。原生数组极速展平。
       for (let k = 0; k < changedKeys.length; k++) {
         const links = causeMap.get(changedKeys[k]);
         if (links) {
           for (let j = 0; j < links.length; j++) {
-            linksArray.push(links[j]);
+            // linksArray.push(links[j]);
+            const link = links[j];
+            if (link._inBatch !== true) {
+              link._inBatch = true;
+              linksArray.push(link);
+            }
           }
         }
       }
       
+      for (let x = 0; x < linksArray.length; x++) {
+        linksArray[x]._inBatch = false;
+      }
+
       let i = 0;
       let wentAsync = false;
       let firstAsyncPromise: Promise<void> | null = null;

@@ -193,14 +193,14 @@ export class StrategyStore {
   constructor(getRule: Function) {
     this.getRules = getRule;
     this.CurrentStrategyType = "PRIORITY"; // 或 DefaultStrategy.PRIORITY
-    this.updateComputedRules();
+    this._updateComputedRules();
   }
 
   public getRuleResult(rule: any, api: any, checkRuleDirty: Function): any {
     if (rule.entityId === "__base__") {
       return rule.logic(api);
     }
-
+ 
     let isDirty = !rule._hasRun || checkRuleDirty(rule.triggerUids);
 
     if (!isDirty) {
@@ -223,7 +223,7 @@ export class StrategyStore {
     });
   }
 
-  updateComputedRules() {
+  _updateComputedRules() {
     const list: any[] = this.getRules();
 
     if (
@@ -243,11 +243,11 @@ export class StrategyStore {
 
   setStrategy(type: any) {
     this.CurrentStrategyType = type;
-    this.updateComputedRules();
+    this._updateComputedRules();
   }
 
   // 🌟 透传 resultContainer 容器
-  evaluate(api: any, currentVersion: number, checkRuleDirty: Function, resultContainer: any) {
+  _evaluate(api: any, currentVersion: number, checkRuleDirty: Function, resultContainer: any) {
     const strategyFn = GLOBAL_STRATEGIES[this.CurrentStrategyType as string];
     return strategyFn(this, api, currentVersion, checkRuleDirty, resultContainer);
   }
@@ -314,7 +314,7 @@ export class SchemaBucket<P> {
     this._forceNotify = true;
   }
 
-  isForceNotify() {
+  _isForceNotify() {
     return this._forceNotify;
   }
 
@@ -322,7 +322,7 @@ export class SchemaBucket<P> {
     this.strategy.setStrategy(type);
   }
 
-  setDefaultRule(value: any) {
+  private _setDefaultRule(value: any) {
     const rules = new Set<{ logic: () => any }>();
     rules.add(value);
     this.rules.set(-1, rules);
@@ -344,7 +344,7 @@ export class SchemaBucket<P> {
     value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; entityId?: any; },
     DepsArray?: Array<[number, Array<TKeys | any>, any]>
   ) {
-    if (DepsArray) this.updateDeps(DepsArray);
+    if (DepsArray) this._updateDeps(DepsArray);
     
     const entityId = ++this.id;
     const ruleEntity = { ...value, entityId };
@@ -354,7 +354,7 @@ export class SchemaBucket<P> {
       this.rules.get(uid)!.add(ruleEntity);
     }
 
-    this.strategy.updateComputedRules();
+    this.strategy._updateComputedRules();
 
     return () => {
       for (let uid of value.triggerUids) {
@@ -367,11 +367,11 @@ export class SchemaBucket<P> {
           }
         }
       }
-      this.strategy.updateComputedRules();
+      this.strategy._updateComputedRules();
     };
   }
 
-  updateDeps<TKeys>(DepsArray: Array<[number, Array<TKeys | any>, any]>) {
+  private _updateDeps<TKeys>(DepsArray: Array<[number, Array<TKeys | any>, any]>) {
     for (let i = 0; i < DepsArray.length; i++) {
       let [triggerUid, keys, proxy] = DepsArray[i];
       if (keys.length == 0) continue;
@@ -397,10 +397,10 @@ export class SchemaBucket<P> {
     value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; entityId?: any; },
     DepsArray?: Array<[number, Array<TKeys | any>, any]>
   ) {
-    if (DepsArray) this.updateDeps(DepsArray);
+    if (DepsArray) this._updateDeps(DepsArray);
 
     if (typeof value.entityId === "string") {
-      this.setDefaultRule(value);
+      this._setDefaultRule(value);
       return;
     }
 
@@ -413,7 +413,7 @@ export class SchemaBucket<P> {
         this.rules.get(uid)!.add(ruleEntity);
       }
     }
-    this.strategy.updateComputedRules();
+    this.strategy._updateComputedRules();
 
     return () => {
       for (let uid of value.triggerUids) {
@@ -426,15 +426,15 @@ export class SchemaBucket<P> {
           }
         }
       }
-      this.strategy.updateComputedRules();
+      this.strategy._updateComputedRules();
     };
   }
 
-  setSideEffect(data: { fn: (args: any[]) => any; args: any[] }) {
+  _setSideEffect(data: { fn: (args: any[]) => any; args: any[] }) {
     this.effectArray.push(data);
   }
 
-  getSideEffect() {
+  _getSideEffect() {
     return [...this.effectArray];
   }
 
@@ -463,7 +463,7 @@ export class SchemaBucket<P> {
     return false;
   }
 
-  evaluate(api: any) {
+  _evaluate(api: any) {
     let curToken = null;
     if (api.GetToken) curToken = api.GetToken();
 
@@ -479,7 +479,7 @@ export class SchemaBucket<P> {
     if (typeof api.triggerUid === "number") {
       shouldSkipCalculate = true;
       if (this._depUids.length == 0) shouldSkipCalculate = false;
-
+      
       // 🌟 O(N) 扁平数组遍历，消灭迭代器
       for (let i = 0; i < this._depUids.length; i++) {
         let uid = this._depUids[i];
@@ -519,7 +519,7 @@ export class SchemaBucket<P> {
     this._currentApi = api;
     
     // 🌟 传入复用容器 this._evalResult
-    const p = this.strategy.evaluate(api, currentVersion, this._boundCheckDirty, this._evalResult);
+    const p = this.strategy._evaluate(api, currentVersion, this._boundCheckDirty, this._evalResult);
 
     if (!(p instanceof Promise)) {
       this._currentApi = null; // 用完即丢，防止内存泄露
@@ -622,7 +622,7 @@ export class ValidatorsBucket {
     this.defaultValidators.push(maxLengthValidator);
   }
 
-  evaluate(newVal: any, schema: any) {
+  public evaluate(newVal: any, schema: any) {
     let res: boolean | string = true;
     let list = [...this.defaultValidators, ...this.validators];
 
