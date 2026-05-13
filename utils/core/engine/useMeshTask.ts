@@ -866,7 +866,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             }
                         } else {
                             const errorInfo = {
-                                error: `wrong effect in ${String(targetSchema.path)}`,
+                                error: `error return ${key} in ${String(targetSchema.path)}`,
                             };
                             throw errorInfo;
                         }
@@ -1180,6 +1180,16 @@ function useMeshTask<P extends MeshPath, NM> (
                 // const effectsToRun: Array<{ fn: (args: any) => any; args: any[] }> = [];
                 // const effectsToRun = effectsPool[targetUid];
                 // effectsToRun.length = 0;
+                const api = {
+                    affectKey: '',
+                    triggerUid: currentTriggerUid,
+
+                    getProxyByUid: (u: number) => data.GetNodeByUid(u).proxy,
+            
+                    getStateByUid: (u: number) => data.GetNodeByUid(u).state,
+                    GetToken: () => curToken,
+                    iscache:false
+                }
 
                 for (let bucketName in targetSchema.nodeBucket) {
                     const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName as SuggestKey<NM>]);
@@ -1199,18 +1209,15 @@ function useMeshTask<P extends MeshPath, NM> (
                         continue;
                     }
 
-                    effectsToRun.push(...bucket._getSideEffect());
+                    api.affectKey = bucketName;
+                    api.iscache = false;
+    
                     // 1. 启动计算
-                    const resultOrPromise = bucket._evaluate({
-                        affectKey: bucketName,
-                        triggerUid: currentTriggerUid,
-
-                        getProxyByUid: (u: number) => data.GetNodeByUid(u).proxy,
-                
-                        getStateByUid: (u: number) => data.GetNodeByUid(u).state,
-                        GetToken: () => curToken,
-                    });
-
+                    const resultOrPromise = bucket._evaluate(api);
+                    if(!api.iscache){
+                       
+                        effectsToRun.push(...bucket._getSideEffect());
+                    }
                     // 2. 嗅探结果类型
                     if (resultOrPromise instanceof Promise) {
                         // -> 异步：存起来，别 await，继续下一个循环

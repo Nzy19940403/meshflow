@@ -204,6 +204,7 @@ export class StrategyStore {
     let isDirty = !rule._hasRun || checkRuleDirty(rule.triggerUids);
 
     if (!isDirty) {
+      api.iscache = true;
       return rule._lastResult;
     }
     
@@ -502,7 +503,10 @@ export class SchemaBucket<P> {
       this.promiseToken = null;
     }
 
-    if (this.pendingPromise) return this.pendingPromise;
+    if (this.pendingPromise) {
+      api.iscache = false; 
+      return this.pendingPromise;
+    }
 
     let shouldSkipCalculate = false;
 
@@ -540,11 +544,15 @@ export class SchemaBucket<P> {
       }
     }
 
-    if (shouldSkipCalculate && this.useCache) return this.cache;
+    if (shouldSkipCalculate && this.useCache) {
+      api.iscache = true;
+      return this.cache
+    };
 
     this.promiseToken = curToken;
     const currentVersion = ++this.version;
 
+    api.iscache = false
     // 🌟 将 API 暂存到实例上供内部 CheckDirty 使用，彻底切断参数闭包！
     this._currentApi = api;
     
