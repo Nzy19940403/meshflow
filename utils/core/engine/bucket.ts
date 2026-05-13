@@ -344,6 +344,7 @@ export class SchemaBucket<P> {
     value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; entityId?: any; },
     DepsArray?: Array<[number, Array<TKeys | any>, any]>
   ) {
+ 
     if (DepsArray) this._updateDeps(DepsArray);
     
     const entityId = ++this.id;
@@ -382,7 +383,7 @@ export class SchemaBucket<P> {
         this.deps.set(triggerUid, depTarget);
         this._depUids.push(triggerUid); // 🌟 压入扁平数组
       }
-
+   
       for (let j = 0; j < keys.length; j++) {
         let key = keys[j] as string;
         depTarget.valObj[key] = proxy[key];
@@ -441,27 +442,56 @@ export class SchemaBucket<P> {
   // 🌟 使用扁平化 keys 缓存，消灭 Object.keys
   private _checkRuleDirty(api: any, triggerUids?: number[]) {
     if (!triggerUids || triggerUids.length === 0) return true;
-
+    
     for (let i = 0; i < triggerUids.length; i++) {
-      let uid = triggerUids[i];
-      let depTarget = this.deps.get(uid);
+      const uid = triggerUids[i];
+      const depTarget = this.deps.get(uid);
       if (!depTarget) return true;
-
-      let curState = api.getProxyByUid(uid);
+  
+      const curState = api.getProxyByUid(uid);
       if (!curState) return true;
-
+  
       const { valObj, keys } = depTarget;
       for (let j = 0; j < keys.length; j++) {
-        let key = keys[j];
-        let oldVal = valObj[key];
-        let newVal = curState[key];
-
-        if (typeof oldVal === "object" && oldVal !== null) return true;
-        if (oldVal !== newVal) return true;
+        const key = keys[j];
+        const oldVal = valObj[key];
+        const newVal = curState[key];
+  
+        if (oldVal === newVal) continue; // 引用一致，检查下一个 key
+  
+        // 只有引用不等时，才进入深度/浅度检查
+        if (typeof oldVal !== 'object' || oldVal === null || 
+            typeof newVal !== 'object' || newVal === null) {
+          return true; 
+        }
+  
+        // --- 高性能浅比较优化区 ---
+        // 检查是否为数组
+        const isArr = Array.isArray(oldVal);
+        if (isArr !== Array.isArray(newVal)) return true;
+  
+        if (isArr) {
+          if (oldVal.length !== newVal.length) return true;
+          for (let k = 0; k < oldVal.length; k++) {
+            if (oldVal[k] !== newVal[k]) return true;
+          }
+        } else {
+          // 普通对象：使用 for...in 代替 Object.keys 以消灭中间数组分配
+          let countOld = 0;
+          let countNew = 0;
+          for (const k in oldVal) {
+            countOld++;
+            if (oldVal[k] !== newVal[k]) return true;
+          }
+          for (const k in newVal) countNew++;
+          if (countOld !== countNew) return true;
+        }
       }
     }
     return false;
   }
+
+ 
 
   _evaluate(api: any) {
     let curToken = null;
