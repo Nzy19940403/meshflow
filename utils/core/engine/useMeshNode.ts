@@ -1,6 +1,7 @@
 // core/engine/useMeshNode.ts
 
 import { MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, MeshNodeProxy, SuggestKey } from "../types/types";
+import { SchemaBucket } from "./bucket";
 
 // 🌟 优化 1：将常量提到模块作用域，全网 48W 节点只创建一次该数组，不再是每次闭包都生成
 const IMPORTANT_KEYS = ['path', 'uid', 'type', 'dependOn', 'nodeBucket'];
@@ -147,6 +148,10 @@ export class MeshTaskNodeImpl<P extends MeshPath, V = any, NM = any> extends Mes
     // 类型补充
     public get proxy(): MeshNodeProxy<MeshFlowTaskNode<P, V, NM>, V, NM> {
         return this._proxyView;
+    }
+    public _syncCache(bucket:SchemaBucket<P>,val:any ){
+         
+        bucket._syncCache(val);
     }
 }
 

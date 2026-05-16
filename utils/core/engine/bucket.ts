@@ -318,6 +318,9 @@ export class SchemaBucket<P> {
   _isForceNotify() {
     return this._forceNotify;
   }
+  _syncCache(val:any){
+    this.cache = val;
+  }
 
   setStrategy(type: any) {
     this.strategy.setStrategy(type);
@@ -508,15 +511,16 @@ export class SchemaBucket<P> {
       return this.pendingPromise;
     }
 
-    let shouldSkipCalculate = false;
-
-    if (typeof api.triggerUid === "number") {
-      shouldSkipCalculate = true;
-      if (this._depUids.length == 0) shouldSkipCalculate = false;
-      
+    let shouldSkipCalculate = true;
+ 
+    if (this._depUids.length === 0) {
+      shouldSkipCalculate = false; // 没有依赖的节点（比如根节点），通常需要重算或依赖外部直接 set
+    } else  {
+       
       // 🌟 O(N) 扁平数组遍历，消灭迭代器
       for (let i = 0; i < this._depUids.length; i++) {
         let uid = this._depUids[i];
+      
         let depTarget = this.deps.get(uid);
         let curState = api.getStateByUid(uid);
 

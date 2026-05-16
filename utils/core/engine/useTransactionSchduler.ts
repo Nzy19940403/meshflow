@@ -1,9 +1,13 @@
-import { MeshEmit, MeshFlowEventsName, TransactionArray } from "../types/types";
+import { MeshEmit, MeshFlowEventsName, MeshPath, SuggestKey, TransactionArray, notifyArgs } from "../types/types";
 
 
-export const createTransactionScheduler = (
-    initBatchNotify:any,
-    initNotify:any,
+export const createTransactionScheduler = <P,NM>(
+    initBatchNotify:()=>(updates: {
+        path: P;
+        key: SuggestKey<NM>;
+        value: any;
+    }[]) => void,
+    initNotify:()=>(path:P,key:SuggestKey<NM>)=>void,
     hooks:{
         emit:MeshEmit,
         callOnError:any
@@ -14,11 +18,11 @@ export const createTransactionScheduler = (
     let batchNotify:any = null;
     let notify:any = null;
 
-    let tasks:TransactionArray = [];
+    let tasks:TransactionArray<P,NM> = [];
     let isTaskProcessing:boolean = false;
     
 
-    const settleTasks = ( array: TransactionArray )=>{
+    const settleTasks = ( array: TransactionArray<P,NM> )=>{
         if(!batchNotify){
             batchNotify = initBatchNotify();
         }
@@ -43,14 +47,14 @@ export const createTransactionScheduler = (
         if(updateTokenFn){
             curToken = updateTokenFn();
         }
-        const res = await new Promise((resolve,reject)=>{
+        const res:notifyArgs<MeshPath,NM>|notifyArgs<MeshPath,NM>[]  = await new Promise((resolve,reject)=>{
             try{
                 task!(resolve,reject);
             }catch(err){
                 hooks.callOnError(err);
                 reset();
             }
-        });
+        }) ;
   
         if (res === undefined) {
             return false;
@@ -61,7 +65,8 @@ export const createTransactionScheduler = (
                 batchNotify(res);
             }
         } else if (typeof res === 'object' && res !== null) {
-            notify(res); 
+           
+            notify(res.path,res.key); 
         };
         
         return false;

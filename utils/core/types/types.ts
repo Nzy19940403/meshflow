@@ -202,6 +202,7 @@ export interface MeshFlowTaskNode<
   meta: NM ; //存放业务元数据
   dependOn: (cb: (val: V) => V, key?:SuggestKey<NM>) => void;
   createView: <E extends Record<string, any> = {}>(extraProps?: E) => MeshNodeProxy<MeshFlowTaskNode<P, V, NM>, V, NM, E>;
+  _syncCache:(bucket:any,val:any )=>void
 }
  /**
  *  
@@ -724,7 +725,7 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
      /**
       * 事务性任务列表，支持传入回调，回调的入参是resolve和reject，在回调里面调用resolve就会启动task，这个task执行完就会执行下一个回调
      */
-    SettleTasks: (array: TransactionArray) => void;
+    SettleTasks: (array: TransactionArray<P,NM>) => void;
   };
 
   /**
@@ -812,4 +813,6 @@ export type SuggestKey<T> = IsAny<T> extends true
     : (T extends any ? keyof T : never) | (string & {});
 
 
-export type TransactionArray = Array<(resolve: (res?:any)=>any,reject: (error?:any)=>any)=>any>
+export type TransactionArray<P,NM> = Array<(resolve: (res:{path:MeshPath,key:any,value:any}|{path:MeshPath  ,key:any,value:any}[])=>any,reject: (error?:any)=>any)=>any>
+
+export type notifyArgs<P,NM> = {path:P  ,key:SuggestKey<NM>,value:any}
