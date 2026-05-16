@@ -8,6 +8,99 @@
 [![Docs](https://img.shields.io/badge/docs-meshflow--docs-blue)](https://meshflow-docs.nzyhave.fun/)
 
 <p align="center">
+  <img src="./src/assets/hero.gif" width="800" alt="MeshFlow 沙盒战斗演示">
+</p>
+
+## ⚔️ 时空沙盒战斗演练场 (Combat Sandbox Demo)
+
+本演练场是基于 **MeshFlow** 静态拓扑任务编排引擎构建的高频、确定性状态推演沙盒。通过模拟一个典型的“勇者对抗魔王”的实时战斗流，可视化展示了引擎在处理**静态任务拓扑图（Static Task Topology）**、**跨节点动态因果纠缠（Task Entanglement）**以及**周期重演（Epoch-based Time Travel）**时的底层调度能力。
+
+> [!NOTE]
+> **💡 核心设计破局：用时间拉平空间死循环**
+> 
+> 在高频任务编排中，节点间极易形成互相锁死的**循环依赖**（如：武器适配 ⇄ Buff自清洗）。MeshFlow 不去玩复杂的黑盒算法，而是利用时间轴（Epoch 周期演进）将空间维度的环路死锁，拉平成单向的有向图（DAG）调度，从结构上彻底消灭 Stack Overflow。
+```mermaid
+flowchart LR
+    %% 样式定义
+    classDef source fill:#313244,stroke:#585b70,stroke-width:2px,color:#cdd6f4;
+    classDef panel fill:#11111b,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4;
+    classDef court fill:#181825,stroke:#f38ba8,stroke-width:2px,color:#f9e2af;
+
+    subgraph L0 [Level 0: Immutable 配置源点]
+        direction TB
+        hero[hero]:::source
+        boss[boss]:::source
+        tick[tick]:::source
+        weaponA[weapon实体]:::source
+    end
+
+    subgraph L1 [Level 1: 动态交汇与法庭推演]
+        direction TB
+        weaponPanel{{weaponPanel 武器舱}}:::panel
+        damageCourt((damageCourt 时空法庭)):::court
+    end
+
+    subgraph L2 [Level 2: 最终坍缩观测面]
+        direction TB
+        heroPanel{{heroPanel 勇者面板}}:::panel
+        bossPanel{{bossPanel 魔王面板}}:::panel
+    end
+
+    %% ==================================
+    %% 1. SetRule 静态引力轨道 (粗实线)
+    %% ==================================
+    hero ==>|下发基础属性与先天技能| heroPanel
+    boss ==>|下发基础属性| bossPanel
+    tick ==>|同步时钟信号| heroPanel & bossPanel & damageCourt
+    weaponA ==>|装卸开关信号| weaponPanel
+
+    %% 斩断循环的关键单向流
+    weaponPanel ==>|重新装填武器可用技能| heroPanel
+
+    %% ==================================
+    %% 2. useEntangle 动态预言与推演 (细虚线)
+    %% ==================================
+    heroPanel -.->|1. 发射战斗意图| damageCourt
+    bossPanel -.->|1. 发射战斗意图| damageCourt
+    weaponPanel -.->|1. 发射换装意图| damageCourt
+
+    damageCourt -.->|2. 推演回写 HP/Buff| heroPanel
+    damageCourt -.->|2. 推演回写 HP| bossPanel
+    damageCourt -.->|2. 推演回写 武器残影| weaponPanel
+```
+```mermaid
+sequenceDiagram
+    autonumber
+    actor UI as 玩家 (Vue 视图)
+    participant Tick as tick (时钟源)
+    participant H as heroPanel (勇者)
+    participant B as bossPanel (魔王)
+    participant Court as damageCourt (时空法庭)
+
+    UI->>Tick: 时间流逝 (setInterval) 或 玩家 castSkill()
+    
+    Tick-->>H: 【SetRule】下发新帧号 (tickversion)
+    Tick-->>B: 【SetRule】下发新帧号 (tickversion)
+    Tick-->>Court: 【SetRule】下发新帧号 (tickversion)
+
+    H-->>Court: 【useEntangle: 发射】写入勇者攻击与技能意图
+    B-->>Court: 【useEntangle: 发射】写入魔王攻击意图
+    
+    Note over Court: actions 收集完毕，法庭开庭！
+    
+    activate Court
+    Note over H,Court: 内部调用 simulateBattle(actions)<br/>⚔️ 空间上的双向战斗在此转化<br/>为时间轴推演
+    deactivate Court
+
+    Court-->>H: 【useEntangle: 回写】交付结算后的 HP/Energy/Buff
+    Court-->>B: 【useEntangle: 回写】交付结算后的 HP/Energy
+    
+    H->>UI: 数据物理坍缩，刷新勇者血条与特效！
+    B->>UI: 数据物理坍缩，刷新魔王血条与特效！
+```
+
+---
+<p align="center">
   <img src="./src/assets/readme.gif" width="800" alt="MeshFlow 矩阵收敛演示">
 </p>
 

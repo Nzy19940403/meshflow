@@ -8,6 +8,100 @@
 [![Docs](https://img.shields.io/badge/docs-meshflow--docs-blue)](https://meshflow-docs.nzyhave.fun/)
 
 <p align="center">
+  <img src="./src/assets/hero.gif" width="800" alt="MeshFlow Matrix Convergence Demo">
+</p>
+
+## ⚔️ Combat Sandbox Demo
+
+This arena is a high-frequency, deterministic state deduction sandbox built on top of the **MeshFlow** static topology task orchestration engine. By simulating a typical real-time "Hero vs. Boss" combat flow, it visually demonstrates the engine's low-level scheduling capabilities when handling **Static Task Topology**, **Cross-node Dynamic Task Entanglement**, and **Epoch-based Time Travel**.
+
+> [!NOTE]
+> **💡 Core Design Breakthrough: Flattening Spatial Infinite Loops with Time**
+> 
+> In high-frequency task orchestration, nodes can easily form mutually locked **cyclic dependencies** (e.g., Weapon Adaptation ⇄ Buff Self-Cleansing). Instead of relying on complex black-box algorithms, MeshFlow utilizes the timeline (Epoch evolution) to flatten spatial loop deadlocks into a unidirectional Directed Acyclic Graph (DAG) schedule, structurally eradicating Stack Overflows.
+
+```mermaid
+flowchart LR
+    %% Style Definitions
+    classDef source fill:#313244,stroke:#585b70,stroke-width:2px,color:#cdd6f4;
+    classDef panel fill:#11111b,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4;
+    classDef court fill:#181825,stroke:#f38ba8,stroke-width:2px,color:#f9e2af;
+
+    subgraph L0 [Level 0: Immutable Config Sources]
+        direction TB
+        hero[hero]:::source
+        boss[boss]:::source
+        tick[tick]:::source
+        weaponA[weapon Entity]:::source
+    end
+
+    subgraph L1 [Level 1: Dynamic Intersection & Court Deduction]
+        direction TB
+        weaponPanel{{weaponPanel Weapon Dock}}:::panel
+        damageCourt((damageCourt Spacetime Court)):::court
+    end
+
+    subgraph L2 [Level 2: Final Collapse Observation Planes]
+        direction TB
+        heroPanel{{heroPanel Hero Panel}}:::panel
+        bossPanel{{bossPanel Boss Panel}}:::panel
+    end
+
+    %% ==================================
+    %% 1. SetRule Static Gravity Orbits (Thick Solid Lines)
+    %% ==================================
+    hero ==>|Inject Base Stats & Innate Skills| heroPanel
+    boss ==>|Inject Base Stats| bossPanel
+    tick ==>|Sync Clock Signal| heroPanel & bossPanel & damageCourt
+    weaponA ==>|Equip/Unequip Toggle Signal| weaponPanel
+
+    %% The crucial unidirectional flow breaking the loop
+    weaponPanel ==>|Reload Available Weapon Skills| heroPanel
+
+    %% ==================================
+    %% 2. useEntangle Dynamic Prophecy & Deduction (Thin Dashed Lines)
+    %% ==================================
+    heroPanel -.->|1. Emit Combat Intent| damageCourt
+    bossPanel -.->|1. Emit Combat Intent| damageCourt
+    weaponPanel -.->|1. Emit Equip Intent| damageCourt
+
+    damageCourt -.->|2. Deduce & Writeback HP/Buff| heroPanel
+    damageCourt -.->|2. Deduce & Writeback HP| bossPanel
+    damageCourt -.->|2. Deduce & Writeback Weapon Ghost| weaponPanel
+```
+```mermaid
+sequenceDiagram
+    autonumber
+    actor UI as Player (Vue View)
+    participant Tick as tick (Clock Source)
+    participant H as heroPanel (Hero)
+    participant B as bossPanel (Boss)
+    participant Court as damageCourt (Spacetime Court)
+
+    UI->>Tick: Time Elapses (setInterval) or Player castSkill()
+    
+    Tick-->>H: [SetRule] Dispatch new frame (tickversion)
+    Tick-->>B: [SetRule] Dispatch new frame (tickversion)
+    Tick-->>Court: [SetRule] Dispatch new frame (tickversion)
+
+    H-->>Court: [useEntangle: Emit] Write Hero attack & skill intents
+    B-->>Court: [useEntangle: Emit] Write Boss attack intents
+    
+    Note over Court: Actions collected, Court is in session!
+    
+    activate Court
+    Note over H,Court: Internally invokes simulateBattle(actions)<br/>⚔️ Spatial two-way combat is translated<br/>into timeline deduction here
+    deactivate Court
+
+    Court-->>H: [useEntangle: Writeback] Deliver resolved HP/Energy/Buff
+    Court-->>B: [useEntangle: Writeback] Deliver resolved HP/Energy
+    
+    H->>UI: Data physically collapses, refresh Hero HP & VFX!
+    B->>UI: Data physically collapses, refresh Boss HP & VFX!
+```
+
+---
+<p align="center">
   <img src="./src/assets/readme.gif" width="800" alt="MeshFlow Matrix Convergence Demo">
 </p>
 
