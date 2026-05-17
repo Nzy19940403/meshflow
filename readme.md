@@ -1,24 +1,166 @@
 # MeshFlow
 
-> **Logic as a Force Field, collapsing to the lowest potential.**
+> **Logic as a force field, collapsing to its lowest potential energy.**
 
-[English] | [中文](./readme_zh.md) 
+[English] | [中文](./README.md)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-red.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Docs](https://img.shields.io/badge/docs-meshflow--docs-blue)](https://meshflow-docs.nzyhave.fun/)
 
+**MeshFlow** is a lightweight, zero-dependency **Static Topology Task Orchestration & State Convergence Engine** specifically architected for complex Directed Graph networks.
+
+It abstracts intricate business workflow orchestrations into physical **potential energy dissipation**. Driven by its core **"Watermark Gate"** scheduling strategy, MeshFlow forces convoluted synchronous/asynchronous task chains to self-converge spontaneously—like water flowing naturally to lower ground. This structurally eradicates async race conditions, diamond dependency anomalies, and spatial circular deadlocks.
+
+---
+
+## 🎮 Core Convergence Showcase
+
 <p align="center">
-  <img src="./src/assets/hero.gif" width="800" alt="MeshFlow Matrix Convergence Demo">
+  <img src="./src/assets/readme.gif" width="750" alt="MeshFlow Matrix Convergence Demo">
 </p>
 
-## ⚔️ Combat Sandbox Demo
+### 📈 The 1000-500-250 Damped Convergence Challenge
+The animation above visually demonstrates MeshFlow handling a manually injected **"logical infinite loop (circular dependency)"** within a 3x3 node matrix. Under this scenario, traditional reactive frameworks (such as native Hook chains or watch dependency graphs) instantly trigger a **Stack Overflow** or trap the system in an infinite re-rendering cycle.
 
-This arena is a high-frequency, deterministic state deduction sandbox built on top of the **MeshFlow** static topology task orchestration engine. By simulating a typical real-time "Hero vs. Boss" combat flow, it visually demonstrates the engine's low-level scheduling capabilities when handling **Static Task Topology**, **Cross-node Dynamic Task Entanglement**, and **Epoch-based Time Travel**.
+MeshFlow treats the network as a **Damped Harmonic Oscillator**. By introducing "logical friction" via highly efficient **Iterative Relaxation**, it forces the entire system to dissipate oscillatory energy within milliseconds. The system smoothly collapses into a mathematically perfect equilibrium state: **1000 (Central Ignition Source) → 500 (Cross Dependencies) → 250 (Corner Confluences)**.
 
-> [!NOTE]
-> **💡 Core Design Breakthrough: Flattening Spatial Infinite Loops with Time**
-> 
-> In high-frequency task orchestration, nodes can easily form mutually locked **cyclic dependencies** (e.g., Weapon Adaptation ⇄ Buff Self-Cleansing). Instead of relying on complex black-box algorithms, MeshFlow utilizes the timeline (Epoch evolution) to flatten spatial loop deadlocks into a unidirectional Directed Acyclic Graph (DAG) schedule, structurally eradicating Stack Overflows.
+---
+
+## 🚀 3-Minute Quick Start
+
+MeshFlow adopts a pure Headless design, enforcing a physical separation between core scheduling logic and the presentation layer (View). Utilizing explicit **Protocol Modules**, you can easily slice any non-structured metadata (Schema) and register them into the topological field.
+
+### 1. Install Core
+```bash
+npm install @meshflow/core
+
+```
+
+### 2. Define Your Business Protocol Module
+
+By invoking the low-level `registerNode` API, you construct explicit logical grid points and export lossless observation views via `createView`:
+
+<details>
+<summary>📦 展开注册代码</summary>
+
+```typescript
+import { useScheduler, MeshPath } from "@meshflow/core";
+
+function useInternalForm<T, P extends MeshPath>(
+    scheduler: ReturnType<typeof useScheduler<T, P>>,
+    rootSchema: any
+) {
+    // 1. Explicitly register the parent Group topology
+    const billingGroup = scheduler.registerGroupNode({
+        path: "billing" as P,
+        type: "group",
+        children: ["billing.count", "billing.price", "billing.totalPrice", "billing.priceDetail"] as P[],
+        meta: rootSchema,
+    });
+
+    // 2. Batch deconstruct and register leaf nodes
+    const renderedChildren = rootSchema.children.map((field: any) => {
+        const currentPath = `billing.${field.name}` as P;
+        return scheduler.registerNode({
+            path: currentPath,
+            type: field.type,
+            state: { value: field.value },
+            meta: field,
+            notifyKeys: new Set(),
+        }).createView();
+    });
+
+    const uiSchema = billingGroup.createView({ children: renderedChildren });
+    const GetFormData = () => ({
+        billing: {
+            count: scheduler.GetNodeByPath("billing.count" as P).state.value,
+            price: scheduler.GetNodeByPath("billing.price" as P).state.value,
+            totalPrice: scheduler.GetNodeByPath("billing.totalPrice" as P).state.value,
+            priceDetail: scheduler.GetNodeByPath("billing.priceDetail" as P).state.value,
+        }
+    });
+
+    return { uiSchema, GetFormData };
+}
+
+```
+</details>
+
+### 3. Activate the Logical Brain and Establish Gravity Orbits
+
+Inject the raw Schema using your wrapped module. Once injected, MeshFlow takes full command of the orchestration as the system's "computational brain." Bridging the engine's convergence potential into your view layer is incredibly lightweight—done here with a simple Vue `ref` counter acting as a `UITrigger`:
+
+```typescript
+import { ref } from "vue";
+import { useMeshFlow, MeshPath } from "@meshflow/core";
+
+// Raw Metadata Schema
+const schema = {
+    type: "group",
+    path: "billing",
+    label: "Billing & Summary",
+    children: [
+        { type: "number", path: "count", label: "Quantity", value: 1 },
+        { type: "number", path: "price", label: "Unit Price", value: 1000 },
+        { type: "number", path: "totalPrice", label: "Estimated Monthly Total", value: 0 },
+        { type: "input", path: "priceDetail", label: "Billing Description", value: "Base Config Fee" },
+    ],
+};
+
+// Initialize the Logical Field
+const engine = useMeshFlow("engine_instance", schema, {
+    UITrigger: {
+        signalCreator: () => ref(0), // Ultra-lightweight Vue reactive dirty-checker
+        signalTrigger(signal) { signal.value++; } // Triggers atomic view updates upon node displacement
+    },
+    modules: { useInternalForm }
+});
+
+// 4. Orchestrate Unidirectional Gravity Orbits (SetRules)
+// The Watermark mechanism ensures that no matter how deep or async the graph is, 
+// every single epoch evolution remains strictly unidirectional, deterministic, and atomic.
+engine.config.SetRules(
+    ["billing.count", "billing.price"], // Static upstream dependencies
+    "billing.totalPrice",               // Target sink for final collapse
+    "value",                            // Observed target key
+    {
+        logic: ({ slot }) => {
+            const [count, price] = slot.triggerTargets;
+            return count.value * price.value; // Pure function downflow, cutting off intermediate oscillations
+        },
+        triggerKeys: ["value"]
+    }
+);
+
+// Ignite signal to find the initial atomic watermark level
+engine.notifyAll();
+
+// 5. Interactive Ignition: Simulate a user changing the "Quantity"
+engine.data.StageValue("billing.count" as MeshPath, "value", 5);
+engine.data.Commit(); // Commit staging buffer to trigger a new convergence epoch
+
+// The total price automatically calculates to 5000, and the Vue view atomizes updates!
+console.log(engine.modules.useInternalForm.GetFormData().billing.totalPrice); // 🚀 Outputs: 5000
+
+```
+
+* 👉 **[Live Interactive Demo: Click here to view the live Billing Form linkage](https://meshflow-docs.nzyhave.fun/)**
+
+---
+
+## ⚔️ Advanced Case Study: Combat Sandbox
+
+While the billing form demonstrates standard unidirectional DAG flows, this hardcore **Real-time Combat Sandbox** was engineered to stress-test the engine's absolute limits under **Cross-node Dynamic Task Entanglement** and **Epoch-based Time Travel**.
+
+### ⚔️ Spacetime Combat Sandbox Demo
+
+This simulator orchestrates a high-frequency, deterministic state deduction sandbox. By simulating a typical "Hero vs. Boss" real-time combat pipeline, it visually showcases the runtime's low-level scheduling capabilities across static graph limits and temporal unwinding.
+
+* 👉 **[Live Interactive Demo: Click here to view the Combat Sandbox](https://www.google.com/search?q=https://meshflow-docs.nzyhave.fun/demos/hero.html)**
+
+Below are the architectural topology maps and sequence lifecycles governing the combat simulation sandbox:
+
+### 🗺️ Combat Sandbox Static Task Topology
 
 ```mermaid
 flowchart LR
@@ -55,7 +197,7 @@ flowchart LR
     tick ==>|Sync Clock Signal| heroPanel & bossPanel & damageCourt
     weaponA ==>|Equip/Unequip Toggle Signal| weaponPanel
 
-    %% The crucial unidirectional flow breaking the loop
+    %% Unidirectional flow breaking the loop
     weaponPanel ==>|Reload Available Weapon Skills| heroPanel
 
     %% ==================================
@@ -68,7 +210,11 @@ flowchart LR
     damageCourt -.->|2. Deduce & Writeback HP/Buff| heroPanel
     damageCourt -.->|2. Deduce & Writeback HP| bossPanel
     damageCourt -.->|2. Deduce & Writeback Weapon Ghost| weaponPanel
+
 ```
+
+### ⏳ Spacetime Court Sequence Lifecycle
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -98,68 +244,18 @@ sequenceDiagram
     
     H->>UI: Data physically collapses, refresh Hero HP & VFX!
     B->>UI: Data physically collapses, refresh Boss HP & VFX!
+
 ```
 
----
-<p align="center">
-  <img src="./src/assets/readme.gif" width="800" alt="MeshFlow Matrix Convergence Demo">
-</p>
-
-## 🎮 Live Convergence Showcase: The 1000-500-250 Equilibrium
-
-The GIF above demonstrates MeshFlow's capability to resolve **Cyclic Dependencies** through **Iterative Relaxation**. 
-
-We intentionally injected a "Logic Loop" into this 3x3 matrix to challenge the engine:
-* **Core (N5)**: The "Ignition Source", manually injected with **1000** energy.
-* **Cross Nodes (N2, N4, N6, N8)**: Depend 80% on the Core, but reverse-depend 20% on the adjacent Corners.
-* **Corner Nodes (N1, N3, N7, N9)**: Depend entirely on the average of adjacent Crosses.
-
-**What to Observe:**
-Notice the ripple and the oscillation. In Async Mode, the values don't just jump directly to their targets. They "shiver" and climb, reflecting the engine's internal **Epoch transitions**. Despite the infinite loop in the formulas, MeshFlow's damping mechanism forces the system to collapse into a perfect, mathematically elegant equilibrium: **1000 (Center) → 500 (Cross) → 250 (Corner)**.
-
-> **Technical Feat**: Traditional reactive frameworks (like standard Hooks or simple Observables) would trigger a **Stack Overflow** or infinite re-renders here. MeshFlow treats this as a **Damped Harmonic Oscillator**, structurally eliminating infinite loops and finding the steady-state solution in milliseconds.
+👉 **[Live Document Site: Experience Spacetime Court deduction and history-travel timelines](https://meshflow-docs.nzyhave.fun/)**
 
 ---
 
-**MeshFlow** is a reactive topology scheduling engine based on the **"Logic Force Field"**.
+## ✨ Core Engine Features
 
-Instead of relying on complex black-box algorithms, it builds on a simple physical intuition: **abstracting logical dependency depth as physical altitude**. By utilizing the core **"Waterline Gate"** scheduling strategy, MeshFlow allows complex asynchronous interactions to spontaneously converge—like water flowing downhill—structurally eliminating asynchronous race conditions, diamond dependencies, and cyclic constraints.
- 
-## 🌌 Core Design: What is a "Logic Force Field"?
-
-The "Logic Force Field" is not a fictional theory, but a design model that **abstracts logic into physical potential energy**. MeshFlow simulates the spontaneous convergence of the physical world across three dimensions:
-
-### 1. Logical Depth = Physical Altitude (Topological Gradient)
-In MeshFlow, every node resides at a different "altitude."
-* **Gravitational Orbits**: The execution order defined by `SetRule` establishes "gravitational orbits" flowing from high to low potential.
-* **Spontaneous Evolution**: Once the source data changes, the system leverages this "potential difference" to drive data automatically downstream along the topological path, much like water, without manual triggering.
-
-### 2. Waterline = Gate Control (Waterline Gate)
-To handle "diamond dependencies," the force field introduces a tiered gate-control mechanism.
-* **Equipotential Synchronization**: Nodes at the same depth level are considered to be on the same "waterline."
-* **Out-of-Order Prevention**: The gate to the next level opens *only* when all logic (including asynchronous Promises) at the current level is fully settled and the waterline is "leveled." This guarantees that downstream nodes are never erroneously triggered during an unstable intermediate state.
-
-### 3. Energy Dissipation = Logic Collapse (Energy Dissipation)
-System evolution is essentially the dissipation of energy. To ensure the system eventually returns to rest, MeshFlow distinguishes between three convergence mechanisms:
-
-- **Directed Convergence (DAG)**: In unidirectional orbits, energy spontaneously zeroes out after flowing through the waterlines. This is a deterministic rest guaranteed by the topology.
-- **Damped Convergence (Cycle)**: In entangled loops, the concept of **Damping** is introduced. When the logical variance is less than a user-defined threshold, the node should stop emitting new prophecies (`emit`), and the system enters a silent state. This "logical friction" overcomes the inertia of cyclic oscillation, forcing the system to collapse to the **lowest potential point**.
-- **Fused Convergence (Circuit Breaker)**: If the user fails to provide damping constraints, or if the oscillation exceeds safety boundaries, the engine will determine that the energy is diverging and immediately execute a forced fuse to protect computing resources.
-
----
-
-## ✨ Engine Features
-
-- **⚡ Extreme Pruning (Energy Dissipation)**: A memoization mechanism based on bucket computing automatically identifies and truncates invalid energy propagation paths.
-- **🛡️ Temporal Barrier**: Relying on **Token and Version** mechanisms, it completely eradicates "ghost updates" caused by asynchronous callbacks. The system automatically discards obsolete prophecies, ensuring the logic evolution never drifts.
-- **📦 Framework Agnostic**: Zero external dependencies, ~10kB footprint. Seamlessly integrates with Vue, React, or Vanilla JavaScript.
- 
-
-## 🧪 Laboratory (Live Demos)
-
-Witness how logic automatically achieves potential collapse within complex constraint fields:
-* 👉 **[The 9-Node Entanglement Matrix](https://meshflow-docs.nzyhave.fun/demos/matrix)**
- 
+* **⚡ Surgical Extreme Pruning**: Memory-mapped memoization built on bucket computations. It tracks value shifts to intercept and truncate invalid propagation waves instantly, keeping high-frequency computation costs near $O(1)$.
+* **🛡️ Temporal Causal Barrier**: Backed by a transactional scheduling lock and Staging Buffers. Gates open to downstream layers *only* when all current level dependencies completely "level out," entirely eliminating dirty reads during high-frequency mutation torrents.
+* **📦 Completely Framework Agnostic**: Zero external runtime dependencies. A pure Headless scheduling core exporting immaculate observation views (`View`), bridging natively into Vue, React, or vanilla TypeScript pipelines.
  
 
 ## 📂 Source Map
@@ -172,3 +268,4 @@ The core scheduling logic resides in: [`utils/core/`](./utils/core/)
 ## 📜 License
 
 This project is licensed under the [GNU AGPL v3.0](./LICENSE).
+ 
