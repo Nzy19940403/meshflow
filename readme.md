@@ -41,7 +41,7 @@ npm install @meshflow/core
 By invoking the low-level `registerNode` API, you construct explicit logical grid points and export lossless observation views via `createView`:
 
 <details>
-<summary>📦 展开注册代码</summary>
+<summary>📦 Expand registration code</summary>
 
 ```typescript
 import { useScheduler, MeshPath } from "@meshflow/core";
