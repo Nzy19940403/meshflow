@@ -2,7 +2,7 @@
 
 > **Logic as a force field, collapsing to its lowest potential energy.**
 
-[English] | [中文](./README.md)
+[English] | [中文](./readme_zh.md)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-red.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Docs](https://img.shields.io/badge/docs-meshflow--docs-blue)](https://meshflow-docs.nzyhave.fun/)
