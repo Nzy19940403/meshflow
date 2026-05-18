@@ -43,10 +43,14 @@ export const createTransactionScheduler = <P,NM>(
             isTaskProcessing = false;
             return true
         };
-         
+
+        const oldToken = curToken;
+
         if(updateTokenFn){
             curToken = updateTokenFn();
-        }
+        };
+        const startTime = performance.now();
+
         const res:notifyArgs<MeshPath,NM>|notifyArgs<MeshPath,NM>[]  = await new Promise((resolve,reject)=>{
             try{
                 task!(resolve,reject);
@@ -60,6 +64,16 @@ export const createTransactionScheduler = <P,NM>(
             return false;
         };
  
+        const duration = performance.now() - startTime;
+
+        // 🌟🌟🌟 最佳发射位置：任务刚成真，点火扩散前 🌟🌟🌟
+        // 此时拿到了耗时，并且可以通过双代币完美指明因果接力关系
+        hooks.emit(MeshFlowEventsName.TransactionProgress, {
+            fromToken: oldToken, // 告诉 Logger：上一个波次可以安全全额清算了
+            toToken: curToken,   // 告诉 Logger：接下来的这个新代币是事务链的一环，别删账本
+            duration: duration   // 这一阶段任务的净耗时
+        });
+
         if (Array.isArray(res)) {
             if (res.length > 0) {
                 batchNotify(res);

@@ -35,7 +35,8 @@ export const enum MeshFlowEventsName {
   EntangleEpochChange = 18,
   EntangleEmitCalled = 19,
 
-  TransactionAbort = 20
+  TransactionAbort = 20,
+  TransactionProgress = 21
 }
 
 /**
@@ -62,9 +63,10 @@ export interface BaseMeshEvents {
   [MeshFlowEventsName.EntangleWarn]: { path: string; type: 'no_keys' | 'no_level' };
   [MeshFlowEventsName.EntangleBlocked]: { observer: string; target: string; count: number };
 
-  [MeshFlowEventsName.EntangleEpochChange]:{timestamp:number}
-  [MeshFlowEventsName.EntangleEmitCalled]:{observer: string; target: string;via:any}
-  [MeshFlowEventsName.TransactionAbort]:0
+  [MeshFlowEventsName.EntangleEpochChange]:{timestamp:number};
+  [MeshFlowEventsName.EntangleEmitCalled]:{observer: string; target: string;via:any};
+  [MeshFlowEventsName.TransactionAbort]:0;
+  [MeshFlowEventsName.TransactionProgress]:{fromToken: any; toToken: any;duration:number};
 }
 
 /**

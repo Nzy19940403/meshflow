@@ -177,7 +177,8 @@ function useMeshTask<P extends MeshPath, NM> (
         token: null as any,
         duration: null as any,
         timestamp:null as any,
-        detail: SHARED_DETAIL // 嵌套对象也必须是复用的
+        detail: SHARED_DETAIL ,// 嵌套对象也必须是复用的
+        isCache:null as any
     };
 
     let isTaskActive:boolean = false;
@@ -1266,6 +1267,14 @@ function useMeshTask<P extends MeshPath, NM> (
     
                     // 1. 启动计算
                     const resultOrPromise = bucket._evaluate(api);
+
+                    SHARED_PAYLOAD.path = targetPath;
+                    SHARED_PAYLOAD.key = bucketName; 
+                    SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
+                    (SHARED_PAYLOAD as any).isCache = api.iscache; // 💥 动态注入缓存标记
+
+                    hooks.emit(MeshFlowEventsName.NodeProcessing, SHARED_PAYLOAD);
+
                     if(!api.iscache){
                        
                         effectsToRun.push(...bucket._getSideEffect());
@@ -1463,12 +1472,10 @@ function useMeshTask<P extends MeshPath, NM> (
                                 processingCount++;
                             }
                             
-                            // hooks.emit(MeshFlowEventsName.NodeProcessing, {
-                            //     path: targetPath,
-                            //     calledBy: targetNode.calledBy,
-                            // });
+                 
                             SHARED_PAYLOAD.path = targetPath;
                             SHARED_PAYLOAD.calledBy =  targetNode.calledBy;
+                            SHARED_PAYLOAD.key = undefined;
                             hooks.emit(MeshFlowEventsName.NodeProcessing,SHARED_PAYLOAD)
                           
                             executorNodeCalculate(
