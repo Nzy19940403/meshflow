@@ -50,7 +50,7 @@ export interface BaseMeshEvents {
 
   [MeshFlowEventsName.NodeStart]: { path: MeshPath; calledBy: number };
   [MeshFlowEventsName.NodeSuccess]: { path: MeshPath; calledBy: number };
-  [MeshFlowEventsName.NodeProcessing]: { path: MeshPath; calledBy: number };
+  [MeshFlowEventsName.NodeProcessing]: { path: MeshPath; calledBy: number,key:any };
   [MeshFlowEventsName.NodeError]: { path: MeshPath; error: any };
   [MeshFlowEventsName.NodePending]: { path: MeshPath };
 
@@ -66,7 +66,7 @@ export interface BaseMeshEvents {
   [MeshFlowEventsName.EntangleEpochChange]:{timestamp:number};
   [MeshFlowEventsName.EntangleEmitCalled]:{observer: string; target: string;via:any};
   [MeshFlowEventsName.TransactionAbort]:0;
-  [MeshFlowEventsName.TransactionProgress]:{fromToken: any; toToken: any;duration:number};
+  [MeshFlowEventsName.TransactionProgress]:{fromToken: any; duration:number};
 }
 
 /**

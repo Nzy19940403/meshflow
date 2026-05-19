@@ -1901,7 +1901,10 @@ function useMeshTask<P extends MeshPath, NM> (
                         currentExecutionToken.delete(triggerToken);
                        
                         if(isTaskTakeOver){
- 
+                            hooks.emit(MeshFlowEventsName.TransactionProgress, {
+                                fromToken: curToken,
+                                duration: (performance.now() - startTime)
+                            });
                             taskSchduler.runNext();
                             return
                              
