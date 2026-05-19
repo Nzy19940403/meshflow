@@ -68,6 +68,13 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     error:null as any,
     type:'' as "no_keys" | "no_level"
   };
+  const RESOLVE_PAYLOAD = {
+    path: "" as any,
+    key: "" as any,
+    value: null as any,
+    calledBy: 1, // 1 代表 QUANTUM/RESOLVE，与你的底层对齐
+    triggerPath: null as any // 幽灵由多源提案汇总，物理上游是多维的，这里设为 null 即可
+  };
 
   const createPoolCell = () => {
     const cell: any = {
@@ -467,6 +474,14 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
             _entangleMutations.get(compositeKey)!.newVal = finalValue;
           }
           changedKeys.push(key);
+          
+          // 🌟 核心修改点：在这里将异变事件发射出去！
+          // 复用 NodeBucketSuccess 或者你们用于追踪属性变更的核心 Event
+          RESOLVE_PAYLOAD.path = node.path;
+          RESOLVE_PAYLOAD.key = key;
+          RESOLVE_PAYLOAD.value = finalValue;
+          // (calledBy: 1 已经在初始化时写死，代表它是量子纠缠导致的)
+          hooks.emit(MeshFlowEventsName.NodeBucketSuccess, RESOLVE_PAYLOAD as any);
         }
       }
 

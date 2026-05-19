@@ -485,7 +485,14 @@ export const enum TriggerCause {
    * @description 由 `INVERSION` 节点引发的下游连带更新。
    * 即：当前节点本身并没有被纠缠直接修改，但因为它的上游节点是被纠缠修改的，它顺着 DAG 拓扑被“余波”唤醒。
    */
-  REPERCUSSION = 2  // 连锁：由逆转回跳引发的因果推导
+  REPERCUSSION = 2 , // 连锁：由逆转回跳引发的因果推导
+
+ /**
+   * **外部自由意志 (VOLITION)**
+   * @description 外部运行时对引擎数据大盘的显式批量写值干预。
+   * @note 属于非拓扑内生的突变，微任务聚合器 (applyStageValue) 发头发车工牌时的专属因果印记。
+   */
+ VOLITION = 3
 }
  /**
  *  

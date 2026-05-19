@@ -69,6 +69,7 @@ function useMeshTask<P extends MeshPath, NM> (
     let flagArray: Uint8Array;
     let resistanceArray: Int32Array;
     let levelArray: Int32Array;
+    let triggerSourceArray: Int32Array; //节点来源记录，方便log
     
     let readyQueue: Int32Array;
     let stagingQueue: Int32Array;
@@ -133,17 +134,15 @@ function useMeshTask<P extends MeshPath, NM> (
         if (AllAffectedPaths) nextAllAffectedPaths.set(AllAffectedPaths);
         AllAffectedPaths = nextAllAffectedPaths;
 
+        const nextTriggerSourceArray = new Int32Array(newCapacity);
+        if (triggerSourceArray) nextTriggerSourceArray.set(triggerSourceArray);
+        triggerSourceArray = nextTriggerSourceArray;
+
         // 对象数组扩容
         const oldCapacity = currentCapacity;
-        // ghostBaton.length = newCapacity;
-        // dirtyKeysPool.length = newCapacity;
-        // promisesPool.length = newCapacity;
-
+ 
         for (let i = oldCapacity; i < newCapacity; i++) {
             ghostBaton[i] = null;
-            // dirtyKeysPool[i] = [];
-            // promisesPool[i] = [];
-            // effectsPool[i] = [];
         }
 
         currentCapacity = newCapacity;
@@ -253,6 +252,7 @@ function useMeshTask<P extends MeshPath, NM> (
         resistanceArray.fill(0, 0, maxUid);
         levelArray.fill(0, 0, maxUid);
         AllAffectedPaths.fill(0, 0, maxUid);
+        triggerSourceArray.fill(-1, 0, maxUid);
 
         // const AllAffectedPaths:Array<number> = new Array(maxUid).fill(0);
         let processingCount:number = 0;
@@ -276,7 +276,7 @@ function useMeshTask<P extends MeshPath, NM> (
         // const resureQueue = new Int32Array(maxUid*2);
         let resureCount = 0;
         let resureActiveCount = 0;
-
+ 
         initialNodes.forEach((uid) => {
             AllAffectedPaths[uid] = 1;
             dependency
@@ -333,7 +333,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     uitrigger.flushPathSet.add(uid);
         
                     // 🌟 2. 核心修复：直接黄袍加身，不再绕道 currentEntangleArray
-                    node.calledBy = TriggerCause.INVERSION;
+                    node.calledBy = TriggerCause.VOLITION;
         
                     // 3. 传接力棒：告诉 executor 这个节点改了哪些 key
                     const keys = ghostBaton[uid] || [];
@@ -353,6 +353,7 @@ function useMeshTask<P extends MeshPath, NM> (
                         flagArray[uid] |= NodeStatus.READY;
                         readyQueue[readyCount++] = uid;
                         readyActiveCount++;
+                        triggerSourceArray[uid] = -1;
                     }
         
                     // 6. 记录这次神谕的层级
@@ -386,7 +387,7 @@ function useMeshTask<P extends MeshPath, NM> (
         
             // 定型数组或连续内存的物理清零
             flagArray.fill(0);
-
+            triggerSourceArray.fill(-1);
 
             turnstile.resetCounters();   
             ghostBaton.fill(null);
@@ -451,7 +452,24 @@ function useMeshTask<P extends MeshPath, NM> (
         }
 
         const startTime = performance.now();
-        const p = typeof triggerToken==='number'?data.GetPathByUid(triggerToken):'__NOTIFY_ALL__'
+
+        let p: P|'__NOTIFY_ALL__';
+
+        if (typeof triggerUid === 'number') {
+            // 1. 单源头更新：triggertoken / triggerUid 是 number
+            p = data.GetPathByUid(triggerUid);
+        } else if (initialNodes && initialNodes.length > 0) {
+            // 2. 多源头更新 / 全局更新：第一个参数是 null，第二个参数数组有值
+            p = '__NOTIFY_ALL__';
+        } else if (keys && keys.length > 0) {
+            // 3. stageValue 点火：前两个参数都没值（null 和 空数组），抽取 key 的第一个对象的 uid
+            p = data.GetPathByUid(keys[0].uid);
+        } else {
+            // 4. 极端兜底
+            p = '__NOTIFY_ALL__';
+        }
+
+        // const p = typeof triggerToken==='number'?data.GetPathByUid(triggerToken):'__NOTIFY_ALL__'
     
         SHARED_PAYLOAD.path = p;
         SHARED_PAYLOAD.token =curToken;
@@ -542,9 +560,9 @@ function useMeshTask<P extends MeshPath, NM> (
                 if (isQuantumAwakenedAtStart) {
                     // 🛡️ 预言已出，正常节点先挂起，等水位推进
                     const level = uidToLevelMap.get(u) ?? 0;
-                    // if (!resureArea.has(level)) resureArea.set(level, new Set());
-                    // resureArea.get(level)!.add(p);
+    
                     levelArray[u] = level;
+
                     if(!(flagArray[u] & NodeStatus.RESURE)){
                         flagArray[u] |= NodeStatus.RESURE;
                         resureQueue[resureCount++] = u;
@@ -553,8 +571,9 @@ function useMeshTask<P extends MeshPath, NM> (
                     const p = data.GetPathByUid(u);
                     SHARED_PAYLOAD.path = p;
                     SHARED_PAYLOAD.type = 2;
+                    SHARED_PAYLOAD.triggerPath = null;
                     hooks.emit(MeshFlowEventsName.NodeStagnate,SHARED_PAYLOAD)
-                    // hooks.emit(MeshFlowEventsName.NodeStagnate, { path: p, type: 2 });
+                     
                 } else {
                     // 正常宇宙，准许进入发车队列
                     // readyToRunBuffer.add(u);
@@ -615,7 +634,9 @@ function useMeshTask<P extends MeshPath, NM> (
             const targetSchema = data.GetNodeByUid(targetUid);
 
             const targetPath = data.GetPathByUid(targetUid);
-        
+
+            const immediateTriggerUid = triggerSourceArray[targetUid];
+            const immediateTriggerPath = immediateTriggerUid < 0 ? null : data.GetPathByUid(immediateTriggerUid);
             // 记录进入时的状态，用于在纠缠震荡状态时传播给下游
             const originalCause = targetSchema.calledBy as unknown as TriggerCause;
  
@@ -731,14 +752,12 @@ function useMeshTask<P extends MeshPath, NM> (
                             flagArray[childUid] |= NodeStatus.RESURE;
                             resureQueue[resureCount++] = childUid;
                             resureActiveCount++;
+                            triggerSourceArray[childUid] = targetUid;
                         }
-                        // hooks.emit( MeshFlowEventsName.NodeIntercept , {
-                        //     path: childPath,
-                        //     type: 7, // 自定义类型：背压拦截
-                        //     // detail: { stagingSize: stagingArea.size }
-                        // });
+     
                         SHARED_PAYLOAD.path = childPath;
                         SHARED_PAYLOAD.type = 7;
+                        SHARED_PAYLOAD.triggerPath = targetPath;
                         hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
                         return;
                     }
@@ -785,12 +804,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
                     if (isAlreadyInReadyBuffer || isAlreadyRunning) {
                         
-                        // hooks.emit( MeshFlowEventsName.NodeIntercept , {
-                        //     path: childPath,
-                        //     // reason: `节点 ${child} 正忙 (Q:${isAlreadyInQueue}, R:${isAlreadyRunning})`,
-                        //     type: isAlreadyRunning ? 3 : 3.1,
-                        // });
-
+ 
                         SHARED_PAYLOAD.path = childPath;
                         SHARED_PAYLOAD.type = isAlreadyRunning ? 3 : 3.1;
                         hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
@@ -819,16 +833,11 @@ function useMeshTask<P extends MeshPath, NM> (
                         readyQueue[readyCount++] = childUid;
                         readyActiveCount++;
                     }
-
-                    // hooks.emit( MeshFlowEventsName.NodeRelease , {
-                    //     path: childPath,
-                    //     type: reasonType,
-                    //     detail: { path: targetPath },
-                    // });
-
+ 
                     SHARED_PAYLOAD.path = childPath;
                     SHARED_PAYLOAD.type = reasonType;
-                    SHARED_DETAIL.path = targetPath;
+                    // SHARED_DETAIL.path = targetPath;
+                    SHARED_PAYLOAD.triggerPath = targetPath
                     hooks.emit(MeshFlowEventsName.NodeRelease,SHARED_PAYLOAD)
 
                 } else {
@@ -925,13 +934,11 @@ function useMeshTask<P extends MeshPath, NM> (
 
                     // 清理脏位回收池，避免影响下次使用
                     dirtyEntangleKeys.length = 0;
-                    // hooks.emit( MeshFlowEventsName.NodeSuccess , {
-                    //     path: targetPath,
-                    //     calledBy: targetSchema.calledBy,
-                    // });
+       
 
                     SHARED_PAYLOAD.path = targetPath;
                     SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
+                    SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
                     hooks.emit(MeshFlowEventsName.NodeSuccess,SHARED_PAYLOAD)
 
                     // processed.add(targetUid);
@@ -977,9 +984,10 @@ function useMeshTask<P extends MeshPath, NM> (
                                 resureActiveCount++;
                             }
 
-                            // hooks.emit( MeshFlowEventsName.NodeStagnate , { path: childPath, type: 2 });
+                            
                             SHARED_PAYLOAD.path = childPath;
                             SHARED_PAYLOAD.type = 2;
+                            SHARED_PAYLOAD.triggerPath = targetPath;
                             hooks.emit(MeshFlowEventsName.NodeStagnate,SHARED_PAYLOAD)
  
                             continue;
@@ -1011,22 +1019,14 @@ function useMeshTask<P extends MeshPath, NM> (
                             }
                         }
                         if (
-                            // processingSet.has(childUid) || 
-                            // processingSet[childUid]===1 || 
                             (flagArray[childUid] & NodeStatus.PROCESSING)||
-
-                            // readyToRunBuffer.has(childUid)
                             (flagArray[childUid] & NodeStatus.READY) !== 0
                         ) {
-                            // hooks.emit( MeshFlowEventsName.NodeIntercept , {
-                            //     path: childPath,
-                            //     // type: processingSet.has(childUid) ? 3 : 3.1,
-                            //     // type: processingSet[childUid] ===1 ? 3 : 3.1,
-                            //     type:(flagArray[childUid]&NodeStatus.PROCESSING) ? 3:3.1
-                            // });
+ 
 
                             SHARED_PAYLOAD.path = childPath;
                             SHARED_PAYLOAD.type = (flagArray[childUid]&NodeStatus.PROCESSING) ? 3:3.1;
+                            SHARED_PAYLOAD.triggerPath = targetPath;
                             hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
 
                             continue;
@@ -1044,20 +1044,16 @@ function useMeshTask<P extends MeshPath, NM> (
                             } else {
                                 // 原地待命逻辑
                                 const level = uidToLevelMap.get(childUid)!;
-                                // if (!resureArea.has(level)) resureArea.set(level, new Set());
-                                // const levelSet = resureArea.get(level)!;
-                                // if (!levelSet.has(childUid)) {
-                                //     levelSet.add(childUid);
-                                //     hooks.emit( MeshFlowEventsName.NodeStagnate , { path: childPath, type: 1 });
-                                // }
+ 
                                 levelArray[childUid] = level;
                                 if(!(flagArray[childUid] & NodeStatus.RESURE )){
                                     flagArray[childUid] |= NodeStatus.RESURE;
                                     resureQueue[resureCount++] = childUid;
                                     resureActiveCount++;
-                                    // hooks.emit( MeshFlowEventsName.NodeStagnate , { path: childPath, type: 1 });
+                                     
                                     SHARED_PAYLOAD.path = childPath;
                                     SHARED_PAYLOAD.type = 1;
+                                    SHARED_PAYLOAD.triggerPath = targetPath;
                                     hooks.emit(MeshFlowEventsName.NodeStagnate,SHARED_PAYLOAD)
                                 }
                             }
@@ -1128,6 +1124,7 @@ function useMeshTask<P extends MeshPath, NM> (
                 // hooks.emit( MeshFlowEventsName.NodeError , { path: targetPath, error: err });
                 SHARED_PAYLOAD.path = targetPath;
                 SHARED_PAYLOAD.error = err;
+                SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
                 hooks.emit(MeshFlowEventsName.NodeError,SHARED_PAYLOAD)
             
                 const abortToken = Symbol("abort");
@@ -1177,16 +1174,12 @@ function useMeshTask<P extends MeshPath, NM> (
                     // dirtyEntangleKeys.push(String(bucketName));
                     recordDirtyEntangleKey(String(bucketName));
                    
-                    // hooks.emit( MeshFlowEventsName.NodeBucketSuccess , {
-                    //     path: targetPath,
-                    //     key: String(bucketName),
-                    //     value: result,
-                    //     calledBy: targetSchema.calledBy,
-                    // });
+          
                     SHARED_PAYLOAD.path = targetPath;
                     SHARED_PAYLOAD.key = bucketName,
                     SHARED_PAYLOAD.value = result;
                     SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
+                    SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
                     hooks.emit(MeshFlowEventsName.NodeBucketSuccess,SHARED_PAYLOAD)
         
                     if (targetSchema.notifyKeys.size===0 || targetSchema.notifyKeys.has(bucketName)) {
@@ -1201,12 +1194,10 @@ function useMeshTask<P extends MeshPath, NM> (
                 }
             };
 
-            // hooks.emit( MeshFlowEventsName.NodeStart , {
-            //     path: targetPath,
-            //     calledBy: targetSchema.calledBy,
-            // });
+ 
             SHARED_PAYLOAD.path = targetPath;
             SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
+            SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
             hooks.emit(MeshFlowEventsName.NodeStart,SHARED_PAYLOAD)
          
             try {
@@ -1272,7 +1263,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     SHARED_PAYLOAD.key = bucketName; 
                     SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
                     (SHARED_PAYLOAD as any).isCache = api.iscache; // 💥 动态注入缓存标记
-
+                    SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
                     hooks.emit(MeshFlowEventsName.NodeProcessing, SHARED_PAYLOAD);
 
                     if(!api.iscache){
@@ -1441,11 +1432,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                     stagingActiveCount++;
                                 }
                     
-                                // hooks.emit(MeshFlowEventsName.NodeIntercept, {
-                                //     path: targetPath,
-                                //     type: pendingParentsCount > 0 ? 4 : 5,
-                                //     detail: { targetLevel, currentLevel, pendingParentsCount },
-                                // });
+ 
 
                                 SHARED_PAYLOAD.path = targetPath;
                                 SHARED_PAYLOAD.type = pendingParentsCount > 0 ? 4 : 5;
@@ -1556,9 +1543,10 @@ function useMeshTask<P extends MeshPath, NM> (
                                     releasedCount++;
                                     foundGreedy = true;
                                     const path = data.GetPathByUid(uid);
-                                    // hooks.emit(MeshFlowEventsName.NodeRelease , { path, type: 4 });
+                                     
                                     SHARED_PAYLOAD.path = path;
                                     SHARED_PAYLOAD.type = 4;
+                                    SHARED_PAYLOAD.triggerPath = null;
                                     hooks.emit(MeshFlowEventsName.NodeRelease,SHARED_PAYLOAD)
                                     continue; // 捞起的不进 nextStagingCount
                                 }
@@ -1655,6 +1643,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                         flagArray[targetUid] |= NodeStatus.READY;
                                         readyQueue[readyCount++] = targetUid;
                                         readyActiveCount++;
+                                        triggerSourceArray[targetUid] = -2;
                                     }
 
                                     // 获取最低影响水位
@@ -1786,7 +1775,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                     // processed[uid] = 1;
                                     flagArray[uid] |= NodeStatus.PROCESSED
                                     const path = data.GetPathByUid(uid);
-                                    // hooks.emit( MeshFlowEventsName.NodeIntercept , { path, type: 6 });
+                                     
                                     SHARED_PAYLOAD.path = path;
                                     SHARED_PAYLOAD.type = 6;
                                     hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
@@ -1802,7 +1791,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                     // processed[uid] = 1;
                                     flagArray[uid] |= NodeStatus.PROCESSED
                                     const path = data.GetPathByUid(uid);
-                                    // hooks.emit( MeshFlowEventsName.NodeIntercept , { path, type: 6 });
+                                    
                                     SHARED_PAYLOAD.path = path;
                                     SHARED_PAYLOAD.type = 6;
                                     hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
