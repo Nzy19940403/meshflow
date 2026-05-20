@@ -177,7 +177,8 @@ function useMeshTask<P extends MeshPath, NM> (
         duration: null as any,
         timestamp:null as any,
         detail: SHARED_DETAIL ,// 嵌套对象也必须是复用的
-        isCache:null as any
+        isCache:null as any,
+        fromToken:null as any
     };
 
     // const generatePayload = (
@@ -1240,13 +1241,11 @@ function useMeshTask<P extends MeshPath, NM> (
                    
                     // 🛡️ 预言拦截：如果被量子纠缠唤醒，跳过自身推演逻辑！
                     if (isGhostly && incomingBucketIds.includes(bucketId)) {
-                      
-                        hooks.emit(MeshFlowEventsName.NodeBucketSuccess , {
-                            path: targetPath,
-                            key: String(bucketName),
-                            value: targetSchema.state[bucketName],
-                            calledBy: targetSchema.calledBy,
-                        });
+                        SHARED_PAYLOAD.path = targetPath;
+                        SHARED_PAYLOAD.key = bucketName;
+                        SHARED_PAYLOAD.value = targetSchema.state[bucketName];
+                        SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
+                        hooks.emit(MeshFlowEventsName.NodeBucketSuccess , SHARED_PAYLOAD);
                         if (bucket.isForceNotify()) notifyNext = true;
                         if ( targetSchema.notifyKeys.size === 0 || targetSchema.notifyKeys.has(bucketName)) {
                             updateWatermark(targetUid);
@@ -1906,10 +1905,9 @@ function useMeshTask<P extends MeshPath, NM> (
                         currentExecutionToken.delete(triggerToken);
                        
                         if(isTaskTakeOver){
-                            hooks.emit(MeshFlowEventsName.TransactionProgress, {
-                                fromToken: curToken,
-                                duration: (performance.now() - startTime)
-                            });
+                            SHARED_PAYLOAD.duration = performance.now() - startTime;
+                            SHARED_PAYLOAD.fromToken = curToken
+                            hooks.emit(MeshFlowEventsName.TransactionProgress, SHARED_PAYLOAD);
                             taskSchduler.runNext();
                             return
                              
