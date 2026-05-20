@@ -1,13 +1,13 @@
 {
   "name": "@meshflow/logger",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "The official logger plugin for MeshFlow",
   "main": "./index.js",
   "module": "./index.mjs",
   "types": "./index.d.ts",
   "author": "nzy",
   "peerDependencies": {
-    "@meshflow/core": ">=0.4.3",
+    "@meshflow/core": ">=0.7.7",
     "consola": ">=3.0.0"
   },
   "publishConfig": {
