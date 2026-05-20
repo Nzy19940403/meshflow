@@ -23,7 +23,7 @@ export const useMeshPulse = (options: MeshPulseOptions = {}) => {
             `%c📦 ${logPrefix} Session Trace (Epochs: ${flowRecord.totalEpochs}, Time: ${flowRecord.duration.toFixed(2)}ms) [${flowRecord.status.toUpperCase()}]`,
             `color: ${flowRecord.status === 'success' ? '#00bcd4' : '#F56C6C'}; font-weight: bold; border-bottom: 1px dashed ${flowRecord.status === 'success' ? '#00bcd4' : '#F56C6C'}; padding-bottom: 2px;`
         );
-        console.log(JSON.stringify(flowRecord, null, 2));
+        console.log(flowRecord);
         console.groupEnd();
     };
 

@@ -1,6 +1,6 @@
 {
   "name": "@meshflow/pulse",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Logical observability plugin for MeshFlow. High-fidelity epoch-based tracing and causal monitoring.",
   "main": "./index.js",
   "module": "./index.mjs",
