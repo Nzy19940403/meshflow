@@ -28,7 +28,10 @@ export const useMeshPulse = (options: MeshPulseOptions = {}) => {
     };
 
     // 最终使用的 onStop：如果你传了自定义的就用你的，没传就用默认打印
-    const finalOnStop = onStop || defaultOnStop;
+    const finalOnStop =  onStop
+    ?onStop
+    :defaultOnStop;
+    const useDefaultOnStop = onStop?false:true
 
     const apply = (api: any) => {
         let currentFlow: any = null; 
@@ -65,7 +68,15 @@ export const useMeshPulse = (options: MeshPulseOptions = {}) => {
                 if (onTrace) onTrace(currentFlow.epochs);
 
                 // 🌟 2. 全局钩子：把这次任务的完整大 JSON 传给 onStop
-                finalOnStop(currentFlow);
+                const flowSnapshot = currentFlow; // 闭包留存快照指针
+                if(useDefaultOnStop){
+                    setTimeout(() => {
+                        finalOnStop(flowSnapshot);
+                    }, 0);
+                }else{
+                    finalOnStop(flowSnapshot);
+                }
+                
             }
 
             currentFlow = null;
