@@ -204,7 +204,7 @@ export interface MeshFlowTaskNode<
   meta: NM ; //存放业务元数据
   dependOn: (cb: (val: V) => V, key?:SuggestKey<NM>) => void;
   createView: <E extends Record<string, any> = {}>(extraProps?: E) => MeshNodeProxy<MeshFlowTaskNode<P, V, NM>, V, NM, E>;
-  _syncCache:(bucket:any,val:any )=>void
+  syncCache:(bucket:any,val:any )=>void
 }
  /**
  *  

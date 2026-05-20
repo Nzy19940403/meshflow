@@ -200,7 +200,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             node.setRule(newRule, DepsArray);
             
             if (options.effect) {
-                node._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                node.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
         } else {
             const baseValue = (inDegree.meta as any)[key]||(inDegree.state as any)[key];
@@ -208,7 +208,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             newBucket.setRule(newRule, DepsArray);
             
             if (options.effect) {
-                newBucket._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                newBucket.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
 
             inDegree.nodeBucket[key] = SetBucket(newBucket);
@@ -261,7 +261,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             node.setRules(newRule, DepsArray);
             
             if (options.effect) {
-                node._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                node.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
         } else {
             const baseValue = (inDegree.meta as any)[key]||(inDegree.state as any)[key];
@@ -269,7 +269,7 @@ export const useSetRule = <P extends MeshPath, NM>(
             newBucket.setRules(newRule, DepsArray);
             
             if (options.effect) {
-                newBucket._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                newBucket.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
 
             inDegree.nodeBucket[key] = SetBucket(newBucket);

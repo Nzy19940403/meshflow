@@ -149,9 +149,9 @@ export class MeshTaskNodeImpl<P extends MeshPath, V = any, NM = any> extends Mes
     public get proxy(): MeshNodeProxy<MeshFlowTaskNode<P, V, NM>, V, NM> {
         return this._proxyView;
     }
-    public _syncCache(bucket:SchemaBucket<P>,val:any ){
+    public syncCache(bucket:SchemaBucket<P>,val:any ){
          
-        bucket._syncCache(val);
+        bucket.syncCache(val);
     }
 }
 

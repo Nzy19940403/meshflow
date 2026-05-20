@@ -180,6 +180,22 @@ function useMeshTask<P extends MeshPath, NM> (
         isCache:null as any
     };
 
+    // const generatePayload = (
+    //     path:any,
+    //     type:any,
+    //     triggerPath:any,
+    //     calledBy:any,
+    //     key:any,
+    //     value:any,
+    //     error:any,
+    //     token:any,
+    //     duration:any,
+    //     timestamp:any,
+    //     isCache:any
+    // )=>{
+
+    // }
+
     let isTaskActive:boolean = false;
 
     const stageBuffer: Array<{ uid: number, key: SuggestKey<NM>, value: any }> = [];
@@ -899,7 +915,7 @@ function useMeshTask<P extends MeshPath, NM> (
                               
                                 if(key in targetSchema.nodeBucket){
                                     const bucketid:number = targetSchema.nodeBucket[key as SuggestKey<NM>];
-                                    targetSchema._syncCache(data.GetBucket(bucketid),result[key])
+                                    targetSchema.syncCache(data.GetBucket(bucketid),result[key])
                                 }
                              
                                 // 新增：副作用里的 key 也受 notifyKeys 检查！
@@ -1187,7 +1203,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     }
                 }
                 const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName]);
-                if (bucket._isForceNotify()) notifyNext = true;
+                if (bucket.isForceNotify()) notifyNext = true;
 
                 if (hasNotifyKeyTriggered || notifyNext) {
                     updateWatermark(targetUid);
@@ -1231,7 +1247,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             value: targetSchema.state[bucketName],
                             calledBy: targetSchema.calledBy,
                         });
-                        if (bucket._isForceNotify()) notifyNext = true;
+                        if (bucket.isForceNotify()) notifyNext = true;
                         if ( targetSchema.notifyKeys.size === 0 || targetSchema.notifyKeys.has(bucketName)) {
                             updateWatermark(targetUid);
                         }
@@ -1257,7 +1273,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     api.iscache = false;
     
                     // 1. 启动计算
-                    const resultOrPromise = bucket._evaluate(api);
+                    const resultOrPromise = bucket.evaluate(api);
 
                     SHARED_PAYLOAD.path = targetPath;
                     SHARED_PAYLOAD.key = bucketName; 
@@ -1268,7 +1284,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
                     if(!api.iscache){
                        
-                        effectsToRun.push(...bucket._getSideEffect());
+                        effectsToRun.push(...bucket.getSideEffect());
                     }
                     // 2. 嗅探结果类型
                     if (resultOrPromise instanceof Promise) {

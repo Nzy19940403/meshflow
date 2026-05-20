@@ -28,8 +28,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   timeScheduler: ReturnType<typeof createTimeScheduler>,
   GetUidToLevelMap: () => Map<number, number>,
   GetNodeByPath: (path: P) => MeshFlowTaskNode<P, any, NM>,
-  GetNodeByUid: (uid: number) => MeshFlowTaskNode<P, any, NM>,
-  GetPathByUid: (uid: number) => P,
+  // GetNodeByUid: (uid: number) => MeshFlowTaskNode<P, any, NM>,
+  // GetPathByUid: (uid: number) => P,
   hooks: {
     emit: MeshEmit,
     onError: (error: MeshErrorContext) => void
@@ -45,8 +45,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   const _entangleMutations = new Map<string, { path: any; key: any; oldVal: any; newVal: any }>();
 
   const _GetNodeByPath = GetNodeByPath;
-  const _GetNodeByUid = GetNodeByUid;
-  const _GetPathByUid = GetPathByUid;
+  // const _GetNodeByUid = GetNodeByUid;
+  // const _GetPathByUid = GetPathByUid;
   const _GetUidToLevelMap = GetUidToLevelMap;
 
   let activeAsyncCount = 0;
@@ -474,7 +474,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
             _entangleMutations.get(compositeKey)!.newVal = finalValue;
           }
           changedKeys.push(key);
-          
+
           // 🌟 核心修改点：在这里将异变事件发射出去！
           // 复用 NodeBucketSuccess 或者你们用于追踪属性变更的核心 Event
           RESOLVE_PAYLOAD.path = node.path;

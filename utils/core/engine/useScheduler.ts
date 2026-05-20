@@ -64,8 +64,8 @@ export class MeshScheduler<
             this.timeScheduler,
             this.dependency.GetUidToLevelMap,
             (p: P) => this.GetNodeByPath(p),
-            (u: number) => this.GetNodeByUid(u),
-            (u: number) => this.GetPathByUid(u),
+            // (u: number) => this.GetNodeByUid(u),
+            // (u: number) => this.GetPathByUid(u),
             { emit: this.hooks.emit, onError: this.hooks.callOnError },
             history
         );
@@ -196,7 +196,7 @@ export class MeshScheduler<
         this.notify(path,key);
     }
 
-    public registerNode =  (nodeMeta: Omit<MeshFlowTaskNode<P>, 'createView' | 'proxy' | 'dependOn' | 'calledBy' | 'uid' | 'dirtySignal' | 'nodeBucket'|'_syncCache'>)=> {
+    public registerNode =  (nodeMeta: Omit<MeshFlowTaskNode<P>, 'createView' | 'proxy' | 'dependOn' | 'calledBy' | 'uid' | 'dirtySignal' | 'nodeBucket'|'syncCache'>)=> {
         if (this.PathToUidMap.has(nodeMeta.path)) {
             throw new Error(MeshError.DuplicatePath(String(nodeMeta.path)))
         }
