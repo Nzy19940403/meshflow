@@ -88,7 +88,7 @@ const locales: any = {
             add: '+新增',
             del: '-删除',
             mod: '~修改',
-            obj: (oldC: number, newC: number, details: string) => `[对象微调] (${oldC}k➔${newC}k) | ${details}`,
+            obj: (oldC: number, newC: number, details: string) => `[对象微调] (${oldC}keys➔${newC}keys) | ${details}`,
             mut: (oldV: string, newV: string) => `[变更] ${oldV} ➔ ${newV}`,
             keep: (val: string) => `[~维持] ${val}`
         },
@@ -191,7 +191,7 @@ const locales: any = {
             add: '+Add',
             del: '-Del',
             mod: '~Mod',
-            obj: (oldC: number, newC: number, details: string) => `[Obj Tweak] (${oldC}k➔${newC}k) | ${details}`,
+            obj: (oldC: number, newC: number, details: string) => `[Obj Tweak] (${oldC}keys➔${newC}keys) | ${details}`,
             mut: (oldV: string, newV: string) => `[Mutation] ${oldV} ➔ ${newV}`,
             keep: (val: string) => `[~Kept] ${val}`
         },
