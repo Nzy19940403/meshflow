@@ -15,7 +15,8 @@ import {createTransactionScheduler} from './useTransactionSchduler'
 
 
 type MeshTask<NM> = {
-    TaskRunner: (triggerUid: number | null, initialNodes: number[],keys:any[]) => Promise<void>,
+    //source用来指定更新源触发是由历史模块触发还是业务触发，用来避免meshtask重复commit任务去历史模块
+    TaskRunner: (triggerUid: number | null, initialNodes: number[],keys:any[],source?:number) => Promise<void>,
     CancelTask: () => void,
     stageValueFn: (uid: number, key: SuggestKey<NM>, value: any) => void
 }
@@ -236,7 +237,12 @@ function useMeshTask<P extends MeshPath, NM> (
     
 
     //运行调用入口
-    const TaskRunner:MeshTask<NM>['TaskRunner'] = async (triggerUid: number | null, initialNodes: number[],keys:any[]) => {
+    const TaskRunner:MeshTask<NM>['TaskRunner'] = async (
+        triggerUid: number | null, 
+        initialNodes: number[],
+        keys:any[],
+        source:number = 0 
+    ) => {
         
         let isTaskTakeOver = false;
         if(isTransactionChain){
@@ -1924,7 +1930,10 @@ function useMeshTask<P extends MeshPath, NM> (
                         currentEntangleArray.length = 0;
                         nextEntangleArray.length = 0;
                         Promise.resolve().then(() => {
-                            turnstile.commit()
+                            if(source!==1){
+                                turnstile.commit();
+                            };
+                            
                             hooks.callOnSuccess();
                         });
                     } 

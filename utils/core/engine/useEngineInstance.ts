@@ -13,8 +13,8 @@ import { useScheduler } from "./useScheduler";
  
 type HistoryTool = {
     (getEngineCtx: () => {
-        batchNotify: (updates: any[]) => void;
-    }): FullHistory;
+        batchNotify: (updates: any[],source:number) => void;
+    }):FullHistory;
     isMeshModuleInited: boolean;
 };
   
@@ -113,7 +113,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     
         // 定义严格的注入签名：只允许访问 batchNotify
         let initHistoryFn: (getEngineCtx: () => {
-            batchNotify: (updates: any[]) => void;
+            batchNotify: (updates: any[],source:number) => void;
         }) => FullHistory;
 
         // 核心逻辑：检测是否已经手动初始化
@@ -139,7 +139,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         } = initHistoryFn(
             // 💡 修复点：彻底移除 getNode 和 requestUpdate，只塞入 batchNotify
             () => ({
-                batchNotify: (updates: any[]) => batchNotify(updates)
+                batchNotify: (updates: any[],source:number) => batchNotify(updates,source)
             })
         );
 

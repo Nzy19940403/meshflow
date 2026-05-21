@@ -5,7 +5,7 @@ export type HistoryActionItem = {
 
 // 🌟 引擎注入给历史模块的执行上下文：现在只需要唯一的正门 batchNotify
 export type EngineContext = {
-  batchNotify: (updates: { path: string; key: string; value: any }[]) => void;
+  batchNotify: (updates: { path: string; key: string; value: any }[],source:number) => void;
 };
 
 export type MutationData = { path: string; key: string; oldVal: any; newVal: any };
@@ -83,14 +83,14 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
     };
 
     return {
-      Undo: () => {
+      Undo:    () => {
          
         if (!historyUndoList.length || isRestoring) return;
         const actionItem = historyUndoList.pop()!;
         
-        isRestoring = true; // 🌟 同步上锁！拦截引擎在撤销期间产生的一切记录
+        
         actionItem.undoAction();
-        isRestoring = false; // 🌟 同步解锁！干脆利落
+        
         
         historyRedoList.push(actionItem);
         if (historyRedoList.length > currentMaxStep) historyRedoList.shift();
@@ -98,15 +98,16 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
         status.canUndo();
       },
 
-      Redo: () => {
+      Redo:   () => {
         if (!historyRedoList.length || isRestoring) return;
         const actionItem = historyRedoList.pop()!;
         
-        isRestoring = true;
+      
         actionItem.redoAction();
-        isRestoring = false;
+       
         
         historyUndoList.push(actionItem);
+       
         if (historyUndoList.length > currentMaxStep) historyUndoList.shift();
         status.canUndo();
         status.canRedo();
@@ -125,7 +126,7 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
 
       RecordMutation: (arg1: string | MutationData[], key?: string, oldVal?: any, newVal?: any) => {
         if (isRestoring) return; 
-        
+      
         // 自动补票：不管有没有手动 Start，只要有真实变更就强行开门建档
         if (!isTransactionActive) {
           isTransactionActive = true;
@@ -193,7 +194,12 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
       },
 
       CommitTransaction: (version: number) => {
-         
+        // if (isRestoring) {
+        //   isRestoring = false; // 🌟 关键：在这里解锁，即意味着本次 Undo/Redo 彻底结束
+        //   currentMutations.clear(); // 🌟 清理掉撤销过程中引发的所有级联副作用
+        //   return; // 🌟 掠过记账步骤，直接 return，不给 Undo 列表推东西
+        // }
+
         if (!isTransactionActive || version !== currentVersion) return;
         isTransactionActive = false; // 关门结算
          
@@ -211,12 +217,14 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
         const batchedAction: HistoryActionItem = {
           undoAction: () => {
             ctx.batchNotify(
-              finalMutations.map(m => ({ path: m.path, key: m.key, value: m.oldVal }))
+              finalMutations.map(m => ({ path: m.path, key: m.key, value: m.oldVal })),
+              1
             );
           },
           redoAction: () => {
             ctx.batchNotify(
-              finalMutations.map(m => ({ path: m.path, key: m.key, value: m.newVal }))
+              finalMutations.map(m => ({ path: m.path, key: m.key, value: m.newVal })),
+              1
             );
           }
         };

@@ -318,7 +318,7 @@ export class MeshScheduler<
         });
     }
     private _dedupeScratchpad = new Uint8Array(1024);
-    public batchNotify = (updates: { path: P; key: SuggestKey<NM>; value: any }[]) => {
+    public batchNotify = (updates: { path: P; key: SuggestKey<NM>; value: any }[],source:number = 0) => {
         // if (!updates || updates.length === 0) return;
  
         // const updateRoots = new Set<number>();
@@ -393,7 +393,7 @@ export class MeshScheduler<
         this.requestUpdate();
         if (updateRoots.length > 0) {
             // 第三个参数现在是 [{uid, key}, ...] 的扁平结构，不再有 Path
-            this.meshTaskSystem.TaskRunner(null, updateRoots, keysPayload);
+            this.meshTaskSystem.TaskRunner(null, updateRoots, keysPayload,source);
         }
     }
 
