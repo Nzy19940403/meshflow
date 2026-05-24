@@ -5,7 +5,7 @@ export type HistoryActionItem = {
 
 // 🌟 引擎注入给历史模块的执行上下文：现在只需要唯一的正门 batchNotify
 export type EngineContext = {
-  _batchNotify: (updates: { path: string; key: string; value: any }[],source:number) => void;
+  BN: (updates: { path: string; key: string; value: any }[],source:number) => void;
 };
 
 export type MutationData = { path: string; key: string; oldVal: any; newVal: any };
@@ -216,13 +216,13 @@ const useHistory = (maxStep?: number): HistoryModuleFactory => {
 
         const batchedAction: HistoryActionItem = {
           undoAction: () => {
-            ctx._batchNotify(
+            ctx.BN(
               finalMutations.map(m => ({ path: m.path, key: m.key, value: m.oldVal })),
               1
             );
           },
           redoAction: () => {
-            ctx._batchNotify(
+            ctx.BN(
               finalMutations.map(m => ({ path: m.path, key: m.key, value: m.newVal })),
               1
             );
