@@ -28,14 +28,18 @@ class ApiWrapperPool {
             });
         }
     }
-
-    acquire() {
+    /**
+     * @internal
+     * */ 
+    _acquire() {
         return this.pool.pop() || {
             slot: { triggerTargets: null, affectedTatget: undefined, targetMeta: undefined }
         };
     }
-
-    release(wrapper: any) {
+    /**
+     * @internal
+     * */ 
+    _release(wrapper: any) {
         // 🌟 释放时切断引用
         wrapper.slot.triggerTargets = null;
         wrapper.slot.affectedTatget = undefined;
@@ -46,8 +50,8 @@ class ApiWrapperPool {
 export const globalWrapperPool = new ApiWrapperPool(POOL_SIZE);
 
  
-export const ExecuteMeshRule = (rule: any, api: any) => {
-    const { triggerUids, triggerKeys, targetUid, targetKey, logic, preAllocatedDeps } = rule;
+export const ExecuteMeshRule = <T>(rule: ReturnType<typeof CreateRule>, api: any) => {
+    const { triggerUids, triggerKeys, targetUid, targetKey, logic, _preAllocatedDeps } = rule;
     
     const hasTriggerKeys = triggerKeys && triggerKeys.length > 0;
  
@@ -57,9 +61,9 @@ export const ExecuteMeshRule = (rule: any, api: any) => {
         const node = api.getProxyByUid(uid);
  
         if (!hasTriggerKeys) {
-            preAllocatedDeps[i] = node;
+            _preAllocatedDeps[i] = node;
         } else {
-            const snap = preAllocatedDeps[i];
+            const snap = _preAllocatedDeps[i];
             for (let j = 0; j < triggerKeys.length; j++) {
                 const key = triggerKeys[j];
                 snap[key] = node[key];
@@ -68,10 +72,10 @@ export const ExecuteMeshRule = (rule: any, api: any) => {
             snap['proxy'] = node;
         }
     }
-    const wrapper = globalWrapperPool.acquire();
+    const wrapper = globalWrapperPool._acquire();
 
-    wrapper.slot.triggerTargets = preAllocatedDeps;
-    wrapper.slot.affectedTatget = api.getProxyByUid(targetUid)[targetKey];
+    wrapper.slot.triggerTargets = _preAllocatedDeps;
+    wrapper.slot.affectedTatget = api.getProxyByUid(targetUid)[targetKey as any];
     wrapper.slot.targetMeta = api.getProxyByUid(targetUid).meta;
 
     // 🌟 3. 将包裹传给业务逻辑！
@@ -80,11 +84,11 @@ export const ExecuteMeshRule = (rule: any, api: any) => {
     if (result && typeof result.then === 'function') {
         // 如果是异步任务，等待执行完毕后释放
         return result.finally(()=>{
-            globalWrapperPool.release(wrapper);
+            globalWrapperPool._release(wrapper);
         });
     } else {
         // 同步任务，立刻释放
-        globalWrapperPool.release(wrapper);
+        globalWrapperPool._release(wrapper);
         return result;
     }
 };
@@ -92,7 +96,7 @@ export const ExecuteMeshRule = (rule: any, api: any) => {
 // ==========================================
 // 🌟 纯数据构造器：不再创建任何闭包函数
 // ==========================================
-const CreateRule = <
+export const CreateRule = <
     K,
     NM,
     TKeys extends SuggestKey<NM>
@@ -122,7 +126,7 @@ const CreateRule = <
         logic: options.logic,// 仅存用户逻辑的引用
         priority: options.priority ?? basePriority,
         _hasRun: false,
-        preAllocatedDeps, // 将预分配的空间挂载在 rule 实体上
+        _preAllocatedDeps:preAllocatedDeps, // 将预分配的空间挂载在 rule 实体上
     
     };
 }
@@ -197,18 +201,18 @@ export const useSetRule = <P extends MeshPath, NM>(
       
         if (typeof inDegree.nodeBucket[key] === 'number') {
             const node = GetBucket(inDegree.nodeBucket[key]);
-            node.setRule(newRule, DepsArray);
+            node._setRule(newRule, DepsArray);
             
             if (options.effect) {
-                node.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                node._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
         } else {
             const baseValue = (inDegree.meta as any)[key]||(inDegree.state as any)[key];
             let newBucket = new SchemaBucket<P>(baseValue, key as string, inDegreePath);
-            newBucket.setRule(newRule, DepsArray);
+            newBucket._setRule(newRule, DepsArray);
             
             if (options.effect) {
-                newBucket.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                newBucket._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
 
             inDegree.nodeBucket[key] = SetBucket(newBucket);
@@ -217,8 +221,8 @@ export const useSetRule = <P extends MeshPath, NM>(
         (inDegree.state as any)[key] = (inDegree.meta as any)[key];
         const bucket = GetBucket(inDegree.nodeBucket[key]);
  
-        if (options.forceNotify||triggerKeys.length===0) bucket.forceNotify(); 
-        if (options.cacheStrategy == 'none') bucket.setUseCache(false);
+        if (options.forceNotify||triggerKeys.length===0) bucket._setForceNotify(); 
+        if (options.cacheStrategy == 'none') bucket._setUseCache(false);
     }
  
     const SetRules = <
@@ -258,18 +262,18 @@ export const useSetRule = <P extends MeshPath, NM>(
 
         if (typeof inDegree.nodeBucket[key] === 'number') {
             const node = GetBucket(inDegree.nodeBucket[key]);
-            node.setRules(newRule, DepsArray);
+            node._setRules(newRule, DepsArray);
             
             if (options.effect) {
-                node.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                node._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
         } else {
             const baseValue = (inDegree.meta as any)[key]||(inDegree.state as any)[key];
             let newBucket = new SchemaBucket<P>(baseValue, key as string, inDegreePath);
-            newBucket.setRules(newRule, DepsArray);
+            newBucket._setRules(newRule, DepsArray);
             
             if (options.effect) {
-                newBucket.setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
+                newBucket._setSideEffect({ fn: options.effect, args: options.effectArgs ? options.effectArgs : [key] });
             }
 
             inDegree.nodeBucket[key] = SetBucket(newBucket);
@@ -278,8 +282,8 @@ export const useSetRule = <P extends MeshPath, NM>(
         (inDegree.state as any)[key] = (inDegree.meta as any)[key];
         const bucket = GetBucket(inDegree.nodeBucket[key]);
  
-        if (options.forceNotify||triggerKeys.length===0) bucket.forceNotify(); 
-        if (options.cacheStrategy == 'none') bucket.setUseCache(false);
+        if (options.forceNotify||triggerKeys.length===0) bucket._setForceNotify(); 
+        if (options.cacheStrategy == 'none') bucket._setUseCache(false);
     }
 
     return { SetRule, SetRules }

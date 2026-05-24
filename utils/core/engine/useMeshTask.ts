@@ -1,4 +1,4 @@
-import {  createTimeScheduler, nextMacroTick } from "../utils/util";
+import {  createTimeScheduler, _nextMacroTick } from "../utils/util";
 import {
     MeshPath,
     MeshEmit,
@@ -12,13 +12,17 @@ import {
 } from "../types/types";
 import { SchemaBucket } from "./bucket";
 import {createTransactionScheduler} from './useTransactionSchduler'
+import { EntangleTurnstile } from "../dependency/useSetEntangle";
 
 
 type MeshTask<NM> = {
     //source用来指定更新源触发是由历史模块触发还是业务触发，用来避免meshtask重复commit任务去历史模块
     TaskRunner: (triggerUid: number | null, initialNodes: number[],keys:any[],source?:number) => Promise<void>,
     CancelTask: () => void,
-    stageValueFn: (uid: number, key: SuggestKey<NM>, value: any) => void
+    /**
+     * @internal
+     * */ 
+    _stageValueFn: (uid: number, key: SuggestKey<NM>, value: any) => void
 }
 
 function useMeshTask<P extends MeshPath, NM> (
@@ -27,12 +31,12 @@ function useMeshTask<P extends MeshPath, NM> (
         NODE_QUOTA_PER_FRAME:number
     },
     dependency: {
-        GetAllNextDependency: (targetUid: number) => number[];
-        GetAllPrevDependency: (targetUid: number) => number[];
-        GetPrevDependency: (targetUid: number) => number[];
-        GetNextDependency: (targetUid: number) => number[];
+        _GetAllNextDependency: (targetUid: number) => number[];
+        _GetAllPrevDependency: (targetUid: number) => number[];
+        _GetPrevDependency: (targetUid: number) => number[];
+        _GetNextDependency: (targetUid: number) => number[];
         GetDependencyOrder: () => number[][];
-        GetUidToLevelMap: () => Map<number, number>;
+        _GetUidToLevelMap: () => Map<number, number>;
     },
     data: {
         GetNodeByPath: (p: P) => MeshFlowTaskNode<P, any, NM>;
@@ -40,7 +44,7 @@ function useMeshTask<P extends MeshPath, NM> (
         GetPathByUid:(uid:number)=>P,
         GetBucket:(bucketId:number)=>SchemaBucket<P>,
         GetMaxUid:()=>number,
-        Turnstile: any; // 引入旋转门接口
+        Turnstile: EntangleTurnstile<P, NM>; // 引入旋转门接口
     },
     hooks: {
         callOnError: any;
@@ -50,7 +54,7 @@ function useMeshTask<P extends MeshPath, NM> (
     },
     uitrigger: {
         requestUpdate: () => void;
-        flushPathSet: Set<number>;
+        _flushPathSet: Set<number>;
     },
     timeScheduler: ReturnType<typeof createTimeScheduler>,
     taskSchduler:ReturnType<typeof createTransactionScheduler<P,NM>>,
@@ -202,7 +206,10 @@ function useMeshTask<P extends MeshPath, NM> (
 
     const stageBuffer: Array<{ uid: number, key: SuggestKey<NM>, value: any }> = [];
     let ignitionTimer: Promise<void> | null = null;
-    const stageValueFn = (uid: number, key: SuggestKey<NM>, value: any) => {
+    /**
+     * @internal
+     * */ 
+    const _stageValueFn = (uid: number, key: SuggestKey<NM>, value: any) => {
    
         // 1. 无论如何，数据先入库
         stageBuffer.push({ uid, key, value });
@@ -303,7 +310,7 @@ function useMeshTask<P extends MeshPath, NM> (
         initialNodes.forEach((uid) => {
             AllAffectedPaths[uid] = 1;
             dependency
-                .GetAllNextDependency(uid)
+                ._GetAllNextDependency(uid)
                 .forEach((childUid) =>{
                     AllAffectedPaths[childUid] = 1
                 });
@@ -353,7 +360,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     }
                     // 1. 物理写值
                     node.state[key] = value;
-                    uitrigger.flushPathSet.add(uid);
+                    uitrigger._flushPathSet.add(uid);
         
                     // 🌟 2. 核心修复：直接黄袍加身，不再绕道 currentEntangleArray
                     node.calledBy = TriggerCause.VOLITION;
@@ -380,7 +387,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     }
         
                     // 6. 记录这次神谕的层级
-                    const level = dependency.GetUidToLevelMap().get(uid) ?? 0;
+                    const level = dependency._GetUidToLevelMap().get(uid) ?? 0;
                     if (level < minInjectedLevel) minInjectedLevel = level;
                     
                     updateWatermark(uid); // 顺手推高影响水位
@@ -430,16 +437,16 @@ function useMeshTask<P extends MeshPath, NM> (
         const IS_ENTANGLEMENT_ENABLED = turnstile.volatileLevels.size > 0;
 
         const hasObserver:(uid: number) => boolean = IS_ENTANGLEMENT_ENABLED
-            ? turnstile.hasObserver
+            ? turnstile._hasObserver
             : (uid:number) => false;
         const emitGhosts:(observerNode: MeshFlowTaskNode<P, any, NM>, changedKeys: MeshPath[])=>number[] | Promise<number[]> = IS_ENTANGLEMENT_ENABLED
-            ? turnstile.receiveGhosts
+            ? turnstile._receiveGhosts
             : () => [];
         const resolveGhosts:(node: MeshFlowTaskNode<P, any, NM>) => MeshPath[] = IS_ENTANGLEMENT_ENABLED
-            ? turnstile.resolveGhosts
+            ? turnstile._resolveGhosts
             : () => [];
         const getTriggerKeys:(uid: number) => MeshPath[] = IS_ENTANGLEMENT_ENABLED
-            ? turnstile.getTriggerKeys
+            ? turnstile._getTriggerKeys
             : () => [];
          
         // 核心优化：直接拿取在 useEntangle 注册时就计算好的高危层级
@@ -454,11 +461,11 @@ function useMeshTask<P extends MeshPath, NM> (
         // const readyToRunBuffer = new Set<number>();
 
         // 获取初始水位线（触发点所在层级）
-        const uidToLevelMap = dependency.GetUidToLevelMap();
+        const uidToLevelMap = dependency._GetUidToLevelMap();
         let currentLevel = 0;
         let maxAffectedLevel = 0;
         const updateWatermark = (uid: number) => {
-            const descendants = dependency.GetAllNextDependency(uid);
+            const descendants = dependency._GetAllNextDependency(uid);
             descendants.forEach((u) => {
                 const level = uidToLevelMap.get(u) || 0;
                 if (level > maxAffectedLevel) {
@@ -520,16 +527,16 @@ function useMeshTask<P extends MeshPath, NM> (
 
             primeMovers.add(triggerUid);
             updateWatermark(triggerUid);
-            uitrigger.flushPathSet.add(triggerUid);
+            uitrigger._flushPathSet.add(triggerUid);
  
         }
 
         // 核心：seedsOfChaos 用于发射预言，它必须包含 triggerUid
         const seedsOfChaos = typeof triggerUid==='number' ? [triggerUid] : [...initialNodes, ...stagedBufferUids];;
 
-        if(timeScheduler.shouldYield()){
+        if(timeScheduler._shouldYield()){
             uitrigger.requestUpdate();
-            await timeScheduler.yieldToMain();
+            await timeScheduler._yieldToMain();
             if (currentExecutionToken.get(triggerToken) !== curToken) return;
         }
         
@@ -569,7 +576,7 @@ function useMeshTask<P extends MeshPath, NM> (
         
         if (currentEntangleArray.length > 0 || seedsOfChaos.length > 1) {
             uitrigger.requestUpdate();
-            await timeScheduler.yieldToMain();
+            await timeScheduler._yieldToMain();
   
             if (currentExecutionToken.get(triggerToken) !== curToken) return;
         }
@@ -690,7 +697,7 @@ function useMeshTask<P extends MeshPath, NM> (
                 isGhostly = true;
                 // targetSchema.calledBy = 0 ; // 卸下装甲，归还自由身，上面以及记录了这个节点是怎么被复活的，所以现在calledBy没有继续以1存在的必要
                 hasValueChanged = true; // 强制宣告变更，保证触发下游
-                uitrigger.flushPathSet.add(targetUid);
+                uitrigger._flushPathSet.add(targetUid);
 
                 
                 // 提取接力棒：把刚才 resolveGhosts 修改的 Key 拿过来！
@@ -786,7 +793,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     }
                     // Case A: 第一次被触碰 (Lazy Init)
                     // 我们不查 AllAffectedPaths，我们查“还有几个爸爸没死？”
-                    const parentUids = dependency.GetPrevDependency(childUid);
+                    const parentUids = dependency._GetPrevDependency(childUid);
 
                     let pendingCount = 0;
                     for (const uid of parentUids) {
@@ -922,7 +929,7 @@ function useMeshTask<P extends MeshPath, NM> (
                               
                                 if(key in targetSchema.nodeBucket){
                                     const bucketid:number = targetSchema.nodeBucket[key as SuggestKey<NM>];
-                                    targetSchema.syncCache(data.GetBucket(bucketid),result[key])
+                                    targetSchema._syncCache(data.GetBucket(bucketid),result[key])
                                 }
                              
                                 // 新增：副作用里的 key 也受 notifyKeys 检查！
@@ -940,7 +947,7 @@ function useMeshTask<P extends MeshPath, NM> (
       
                 }
 
-                if (hasValueChanged) uitrigger.flushPathSet.add(targetUid);
+                if (hasValueChanged) uitrigger._flushPathSet.add(targetUid);
 
                 const finishPropagation = (hitTargetUids: number[] = []) => {
                     if (currentExecutionToken.get(triggerToken) !== curToken) return;
@@ -968,14 +975,14 @@ function useMeshTask<P extends MeshPath, NM> (
                     // processed[targetUid] = 1;
                     flagArray[targetUid] |= NodeStatus.PROCESSED;
 
-                    const directChildren = dependency.GetNextDependency(targetUid);
+                    const directChildren = dependency._GetNextDependency(targetUid);
 
                     // 3.1 扩充疆域 (AllAffectedPaths)
                     // if ( hasValueChanged || notifyNext) {
                     if ( hasNotifyKeyTriggered || notifyNext) {
                         updateWatermark(targetUid);
 
-                        const allNextOrder = dependency.GetAllNextDependency(targetUid);
+                        const allNextOrder = dependency._GetAllNextDependency(targetUid);
                         // allNextOrder.forEach((p: any) => AllAffectedPaths.add(p));
                         allNextOrder.forEach((uid:number) => {
                             AllAffectedPaths[uid] = 1;
@@ -1210,7 +1217,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     }
                 }
                 const bucket = data.GetBucket(targetSchema.nodeBucket[bucketName]);
-                if (bucket.isForceNotify()) notifyNext = true;
+                if (bucket._isForceNotify()) notifyNext = true;
 
                 if (hasNotifyKeyTriggered || notifyNext) {
                     updateWatermark(targetUid);
@@ -1252,7 +1259,7 @@ function useMeshTask<P extends MeshPath, NM> (
                         SHARED_PAYLOAD.value = targetSchema.state[bucketName];
                         SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
                         hooks.emit(MeshFlowEventsName.NodeBucketSuccess , SHARED_PAYLOAD);
-                        if (bucket.isForceNotify()) notifyNext = true;
+                        if (bucket._isForceNotify()) notifyNext = true;
                         if ( targetSchema.notifyKeys.size === 0 || targetSchema.notifyKeys.has(bucketName)) {
                             updateWatermark(targetUid);
                         }
@@ -1278,7 +1285,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     api.iscache = false;
     
                     // 1. 启动计算
-                    const resultOrPromise = bucket.evaluate(api);
+                    const resultOrPromise = bucket._evaluate(api);
 
                     SHARED_PAYLOAD.path = targetPath;
                     SHARED_PAYLOAD.key = bucketName; 
@@ -1289,7 +1296,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
                     if(!api.iscache){
                        
-                        effectsToRun.push(...bucket.getSideEffect());
+                        effectsToRun.push(...bucket._getSideEffect());
                     }
                     // 2. 嗅探结果类型
                     if (resultOrPromise instanceof Promise) {
@@ -1342,7 +1349,7 @@ function useMeshTask<P extends MeshPath, NM> (
             }
 
             isLooping = true;
-            let isFirstFrame = timeScheduler.getIsFirstFrame();
+            let isFirstFrame = timeScheduler._getIsFirstFrame();
             let yieldCount = 0;
             // 1. 定义名额决策函数
             const getNodeQuota = () => {
@@ -1370,7 +1377,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     // ==========================================================
                       
                     const isQuotaExceeded = nodesProcessedInFrame >= NODE_QUOTA_PER_FRAME;
-                    const isTimeExceeded = timeScheduler.shouldYield();
+                    const isTimeExceeded = timeScheduler._shouldYield();
 
                     if (isQuotaExceeded || isTimeExceeded) {
                         // 只有在真的做过计算后，才申请更新 UI
@@ -1382,7 +1389,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             }
                         }
 
-                        await timeScheduler.yieldToMain();
+                        await timeScheduler._yieldToMain();
 
                         // 醒来后检查令牌
                         if (currentExecutionToken.get(triggerToken) !== curToken) break;
@@ -1390,7 +1397,7 @@ function useMeshTask<P extends MeshPath, NM> (
                         // 🔥 关键：睡醒了，重置计数器，开始新的一帧
                         nodesProcessedInFrame = 0;
 
-                        isFirstFrame = timeScheduler.getIsFirstFrame();
+                        isFirstFrame = timeScheduler._getIsFirstFrame();
                     }
                      
                     if (readyActiveCount > 0 && processingCount < MAX_CONCURRENT_TASKS) {
@@ -1409,7 +1416,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             };
                     
                             // --- 核心修改点 1：名额满了或时间到了的“救火”搬运 ---
-                            if (processingCount >= MAX_CONCURRENT_TASKS || nodesProcessedInFrame >= NODE_QUOTA_PER_FRAME || timeScheduler.shouldYield()) {
+                            if (processingCount >= MAX_CONCURRENT_TASKS || nodesProcessedInFrame >= NODE_QUOTA_PER_FRAME || timeScheduler._shouldYield()) {
                                 
                                 // 🌟 关键：j 的上限必须是动态的 readyCount，而不是 originalReadyCount！
                                 // 因为在跑循环时，新产生的子节点已经让 readyQueue 变长了
@@ -1430,7 +1437,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             const targetNode = data.GetNodeByUid(targetUid);
                             const targetPath = data.GetPathByUid(targetUid);
                             const targetLevel = uidToLevelMap.get(targetUid) ?? 0;
-                            const staticParents = dependency.GetPrevDependency(targetUid);
+                            const staticParents = dependency._GetPrevDependency(targetUid);
                             const isMergeNode = staticParents.length > 1;
                             
                             // 🌟 保持原样：完全没动你的 shouldIntercept 变量
@@ -1535,7 +1542,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     ) {
                         let foundGreedy = false;
                         let releasedCount = 0;
-                        // const isFirstFrame = scheduler.getIsFirstFrame();
+                        // const isFirstFrame = scheduler._getIsFirstFrame();
                         // const releaseQuota = isFirstFrame ? 5 : 15;
                         let nextStagingCount = 0; 
 
@@ -1548,7 +1555,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
                             if (resistance <= 0 && releasedCount < NODE_QUOTA_PER_FRAME) {
                                 const level = uidToLevelMap.get(uid) ?? 0;
-                                const staticParents = dependency.GetPrevDependency(uid);
+                                const staticParents = dependency._GetPrevDependency(uid);
 
                                 if (level <= currentLevel || staticParents.length <= 1) {
                                     // 捞起！
@@ -1582,8 +1589,8 @@ function useMeshTask<P extends MeshPath, NM> (
                         if (foundGreedy) {
                             // 修复点：在 continue 之前，必须再次检查时间片！
                             // 如果已经超时，不能 continue 去跑新任务，必须 break 出去让位
-                            if (timeScheduler.shouldYield()) {
-                                await timeScheduler.yieldToMain();
+                            if (timeScheduler._shouldYield()) {
+                                await timeScheduler._yieldToMain();
                                 if (currentExecutionToken.get(triggerToken) !== curToken) break;
                             }
                             continue;
@@ -1603,9 +1610,9 @@ function useMeshTask<P extends MeshPath, NM> (
                      
                             break; 
                         }
-                        if(timeScheduler.shouldYield()){
+                        if(timeScheduler._shouldYield()){
                             uitrigger.requestUpdate();
-                            await timeScheduler.yieldToMain();
+                            await timeScheduler._yieldToMain();
                             if (currentExecutionToken.get(triggerToken) !== curToken) break;
                         }
                         if (currentEntangleArray.length === 0 && nextEntangleArray.length > 0 ) {
@@ -1615,7 +1622,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                 ...currentEntangleArray.map(uid => uidToLevelMap.get(uid) || 0)
                             );
                           
-                            turnstile.nextEpoch();
+                            turnstile._nextEpoch();
                             SHARED_PAYLOAD.timestamp = performance.now();
                             hooks.emit(MeshFlowEventsName.EntangleEpochChange,SHARED_PAYLOAD);
                         }
@@ -1674,7 +1681,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                     }
 
                                     updateWatermark(targetNode.uid);
-                                    uitrigger.flushPathSet.add(targetNode.uid);
+                                    uitrigger._flushPathSet.add(targetNode.uid);
                                 }
                             }
 
@@ -1684,8 +1691,8 @@ function useMeshTask<P extends MeshPath, NM> (
                                 }
                                 uitrigger.requestUpdate();
 
-                                if(timeScheduler.shouldYield()){
-                                    await timeScheduler.yieldToMain();
+                                if(timeScheduler._shouldYield()){
+                                    await timeScheduler._yieldToMain();
  
                                     if (currentExecutionToken.get(triggerToken) !== curToken) break;
                                 }
@@ -1877,7 +1884,7 @@ function useMeshTask<P extends MeshPath, NM> (
                         applyStageValue(); // 把 stageBuffer 里的值并入节点，这会触发节点状态变为 READY
                         
                         // 并入之后，立刻安排下一波发车，千万不能结束！
-                        nextMacroTick(() => {
+                        _nextMacroTick(() => {
                             if (globalLatestSessionToken === curToken) {
                                 flushQueue(); 
                             }
@@ -1977,7 +1984,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                     // SHARED_PAYLOAD.timestamp = performance.now();
                                     // hooks.emit(MeshFlowEventsName.EntangleEpochChange,SHARED_PAYLOAD);
                                     
-                                    nextMacroTick(() => {
+                                    _nextMacroTick(() => {
                                         if (globalLatestSessionToken === curToken) {
                                             // 如果在 tick 期间又冒出幽灵了，交给下一次 flushQueue 的 finally 处理
                                             if (turnstile.inFlightCount === 0) {
@@ -2008,7 +2015,7 @@ function useMeshTask<P extends MeshPath, NM> (
         flushQueue();
     };
 
-    return {TaskRunner,CancelTask,stageValueFn};
+    return {TaskRunner,CancelTask,_stageValueFn};
 }
 
 export { useMeshTask };

@@ -23,6 +23,37 @@ type EntangleLink<P extends MeshPath,NM> = {
   _inBatch: boolean;
 };
 
+export interface EntangleTurnstile<P extends MeshPath, NM> {
+  volatileLevels: Set<number>;
+  
+  // Getter 属性使用 readonly 标记
+  readonly inFlightCount: number;
+  readonly hasPendingGhosts: boolean;
+  
+  _nextEpoch: () => void;
+  reset: () => void;
+  _hasObserver: (uid: number) => boolean;
+  _getTriggerKeys: (uid: number) => MeshPath[];
+  
+  // 核心演化与幽灵解析方法
+  _receiveGhosts: (
+    causeNode: MeshFlowTaskNode<P, any, NM>, 
+    changedKeys?: MeshPath[]
+  ) => number[] | Promise<number[]>;
+  
+  _resolveGhosts: (node: MeshFlowTaskNode<P, any, NM>) => string[];
+  
+  resetCounters: () => void;
+  commit: () => void;
+}
+
+// 🌟 2. 定义 UseSetEntangle 的整体返回值
+export interface UseSetEntangleReturn<P extends MeshPath, NM> {
+  _useEntangle: (config: EntangleArgType<P>) => void;
+  _updateEntangleLevel: () => void;
+  Turnstile: EntangleTurnstile<P, NM>;
+}
+
 export const UseSetEntangle = <P extends MeshPath, NM>(
   config: { useEntangleStep: number },
   timeScheduler: ReturnType<typeof createTimeScheduler>,
@@ -35,7 +66,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     onError: (error: MeshErrorContext) => void
   },
   history:InternalMeshFlowHistory
-) => {
+): UseSetEntangleReturn<P, NM> => {
   const MAX_ENTANGLE_DEPTH = config.useEntangleStep;
 
   const _registry: Array<Map<MeshPath, EntangleLink<P,NM>[]>> = [];
@@ -216,7 +247,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     }
   };
 
-  const updateEntangleLevel = () => {
+  const _updateEntangleLevel = () => {
     const levelMap = _GetUidToLevelMap();
     _volatileLevels.clear();
     for (let uid = 0; uid < _registry.length; uid++) {
@@ -227,7 +258,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     }
   };
 
-  const useEntangle = (config: EntangleArgType<P>) => {
+  const _useEntangle = (config: EntangleArgType<P>) => {
     const { cause, impact, via, emit, filter, isProxy } = config;
     
     if (!via || via.length === 0) {
@@ -263,7 +294,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     }
   };
 
-  const Turnstile: any = {
+  const Turnstile: EntangleTurnstile<P, NM> = {
     volatileLevels: _volatileLevels,
 
     get inFlightCount() {
@@ -274,8 +305,10 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     get hasPendingGhosts() {
       return pendingGhostNodesCount > 0;
     },
-
-    nextEpoch: () => {
+    /**
+     * @internal
+    */
+    _nextEpoch: () => {
       currentEpoch++; // 历史长河往前走一步，之前的幽灵全部沦为“前朝丧尸”
  
     },
@@ -285,16 +318,23 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       pendingGhostNodesCount = 0; // 待结算幽灵节点数清零
       _ghostBuffer.length = 0; 
     },
-    hasObserver: (uid: number) => {
+    /**
+     * @internal
+    */
+    _hasObserver: (uid: number) => {
       return _registry[uid] !== undefined;
     },
-
-    getTriggerKeys: (uid: number): MeshPath[] => {
+    /**
+     * @internal
+    */
+    _getTriggerKeys: (uid: number): MeshPath[] => {
       const causeMap = _registry[uid];
       return causeMap ? Array.from(causeMap.keys()) : [];
     },
-
-    receiveGhosts: (causeNode: MeshFlowTaskNode<P, any, NM>, changedKeys: string[] = []): number[] | Promise<number[]> => {
+    /**
+     * @internal
+    */
+    _receiveGhosts: (causeNode: MeshFlowTaskNode<P, any, NM>, changedKeys: MeshPath[] = []): number[] | Promise<number[]> => {
       const causeUid = causeNode.uid;
       const hitTargetUids: number[] = [];
       const causeMap = _registry[causeUid];
@@ -327,7 +367,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       let firstAsyncPromise: Promise<void> | null = null;
 
       for (; i < linksArray.length; i++) {
-        if (timeScheduler.shouldYield()) {
+        if (timeScheduler._shouldYield()) {
           wentAsync = true;
           break;
         }
@@ -359,7 +399,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
 
       return (async () => {
         if (firstAsyncPromise) await firstAsyncPromise;
-        if (timeScheduler.shouldYield()) await timeScheduler.yieldToMain();
+        if (timeScheduler._shouldYield()) await timeScheduler._yieldToMain();
 
         for (; i < linksArray.length; ) {
           const chunkPromises: Promise<void>[] = [];
@@ -373,18 +413,18 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
           if (chunkPromises.length > 0) {
             await Promise.all(chunkPromises.map(async (p) => {
               await p;
-              if (timeScheduler.shouldYield()) await timeScheduler.yieldToMain();
+              if (timeScheduler._shouldYield()) await timeScheduler._yieldToMain();
             }));
           }
 
-          if (timeScheduler.shouldYield()) await timeScheduler.yieldToMain();
+          if (timeScheduler._shouldYield()) await timeScheduler._yieldToMain();
         }
 
         return getUniqueHits();
       })();
     },
 
-    resolveGhosts: (node: MeshFlowTaskNode<P, any, NM>): string[] => {
+    _resolveGhosts: (node: MeshFlowTaskNode<P, any, NM>): string[] => {
       const targetUid = node.uid;
       const buffer = _ghostBuffer[targetUid];
       
@@ -539,8 +579,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   };
 
   return {
-    useEntangle,
-    updateEntangleLevel,
+    _useEntangle,
+    _updateEntangleLevel,
     Turnstile,
   };
 };

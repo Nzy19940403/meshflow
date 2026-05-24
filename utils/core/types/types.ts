@@ -99,10 +99,10 @@ export type MeshEmit = <K extends MeshEventName>(
  * @category 历史类型
  * 
 */
-export type HistoryActionItem = {
-  undoAction: () => void;
-  redoAction: () => void;
-};
+// export type HistoryActionItem = {
+//   undoAction: () => void;
+//   redoAction: () => void;
+// };
 /**
  * @group 类型管理
  * @category 历史类型
@@ -204,7 +204,7 @@ export interface MeshFlowTaskNode<
   meta: NM ; //存放业务元数据
   dependOn: (cb: (val: V) => V, key?:SuggestKey<NM>) => void;
   createView: <E extends Record<string, any> = {}>(extraProps?: E) => MeshNodeProxy<MeshFlowTaskNode<P, V, NM>, V, NM, E>;
-  syncCache:(bucket:any,val:any )=>void
+  _syncCache:(bucket:any,val:any )=>void
 }
  /**
  *  
@@ -541,7 +541,7 @@ export enum DefaultStrategy {
    * 2. **异步原子性**：严格按照声明顺序 `await`，保证高优先级规则先被检验。
    * 3. **底色回退**：若所有普通规则均未匹配（或返回 falsy），则回退使用 `__base__` 规则的值作为兜底保障。
    */
-  OR = "OR",
+  OR = 0,
 /**
    * **绝对优先级策略 (PRIORITY)**
    * * @description
@@ -550,7 +550,7 @@ export enum DefaultStrategy {
    * 1. **非空即中**：按序执行，首个返回 **非 `undefined`** 的规则直接获胜，立即中断后续计算。
    * 2. **无视布尔值**：与 `OR` 策略不同，即使逻辑返回 `false`、`0` 或 `null`，只要不是 `undefined`，依然视为有效命中。
    */
-  PRIORITY = "PRIORITY",
+  PRIORITY = 1,
 /**
    * **聚合策略 (MERGE)**
    * * @description
@@ -560,14 +560,14 @@ export enum DefaultStrategy {
    * - **对象**：执行浅层合并 `{ ...old, ...new }`，同名键值由后者覆盖。
    * - **数组**：执行末尾追加 `[...old, ...new]`。
    * 2. **异步原子性**：原生支持异步规则。即使存在 Promise，引擎也会通过异步链条严格保证合并顺序与规则声明顺序一致。
-   * 3. **底色机制 (__base__)**：支持 `entityId` 为 `__base__` 的特殊规则。其产出作为节点的“底色数据”，会被普通规则的非空产出所覆盖。
+   * 3. **底色机制 (__base__)**：支持 `_entityId` 为 `__base__` 的特殊规则。其产出作为节点的“底色数据”，会被普通规则的非空产出所覆盖。
    * * @example
    * // 场景：多个规则共同定义一个配置对象
    * // Rule A: { a: 1 }
    * // Rule B (async): 返回 { b: 2 }
    * // 最终结果: { a: 1, b: 2 }
    */
-  MERGE = "MERGE",
+  MERGE = 2,
 }
  
 

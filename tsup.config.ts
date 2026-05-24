@@ -15,17 +15,17 @@ export default defineConfig([
     format: ["cjs", "esm"],
     dts: true, // 自动生成 index.d.ts
     clean: true,
-    minify: true,
-    // minify: "terser",
-    // terserOptions: {
-    //   mangle: {
-    //     properties: {
-    //       // ⚠️ 这里开启了最强压缩：
-    //       // 凡是以下划线开头的属性名，全部压缩成 a, b, c...
-    //       regex: /^_/, 
-    //     },
-    //   },
-    // },
+    // minify: true,
+    minify: "terser",
+    terserOptions: {
+      mangle: {
+        properties: {
+          // ⚠️ 这里开启了最强压缩：
+          // 凡是以下划线开头的属性名，全部压缩成 a, b, c...
+          regex: /^_/, 
+        },
+      },
+    },
     pure: ["console.log", "console.warn", "console.error"],
     // 1. 关闭 SourceMap (减少构建产物中的 .map 文件，虽然不影响运行体积，但发布包会更干净)
     sourcemap: false,

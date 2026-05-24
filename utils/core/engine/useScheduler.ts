@@ -18,39 +18,58 @@ export class MeshScheduler<
     NM = any
 > {
     public uid: number = 0;
-    public PathToUidMap = new Map<MeshPath, number>();
-    public UidToNodeMap: MeshFlowTaskNode<P, any, NM>[] = [];
-    public UidToGroupMap: MeshFlowGroupNode[] = [];
-    public UidToPathMap: Array<P> = [];
-    public AllBuckets: Array<SchemaBucket<P>> = [];
+    private _PathToUidMap = new Map<MeshPath, number>();
+    private _UidToNodeMap: MeshFlowTaskNode<P, any, NM>[] = [];
+    private _UidToGroupMap: MeshFlowGroupNode[] = [];
+    private _UidToPathMap: Array<P> = [];
+    private _AllBuckets: Array<SchemaBucket<P>> = [];
 
-    public isPending = false;
-    public flushPathSet = new Set<number>();
+    private _isPending = false;
+    /**
+     * @internal
+     **/ 
+    public _flushPathSet = new Set<number>();
 
-    public useEntangle: any;
-    public updateEntangleLevel: any;
+    /**
+     * @internal
+     * */ 
+    public _useEntangle;
+    /**
+     * @internal
+     * */ 
+    public _updateEntangleLevel;
     public dispose: ()=>void;
-    public stageValueFn: typeof this.meshTaskSystem.stageValueFn;
-    public SettleTasks: typeof this.taskSchduler.settleTasks;
+    /**
+     * @internal
+     * */ 
+    public _stageValueFn: typeof this._meshTaskSystem._stageValueFn;
+    public SettleTasks: typeof this._taskSchduler.settleTasks;
 
     // 子系统实例
-    public timeScheduler: ReturnType<typeof createTimeScheduler>;
-    public taskSchduler: ReturnType<typeof createTransactionScheduler<P,NM>>;
-    public entangleSystem: any;
-    public meshTaskSystem: ReturnType<typeof useMeshTask<P,NM>>;
+    public _timeScheduler: ReturnType<typeof createTimeScheduler>;
+    private _taskSchduler: ReturnType<typeof createTransactionScheduler<P,NM>>;
+    private _entangleSystem: ReturnType<typeof UseSetEntangle<P, NM>>;
+    private _meshTaskSystem: ReturnType<typeof useMeshTask<P,NM>>;
 
     constructor(
         public config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number },
-        public dependency: any, // 保持你的完整类型
+        public dependency:{
+            _GetAllNextDependency: (targetUid: number) => number[];
+            _GetAllPrevDependency: (targetUid: number) => number[];
+            _GetPrevDependency: (targetUid: number) => number[];
+            _GetNextDependency: (targetUid: number) => number[];
+            GetDependencyOrder: () => number[][];
+            _GetUidToLevelMap: () => Map<number, number>;
+        }, // 保持你的完整类型
         public history:InternalMeshFlowHistory,
         public hooks: { callOnError: any; callOnSuccess: any; callOnStart: any; emit: MeshEmit; },
         public UITrigger: B
     ) {
-        this.timeScheduler = createTimeScheduler();
+        this._timeScheduler = createTimeScheduler();
         
         // 使用箭头函数代理，确保 this 指向，同时避免 bind 产生的额外对象
-        this.taskSchduler = createTransactionScheduler<P,NM>(
-            () => (updates: notifyArgs<P,NM>[]) => this.batchNotify(updates), 
+        this._taskSchduler = createTransactionScheduler<P,NM>(
+            () => (updates: notifyArgs<P,NM>[]) => this._batchNotify(updates), 
             () => (path: P,key:SuggestKey<NM>) => this.notify(path,key),
             {
                 emit: this.hooks.emit,
@@ -59,20 +78,20 @@ export class MeshScheduler<
         );
  
         // 🌟 初始化子系统，全部传入绑定了 this 的方法
-        this.entangleSystem = UseSetEntangle<P, NM>(
+        this._entangleSystem = UseSetEntangle<P, NM>(
             { useEntangleStep: this.config.useEntangleStep },
-            this.timeScheduler,
-            this.dependency.GetUidToLevelMap,
+            this._timeScheduler,
+            this.dependency._GetUidToLevelMap,
             (p: P) => this.GetNodeByPath(p),
             // (u: number) => this.GetNodeByUid(u),
             // (u: number) => this.GetPathByUid(u),
             { emit: this.hooks.emit, onError: this.hooks.callOnError },
             history
         );
-        this.useEntangle = this.entangleSystem.useEntangle;  
-        this.updateEntangleLevel = this.entangleSystem.updateEntangleLevel;
+        this._useEntangle = this._entangleSystem._useEntangle;  
+        this._updateEntangleLevel = this._entangleSystem._updateEntangleLevel;
 
-        this.meshTaskSystem = useMeshTask<P, NM>(
+        this._meshTaskSystem = useMeshTask<P, NM>(
             { useGreedy: this.config.useGreedy, NODE_QUOTA_PER_FRAME: this.config.NODE_QUOTA_PER_FRAME },
             this.dependency,
             {
@@ -81,49 +100,49 @@ export class MeshScheduler<
                 GetPathByUid: (u: number) => this.GetPathByUid(u),
                 GetBucket: (b: number) => this.GetBucket(b),
                 GetMaxUid: () => this.GetMaxUid(),
-                Turnstile: this.entangleSystem.Turnstile
+                Turnstile: this._entangleSystem.Turnstile
             },
             this.hooks,
             {
                 requestUpdate: () => this.requestUpdate(),
-                flushPathSet: this.flushPathSet,
+                _flushPathSet: this._flushPathSet,
             },
-            this.timeScheduler,
-            this.taskSchduler,
+            this._timeScheduler,
+            this._taskSchduler,
             this.history
         );
         this.dispose = ()=>{
-            this.meshTaskSystem.CancelTask();
-            for (let i = 0; i < this.UidToNodeMap.length; i++) {
-                const node = this.UidToNodeMap[i];
+            this._meshTaskSystem.CancelTask();
+            for (let i = 0; i < this._UidToNodeMap.length; i++) {
+                const node = this._UidToNodeMap[i];
                 if (node) {
                     (node as any).dispose();
                 }
             }
         
             // 2. 【清空容器】使用物理清空法
-            this.UidToNodeMap.length = 0;   // 物理清空数组
-            this.UidToGroupMap.length = 0;  
-            this.UidToPathMap.length = 0;
-            this.AllBuckets.length = 0;
+            this._UidToNodeMap.length = 0;   // 物理清空数组
+            this._UidToGroupMap.length = 0;  
+            this._UidToPathMap.length = 0;
+            this._AllBuckets.length = 0;
         
             // 3. 【清空集合与映射】
-            this.PathToUidMap.clear();      // Map 必须用 clear()
-            this.flushPathSet.clear();      // Set 必须用 clear()
+            this._PathToUidMap.clear();      // Map 必须用 clear()
+            this._flushPathSet.clear();      // Set 必须用 clear()
         
             // 4. 【重置状态】
             this.uid = 0;
-            this.isPending = false;
+            this._isPending = false;
             console.log('清理成功')
 
         }; // 压平
-        this.stageValueFn = this.meshTaskSystem.stageValueFn; // 压平
-        this.SettleTasks = this.taskSchduler.settleTasks;
+        this._stageValueFn = this._meshTaskSystem._stageValueFn; // 压平
+        this.SettleTasks = this._taskSchduler.settleTasks;
     }
 
     public flushUpdate = async () => {
-        const uids = Array.from(this.flushPathSet);
-        this.flushPathSet.clear();
+        const uids = Array.from(this._flushPathSet);
+        this._flushPathSet.clear();
 
         // 🌟 完全保留你的双轨触发设计
         if ('signalTrigger' in this.UITrigger && typeof this.UITrigger.signalTrigger === 'function') {
@@ -137,15 +156,15 @@ export class MeshScheduler<
     };
 
     public requestUpdate = ()=> {
-        if (this.isPending) return;
-        this.isPending = true;
+        if (this._isPending) return;
+        this._isPending = true;
         requestAnimationFrame(() => {
             try {
-                while (this.flushPathSet.size > 0) {
+                while (this._flushPathSet.size > 0) {
                     this.flushUpdate();
                 }
             } finally {
-                this.isPending = false;
+                this._isPending = false;
             }
         });
     }
@@ -196,8 +215,8 @@ export class MeshScheduler<
         this.notify(path,key);
     }
 
-    public registerNode =  (nodeMeta: Omit<MeshFlowTaskNode<P>, 'createView' | 'proxy' | 'dependOn' | 'calledBy' | 'uid' | 'dirtySignal' | 'nodeBucket'|'syncCache'>)=> {
-        if (this.PathToUidMap.has(nodeMeta.path)) {
+    public registerNode =  (nodeMeta: Omit<MeshFlowTaskNode<P>, 'createView' | 'proxy' | 'dependOn' | 'calledBy' | 'uid' | 'dirtySignal' | 'nodeBucket'|'_syncCache'>)=> {
+        if (this._PathToUidMap.has(nodeMeta.path)) {
             throw new Error(MeshError.DuplicatePath(String(nodeMeta.path)))
         }
 
@@ -220,15 +239,15 @@ export class MeshScheduler<
             dependOn: dependOnFn,
         }) as MeshFlowTaskNode<P, typeof nodeMeta.state, NM>;
 
-        this.PathToUidMap.set(nodeInstance.path, currentId);
-        this.UidToPathMap[currentId] = nodeInstance.path;
-        this.UidToNodeMap[currentId] = nodeInstance;
+        this._PathToUidMap.set(nodeInstance.path, currentId);
+        this._UidToPathMap[currentId] = nodeInstance.path;
+        this._UidToNodeMap[currentId] = nodeInstance;
 
         return nodeInstance;
     }
 
     public registerGroupNode = (groupMeta: Omit<MeshFlowGroupNode<P>, 'createView' | 'calledBy' | 'uid' | 'dirtySignal'>)=> {
-        if (this.PathToUidMap.has(groupMeta.path)) {
+        if (this._PathToUidMap.has(groupMeta.path)) {
             throw new Error(MeshError.DuplicatePath(String(groupMeta.path)))
         }
 
@@ -243,45 +262,47 @@ export class MeshScheduler<
             children: groupMeta.children,
         }) as MeshFlowGroupNode<P>;
 
-        this.PathToUidMap.set(groupInstance.path, currentId);
-        this.UidToGroupMap[currentId] = groupInstance;
+        this._PathToUidMap.set(groupInstance.path, currentId);
+        this._UidToGroupMap[currentId] = groupInstance;
 
         return groupInstance;
     }
 
     public GetNodeByPath = (path: P): MeshFlowTaskNode<P, any, NM>=> {
-        const uid = this.PathToUidMap.get(path);
+        const uid = this._PathToUidMap.get(path);
         if (uid === undefined) {
         
             throw Error(MeshError.WrongId)
          
         };
-        const targetSchema = this.UidToNodeMap[uid];
+        const targetSchema = this._UidToNodeMap[uid];
         if (!targetSchema) throw Error(MeshError.WrongId);
         return targetSchema;
     }
 
     public GetNodeByUid = (uid: number): MeshFlowTaskNode<P, any, NM> => {
-        const targetSchema = this.UidToNodeMap[uid];
+        const targetSchema = this._UidToNodeMap[uid];
         if (!targetSchema) throw Error(MeshError.WrongId);
         return targetSchema;
     }
 
     public GetPathByUid = (uid: number): P =>{
-        return this.UidToPathMap[uid];
+        return this._UidToPathMap[uid];
     }
 
     public GetGroupByPath = (path: MeshPath)=> {
-        const uid = this.PathToUidMap.get(path)!;
-        return this.UidToGroupMap[uid];
+        const uid = this._PathToUidMap.get(path)!;
+        return this._UidToGroupMap[uid];
     }
-
+    /**
+     * @Internal
+    */
     public SetBucket = (newBucket: SchemaBucket<P>)=>{
-        return this.AllBuckets.push(newBucket) - 1;
+        return this._AllBuckets.push(newBucket) - 1;
     }
 
     public GetBucket = (bucketId: number)=> {
-        const bucket = this.AllBuckets[bucketId];
+        const bucket = this._AllBuckets[bucketId];
         if (!bucket) throw Error(MeshError.WrongId);
         return bucket;
     }
@@ -294,21 +315,23 @@ export class MeshScheduler<
         let inDegree = this.GetNodeByPath(path);
         if (!inDegree) throw Error(MeshError.WrongId);
 
-        this.flushPathSet.add(inDegree.uid);
+        this._flushPathSet.add(inDegree.uid);
         this.requestUpdate();
 
-        let nextOrder = this.dependency.GetNextDependency(inDegree.uid);
+        let nextOrder = this.dependency._GetNextDependency(inDegree.uid);
 
-        this.meshTaskSystem.TaskRunner(inDegree.uid, nextOrder,[{uid:inDegree.uid,key}]);
+        this._meshTaskSystem.TaskRunner(inDegree.uid, nextOrder,[{uid:inDegree.uid,key}]);
     }
-
-    public notifyAll = async () => {
+    /**
+     * @internal
+     * */ 
+    public _notifyAll = async () => {
         Promise.resolve().then(async () => {
             const order = this.dependency.GetDependencyOrder();
             if (!order || order.length === 0) return;
             const roots = order[0];
             try {
-                this.meshTaskSystem.TaskRunner(null, roots,[]);
+                this._meshTaskSystem.TaskRunner(null, roots,[]);
             } catch (error) {
                 this.hooks.callOnError(error);
                 throw error;
@@ -318,7 +341,7 @@ export class MeshScheduler<
         });
     }
     private _dedupeScratchpad = new Uint8Array(1024);
-    public batchNotify = (updates: { path: P; key: SuggestKey<NM>; value: any }[],source:number = 0) => {
+    public _batchNotify = (updates: { path: P; key: SuggestKey<NM>; value: any }[],source:number = 0) => {
         // if (!updates || updates.length === 0) return;
  
         // const updateRoots = new Set<number>();
@@ -385,7 +408,7 @@ export class MeshScheduler<
             if (this._dedupeScratchpad[uid] === 0) {
                 this._dedupeScratchpad[uid] = 1; // 标记已访问
                 updateRoots.push(uid);
-                this.flushPathSet.add(uid);
+                this._flushPathSet.add(uid);
             }
         }
         
@@ -393,7 +416,7 @@ export class MeshScheduler<
         this.requestUpdate();
         if (updateRoots.length > 0) {
             // 第三个参数现在是 [{uid, key}, ...] 的扁平结构，不再有 Path
-            this.meshTaskSystem.TaskRunner(null, updateRoots, keysPayload,source);
+            this._meshTaskSystem.TaskRunner(null, updateRoots, keysPayload,source);
         }
     }
 
@@ -412,7 +435,7 @@ export class MeshScheduler<
         // 3. 物理覆写（不触碰任何引擎核心依赖）
         node.state[key] = value;
        
-        this.flushPathSet.add(node.uid);
+        this._flushPathSet.add(node.uid);
         return true; 
     }
  
@@ -429,7 +452,14 @@ export function useScheduler<
     NM = any
 >(
     config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number },
-    dependency: any,
+    dependency: {
+        _GetAllNextDependency: (targetUid: number) => number[];
+        _GetAllPrevDependency: (targetUid: number) => number[];
+        _GetPrevDependency: (targetUid: number) => number[];
+        _GetNextDependency: (targetUid: number) => number[];
+        GetDependencyOrder: () => number[][];
+        _GetUidToLevelMap: () => Map<number, number>;
+    },
     // history: Partial<{ pushIntoHistory: any; createHistoryAction: any; }>,
     history:InternalMeshFlowHistory,
     hooks: { callOnError: any; callOnSuccess: any; callOnStart: any; emit: MeshEmit; },

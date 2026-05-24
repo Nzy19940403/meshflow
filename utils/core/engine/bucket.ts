@@ -1,4 +1,5 @@
 import { ExecuteMeshRule } from "../dependency/useSetRule";
+import { DefaultStrategy } from "../types/types";
 // import { InternalKeys, DefaultStrategy } from "../types/types";
 
 type ContractType = "boolean" | "scalar" | "array" | "object";
@@ -28,20 +29,20 @@ const mergeData = (target: any, source: any) => {
 // ==========================================
 // 🌟 2. 全局单例策略字典：引入 resultContainer 彻底消灭元组分配
 // ==========================================
-const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version: number, checkRuleDirty: Function, resultContainer: any) => any> = {
-  OR: (store, api, version, checkRuleDirty, resultContainer) => {
+const GLOBAL_STRATEGIES: Record<DefaultStrategy, (store: StrategyStore, api: any, version: number, checkRuleDirty: Function, resultContainer: any) => any> = {
+  [DefaultStrategy.OR]: (store, api, version, checkRuleDirty, resultContainer) => {
     let res = undefined;
     let baseValue: any = undefined;
-    const allRules = store.computedRules;
+    const allRules = store._computedRules;
 
     for (let i = 0; i < allRules.length; i++) {
       const rule = allRules[i];
-      const p = store.getRuleResult(rule, api, checkRuleDirty);
+      const p = store._getRuleResult(rule, api, checkRuleDirty);
 
       if (p instanceof Promise) {
         return (async () => {
           let val = await p;
-          if (rule.entityId === "__base__") {
+          if (rule._entityId === "__base__") {
             baseValue = val;
           } else if (val) {
             res = val;
@@ -50,10 +51,10 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
           if (typeof res === "undefined") {
             for (let j = i + 1; j < allRules.length; j++) {
               const nextRule = allRules[j];
-              const nextP = store.getRuleResult(nextRule, api, checkRuleDirty);
+              const nextP = store._getRuleResult(nextRule, api, checkRuleDirty);
               const nextVal = nextP instanceof Promise ? await nextP : nextP;
 
-              if (nextRule.entityId === "__base__") {
+              if (nextRule._entityId === "__base__") {
                 baseValue = nextVal;
                 continue;
               }
@@ -71,7 +72,7 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
       }
 
       const val = p;
-      if (rule.entityId === "__base__") {
+      if (rule._entityId === "__base__") {
         baseValue = val;
         continue;
       }
@@ -86,13 +87,13 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
     resultContainer.version = version;
   },
 
-  PRIORITY: (store, api, version, checkRuleDirty, resultContainer) => {
+  [DefaultStrategy.PRIORITY]: (store, api, version, checkRuleDirty, resultContainer) => {
     let res = undefined;
-    const allRules = store.computedRules;
+    const allRules = store._computedRules;
 
     for (let i = 0; i < allRules.length; i++) {
       const rule = allRules[i];
-      const p = store.getRuleResult(rule, api, checkRuleDirty);
+      const p = store._getRuleResult(rule, api, checkRuleDirty);
 
       if (p instanceof Promise) {
         return (async () => {
@@ -105,7 +106,7 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
 
           for (let j = i + 1; j < allRules.length; j++) {
             const nextRule = allRules[j];
-            const nextP = store.getRuleResult(nextRule, api, checkRuleDirty);
+            const nextP = store._getRuleResult(nextRule, api, checkRuleDirty);
             const nextVal = nextP instanceof Promise ? await nextP : nextP;
             if (nextVal !== undefined) {
               resultContainer.res = nextVal;
@@ -129,21 +130,21 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
     resultContainer.version = version;
   },
 
-  MERGE: (store, api, version, checkRuleDirty, resultContainer) => {
+  [DefaultStrategy.MERGE]: (store, api, version, checkRuleDirty, resultContainer) => {
     let res: any = undefined;
     let baseValue: any = undefined;
-    const allRules = store.computedRules;
+    const allRules = store._computedRules;
 
     for (let i = 0; i < allRules.length; i++) {
       const rule = allRules[i];
-      const p = store.getRuleResult(rule, api, checkRuleDirty);
+      const p = store._getRuleResult(rule, api, checkRuleDirty);
 
       if (p instanceof Promise) {
         return (async () => {
           let val = await p;
 
           const applyMerge = (r: any, v: any) => {
-            if (r.entityId === "__base__") {
+            if (r._entityId === "__base__") {
               baseValue = mergeData(baseValue, v);
             } else if (v) {
               const toMerge = r.value !== undefined ? r.value : v;
@@ -155,7 +156,7 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
 
           for (let j = i + 1; j < allRules.length; j++) {
             const nextRule = allRules[j];
-            const nextP = store.getRuleResult(nextRule, api, checkRuleDirty);
+            const nextP = store._getRuleResult(nextRule, api, checkRuleDirty);
             const nextVal = nextP instanceof Promise ? await nextP : nextP;
             applyMerge(nextRule, nextVal);
           }
@@ -166,7 +167,7 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
       }
 
       const val = p;
-      if (rule.entityId === "__base__") {
+      if (rule._entityId === "__base__") {
         baseValue = mergeData(baseValue, val);
         continue;
       }
@@ -185,19 +186,24 @@ const GLOBAL_STRATEGIES: Record<string, (store: StrategyStore, api: any, version
 // 🌟 3. StrategyStore 类重构
 // ==========================================
 export class StrategyStore {
-  public computedRules: any[] = [];
+  /**
+   * @internal
+  */
+  public _computedRules: any[] = [];
   
-  private CurrentStrategyType: any; // 如果有 DefaultStrategy 枚举，请换回 DefaultStrategy.PRIORITY
-  private getRules: Function;
+  private _CurrentStrategyType: DefaultStrategy; // 如果有 DefaultStrategy 枚举，请换回 DefaultStrategy.PRIORITY
+  private _getRules: Function;
 
   constructor(getRule: Function) {
-    this.getRules = getRule;
-    this.CurrentStrategyType = "PRIORITY"; // 或 DefaultStrategy.PRIORITY
-    this.updateComputedRules();
+    this._getRules = getRule;
+    this._CurrentStrategyType = DefaultStrategy.PRIORITY; // 或 DefaultStrategy.PRIORITY
+    this._updateComputedRules();
   }
-
-  public getRuleResult(rule: any, api: any, checkRuleDirty: Function): any {
-    if (rule.entityId === "__base__") {
+  /**
+   * @internal
+  */
+  public _getRuleResult(rule: any, api: any, checkRuleDirty: Function): any {
+    if (rule._entityId === "__base__") {
       return rule.logic(api);
     }
  
@@ -209,7 +215,7 @@ export class StrategyStore {
     }
     
     // 注意：这里的 ExecuteMeshRule 是你外部定义好的 O(1) 函数
-    const p = ExecuteMeshRule(rule, api); 
+    const p = ExecuteMeshRule<any>(rule, api); 
     
     if (!(p instanceof Promise)) {
       rule._lastResult = p;
@@ -223,33 +229,40 @@ export class StrategyStore {
       return val;
     });
   }
-
-  public updateComputedRules() {
-    const list: any[] = this.getRules();
+  /**
+   * @internal
+  */
+  public _updateComputedRules() {
+    const list: any[] = this._getRules();
 
     if (
-      this.CurrentStrategyType === "PRIORITY" ||
-      this.CurrentStrategyType === "MERGE"
+      this._CurrentStrategyType === DefaultStrategy.PRIORITY ||
+      this._CurrentStrategyType === DefaultStrategy.MERGE 
     ) {
-      this.computedRules = Array.from(list.values())
+      this._computedRules = Array.from(list.values())
         .map((item) => Array.from(item as any))
         .flat<any>()
         .sort((a, b) => b.priority - a.priority);
     } else {
-      this.computedRules = Array.from(list.values())
+      this._computedRules = Array.from(list.values())
         .map((item) => Array.from(item as any))
         .flat();
     }
   }
-
-  public setStrategy(type: any) {
-    this.CurrentStrategyType = type;
-    this.updateComputedRules();
+  /**
+   * @internal
+  */
+  public _setStrategy(type: any) {
+    this._CurrentStrategyType = type;
+    this._updateComputedRules();
   }
 
-  // 🌟 透传 resultContainer 容器
-  public evaluate(api: any, currentVersion: number, checkRuleDirty: Function, resultContainer: any) {
-    const strategyFn = GLOBAL_STRATEGIES[this.CurrentStrategyType as string];
+  /**
+   * @internal
+   * 透传 resultContainer 容器
+  */
+  public _evaluate(api: any, currentVersion: number, checkRuleDirty: Function, resultContainer: any) {
+    const strategyFn = GLOBAL_STRATEGIES[this._CurrentStrategyType];
     return strategyFn(this, api, currentVersion, checkRuleDirty, resultContainer);
   }
 }
@@ -300,30 +313,38 @@ export class SchemaBucket<P> {
     this._contract = this._inferType(baseValue);
     this._cache = baseValue;
 
-    this.setRule({
+    this._setRule({
       priority: 0,
-      entityId: "__base__",
+      _entityId: "__base__",
       logic: () => baseValue,
     } as any);
   }
 
-  public setUseCache(val: boolean) {
+  /**
+   * @internal
+   * */ 
+  public _setUseCache(val: boolean) {
     this._useCache = val;
   }
 
-  public forceNotify() {
+  /**
+   * @internal
+   * */ 
+  public _setForceNotify() {
     this._forceNotify = true;
   }
-
-  public isForceNotify() {
+  /**
+   * @internal
+   * */ 
+  public _isForceNotify() {
     return this._forceNotify;
   }
-  public syncCache(val:any){
+  public _syncCache(val:any){
     this._cache = val;
   }
 
-  public setStrategy(type: any) {
-    this._strategy.setStrategy(type);
+  public _setStrategy(type: any) {
+    this._strategy._setStrategy(type);
   }
 
   private _setDefaultRule(value: any) {
@@ -343,23 +364,25 @@ export class SchemaBucket<P> {
       }
     }
   }
-
-  public setRules<TKeys = any>(
-    value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; entityId?: any; },
+  /**
+   * @internal
+  */
+  public _setRules<TKeys = any>(
+    value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; _entityId?: any; },
     DepsArray?: Array<[number, Array<TKeys | any>, any]>
   ) {
  
     if (DepsArray) this._updateDeps(DepsArray);
     
-    const entityId = ++this._id;
-    const ruleEntity = { ...value, entityId };
+    const _entityId = ++this._id;
+    const ruleEntity = { ...value, _entityId };
 
     for (let uid of value.triggerUids) {
       if (!this._rules.has(uid)) this._rules.set(uid, new Set<any>());
       this._rules.get(uid)!.add(ruleEntity);
     }
 
-    this._strategy.updateComputedRules();
+    this._strategy._updateComputedRules();
 
     return () => {
       for (let uid of value.triggerUids) {
@@ -372,7 +395,7 @@ export class SchemaBucket<P> {
           }
         }
       }
-      this._strategy.updateComputedRules();
+      this._strategy._updateComputedRules();
     };
   }
 
@@ -397,20 +420,22 @@ export class SchemaBucket<P> {
       }
     }
   }
-
-  public setRule<TKeys = any>(
-    value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; entityId?: any; },
+  /**
+   * @internal
+  */
+  public _setRule<TKeys = any>(
+    value: { value: any; targetUid: number; triggerUids: number[]; priority: any; logic: any; _entityId?: any; },
     DepsArray?: Array<[number, Array<TKeys | any>, any]>
   ) {
     if (DepsArray) this._updateDeps(DepsArray);
 
-    if (typeof value.entityId === "string") {
+    if (typeof value._entityId === "string") {
       this._setDefaultRule(value);
       return;
     }
 
-    const entityId = ++this._id;
-    const ruleEntity = { ...value, entityId };
+    const _entityId = ++this._id;
+    const ruleEntity = { ...value, _entityId };
 
     if (value) {
       for (let uid of value.triggerUids) {
@@ -418,7 +443,7 @@ export class SchemaBucket<P> {
         this._rules.get(uid)!.add(ruleEntity);
       }
     }
-    this._strategy.updateComputedRules();
+    this._strategy._updateComputedRules();
 
     return () => {
       for (let uid of value.triggerUids) {
@@ -431,15 +456,17 @@ export class SchemaBucket<P> {
           }
         }
       }
-      this._strategy.updateComputedRules();
+      this._strategy._updateComputedRules();
     };
   }
-
-  public setSideEffect(data: { fn: (args: any[]) => any; args: any[] }) {
+  /**
+   * @internal
+  */
+  public _setSideEffect(data: { fn: (args: any[]) => any; args: any[] }) {
     this._effectArray.push(data);
   }
 
-  public getSideEffect() {
+  public _getSideEffect() {
     return [...this._effectArray];
   }
 
@@ -497,7 +524,7 @@ export class SchemaBucket<P> {
 
  
 
-  public evaluate(api: any) {
+  public _evaluate(api: any) {
     let curToken = null;
     if (api.GetToken) curToken = api.GetToken();
 
@@ -561,17 +588,17 @@ export class SchemaBucket<P> {
     this._currentApi = api;
     
     // 🌟 传入复用容器 this._evalResult
-    const p = this._strategy.evaluate(api, currentVersion, this._boundCheckDirty, this._evalResult);
+    const p = this._strategy._evaluate(api, currentVersion, this._boundCheckDirty, this._evalResult);
 
     if (!(p instanceof Promise)) {
       this._currentApi = null; // 用完即丢，防止内存泄露
-      return this.finalizeSync(this._evalResult.res, this._evalResult.version, api, curToken);
+      return this._finalizeSync(this._evalResult.res, this._evalResult.version, api, curToken);
     }
 
     this._pendingPromise = (async () => {
       try {
         await p; // 等待策略修改 this._evalResult
-        return this.finalizeSync(this._evalResult.res, this._evalResult.version, api, curToken);
+        return this._finalizeSync(this._evalResult.res, this._evalResult.version, api, curToken);
       } catch (err: any) {
         throw { path: this._path, error: err };
       } finally {
@@ -586,7 +613,7 @@ export class SchemaBucket<P> {
     return this._pendingPromise;
   }
 
-  private finalizeSync(res: any, version: number, api: any, curToken: any) {
+  private _finalizeSync(res: any, version: number, api: any, curToken: any) {
     if (curToken !== this._promiseToken || version < this._version) {
       return this._cache;
     }
@@ -625,14 +652,14 @@ export class ValidatorsBucket {
   private path: string = "";
   constructor(path: string) {
     this.path = path;
-    this.SetDefaultValidators();
+    this._SetDefaultValidators();
   }
 
   public setValidators(validator: any) {
     this.validators.push(validator);
   }
 
-  private SetDefaultValidators() {
+  private _SetDefaultValidators() {
     const requireValidator: validatorItem = {
       logic: (value) => {
         if (value) return true;

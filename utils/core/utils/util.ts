@@ -96,60 +96,60 @@ export type KeysOfUnion<T> = T extends any ? keyof T : never;
 
 
 export const createTimeScheduler = (config = { frameQuota: 12 }) => {
-  let lastYieldTime = performance.now();
-  let taskCounter = 0;
+  let _lastYieldTime = performance.now();
+  let _taskCounter = 0;
   
   // 依然需要保留这个状态，因为 flushQueue 的 getNodeQuota 需要用到它！
-  let isFirstFrame = false;
+  let _isFirstFrame = false;
 
-  const checkInputPending = () => {
+  const _checkInputPending = () => {
     // @ts-ignore
     return !!(navigator?.scheduling?.isInputPending?.({ includeContinuous: true }));
   };
   
   return {
     // 必须保留，flushQueue 依赖它来决定是 return 8 还是 Infinity
-    getIsFirstFrame: () => {
+    _getIsFirstFrame: () => {
      
-      return isFirstFrame
+      return _isFirstFrame
     },
     
     reset() {
-      lastYieldTime = performance.now();
-      taskCounter = 0;
-      isFirstFrame = true; // 标记开始
+      _lastYieldTime = performance.now();
+      _taskCounter = 0;
+      _isFirstFrame = true; // 标记开始
     },
 
-    shouldYield() {
+    _shouldYield() {
  
-      if (!isFirstFrame && (++taskCounter & 15) !== 0) {
+      if (!_isFirstFrame && (++_taskCounter & 15) !== 0) {
         return false;
       }
 
       const now = performance.now();
-      const elapsed = now - lastYieldTime;
+      const elapsed = now - _lastYieldTime;
  
       if (elapsed > config.frameQuota) {
         return true;
       }
 
-      if (checkInputPending()) {
+      if (_checkInputPending()) {
         return true;
       }
 
       return false;
     },
 
-    async yieldToMain() {
+    async _yieldToMain() {
       return new Promise<void>((resolve) => {
-        nextMacroTick(()=>{
-          lastYieldTime = performance.now();
-          taskCounter = 0;
+        _nextMacroTick(()=>{
+          _lastYieldTime = performance.now();
+          _taskCounter = 0;
           
          
           // 🚨 关键：切片归来，首帧保护期结束
           // 这样下一次 flushQueue 里的 getNodeQuota 就会返回 Infinity
-          if (isFirstFrame) isFirstFrame = false; 
+          if (_isFirstFrame) _isFirstFrame = false; 
           
           resolve();
         })
@@ -158,7 +158,7 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
   };
 };
 
-// export const nextMacroTick = (fn: () => void) => {
+// export const _nextMacroTick = (fn: () => void) => {
 //   // MessageChannel 比 setTimeout(0) 快，且优先级略高，完美适合做任务切断
 //   const { port1, port2 } = new MessageChannel();
 //   port1.onmessage = fn;
@@ -166,22 +166,22 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
 // };
 
 
-const isBrowser = typeof window !== 'undefined' && typeof MessageChannel !== 'undefined';
+const _isBrowser = typeof window !== 'undefined' && typeof MessageChannel !== 'undefined';
 
-const macroTaskQueue: Array<() => void> = [];
-let channel: MessageChannel;
+const _macroTaskQueue: Array<() => void> = [];
+let _channel: MessageChannel;
 
-if (isBrowser) {
+if (_isBrowser) {
   // 🌟 2. 只有在浏览器环境，才去实例化这个“性能怪兽”
-  channel = new MessageChannel();
-  channel.port1.onmessage = () => {
-    const task = macroTaskQueue.shift();
+  _channel = new MessageChannel();
+  _channel.port1.onmessage = () => {
+    const task = _macroTaskQueue.shift();
     if (task) task();
   };
 }
 
-export const nextMacroTick = (fn: () => void) => {
-  if (!isBrowser) {
+export const _nextMacroTick = (fn: () => void) => {
+  if (!_isBrowser) {
     // 🌟 3. Node.js 环境 (SSR 构建阶段) 的兜底方案
     // setTimeout 跑完就会被垃圾回收，绝对不会阻止 VitePress 的进程退出！
     setTimeout(fn, 0);
@@ -189,6 +189,6 @@ export const nextMacroTick = (fn: () => void) => {
   }
 
   // 浏览器环境的高性能通道
-  macroTaskQueue.push(fn);
-  channel.port2.postMessage(null);
+  _macroTaskQueue.push(fn);
+  _channel.port2.postMessage(null);
 };

@@ -13,7 +13,7 @@ import { useScheduler } from "./useScheduler";
  
 type HistoryTool = {
     (getEngineCtx: () => {
-        batchNotify: (updates: any[],source:number) => void;
+        _batchNotify: (updates: any[],source:number) => void;
     }):FullHistory;
     isMeshModuleInited: boolean;
 };
@@ -87,11 +87,11 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     // let isReady: boolean = false;
 
     const {
-        GetNextDependency,
-        GetPrevDependency,
-        GetAllPrevDependency,
-        GetAllNextDependency,
-        rebuildDirectDependencyMaps,
+        _GetNextDependency,
+        _GetPrevDependency,
+        _GetAllPrevDependency,
+        _GetAllNextDependency,
+        _rebuildDirectDependencyMaps,
     } = useDependency<P>(
         () => dependencyGraph,
         () => predecessorGraph,
@@ -111,9 +111,9 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         
         const historyFactory = options.modules.useHistory;
     
-        // 定义严格的注入签名：只允许访问 batchNotify
+        // 定义严格的注入签名：只允许访问 _batchNotify
         let initHistoryFn: (getEngineCtx: () => {
-            batchNotify: (updates: any[],source:number) => void;
+            _batchNotify: (updates: any[],source:number) => void;
         }) => FullHistory;
 
         // 核心逻辑：检测是否已经手动初始化
@@ -137,9 +137,9 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
             updateUndoSize,
             updateRedoSize,
         } = initHistoryFn(
-            // 💡 修复点：彻底移除 getNode 和 requestUpdate，只塞入 batchNotify
+            // 💡 修复点：彻底移除 getNode 和 requestUpdate，只塞入 _batchNotify
             () => ({
-                batchNotify: (updates: any[],source:number) => batchNotify(updates,source)
+                _batchNotify: (updates: any[],source:number) => _batchNotify(updates,source)
             })
         );
 
@@ -208,11 +208,11 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         },
         {
             GetDependencyOrder: () => dependencyOrder,
-            GetAllNextDependency,
-            GetNextDependency,
-            GetPrevDependency,
-            GetAllPrevDependency,
-            GetUidToLevelMap: () => uidToLevelMap,
+            _GetAllNextDependency,
+            _GetNextDependency,
+            _GetPrevDependency,
+            _GetAllPrevDependency,
+            _GetUidToLevelMap: () => uidToLevelMap,
         },
         historyInternalModule,
         {
@@ -230,13 +230,13 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         GetGroupByPath,
         GetNodeByPath,
         GetNodeByUid,
-        batchNotify,
-        notifyAll,
-        useEntangle,
-        updateEntangleLevel,
+        _batchNotify,
+        _notifyAll,
+        _useEntangle,
+        _updateEntangleLevel,
 
         dispose,
-        stageValueFn,
+        _stageValueFn,
  
         SettleTasks,
         SilentSet,
@@ -305,7 +305,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         if (!isEntangleDirty) return; // 没脏，0.00001ms 退出
         
    
-        updateEntangleLevel(); 
+        _updateEntangleLevel(); 
         
         isEntangleDirty = false;
  
@@ -334,11 +334,11 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     
             // 2. 如果规则确实变了，重建直连依赖图
             if (isRulesChanged) {
-                const { directNextMap, directPrevMap } = rebuildDirectDependencyMaps(
+                const { _directNextMap, _directPrevMap } = _rebuildDirectDependencyMaps(
                     dependencyOrder.flat()
                 );
-                directChildDependencyGraph = directNextMap;
-                directParentDependencyGraph = directPrevMap;
+                directChildDependencyGraph = _directNextMap;
+                directParentDependencyGraph = _directPrevMap;
             }
         }).finally(() => {
             // 重置状态
@@ -378,13 +378,13 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     const notifyAllWrapper = async () => {
         
         CheckCycleInGraph();
-        await notifyAll();
+        await _notifyAll();
         // isReady = true;
     };
 
     const useEntangleWrapper = <State = any>(config: EntangleArgType<P,State,NM>)=>{
        
-        useEntangle(config);
+        _useEntangle(config);
         isEntangleDirty = true;
 
         requestEntangleLevelUpdate();
@@ -409,13 +409,13 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     const SetValues = (updates: { path: P, key: SuggestKey<NM>, value: any }[]) => {
         forceSyncEngineState();
         // 直接调用 scheduler 暴露出来的 batchUpdate
-        scheduler.batchNotify(updates);
+        scheduler._batchNotify(updates);
     };
 
     const StageValue = (path: P,key:SuggestKey<NM>, value: any)=>{
     
         const node = GetNodeByPath(path);
-        stageValueFn(node.uid,key,value)
+        _stageValueFn(node.uid,key,value)
     }
   
    

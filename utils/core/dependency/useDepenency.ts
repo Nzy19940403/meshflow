@@ -14,54 +14,22 @@ export function useDependency<P>(
     // getShawowPredecessorGraph:()=>Array<Set<number>>,
 ) {
  
-    const _GetNextDependency = (targetUid: number) => {
-        const fullGraph = getDependencyGraph(); // 出度 Map
-        const predecessorGraph = getPredecessorGraph(); // 入度 Map
-
-        // 1. 获取所有直接下游 (这是真理，不受 Order 影响)
-        const directChildren:Array<number> = fullGraph[targetUid]||[];
-        
-    
-
-        if (directChildren.length === 0) return directChildren;
-
-        // 2. 局部权重决策：在这些直接下游中，谁该现在跑？
-        // 我们不再去查全局 Order 的 Level 0, 1, 2...
-        // 我们只看：在这些 children 中，有没有人是“互相依赖”的？
-
-        return directChildren.filter((childUid) => {
-            // 1. 找到这个孩子的所有依赖（爸爸们）
-            const allMyParents = predecessorGraph[childUid] || [];
-
-            // 2. 看看这些爸爸里，有没有人正待在“本次待处理”的名单中
-            const isAnyParentWaiting = allMyParents.some((parentUid) =>
-                directChildren.indexOf(parentUid)>=0
-            );
-
-            // 3. 如果没有任何爸爸在等，说明我是这波里辈分最大的，我可以走
-            const iAmReady = !isAnyParentWaiting;
-
-            return iAmReady;
-        });
-    };
-   
- 
-    const GetAllPrevDependency = (targetUid: number) => {
+    const _GetAllPrevDependency = (targetUid: number) => {
         const predecessorGraph = getPredecessorGraph();
 
         return predecessorGraph[targetUid] || []
       
     };
-    const GetAllNextDependency = (targetUid: number) => {
+    const _GetAllNextDependency = (targetUid: number) => {
         const fullGraph = getDependencyGraph();
        
         return fullGraph[targetUid] || []
       
     };
 
-    const rebuildDirectDependencyMaps = (allUids: number[]) => {
-        const directNextMap: Array<Array<number>> = [];
-        const directPrevMap: Array<Array<number>> = [];
+    const _rebuildDirectDependencyMaps = (allUids: number[]) => {
+        const _directNextMap: Array<Array<number>> = [];
+        const _directPrevMap: Array<Array<number>> = [];
         
         // 🌟 1. 直接拿最原汁原味的物理真相图
         const fullGraph = getDependencyGraph();
@@ -70,36 +38,36 @@ export function useDependency<P>(
             // 🌟 2. 零过滤！因为下游的每一条边，都需要用来给目标节点“减1把锁”
             const nexts = fullGraph[uid] || [];
             
-            directNextMap[uid] = nexts;
+            _directNextMap[uid] = nexts;
     
             // 3. 用完整的边建立反向索引
             for (let i = 0; i < nexts.length; i++) {
                 const nextUid = nexts[i];
-                if (typeof directPrevMap[nextUid] === 'undefined') {
-                    directPrevMap[nextUid] = [];
+                if (typeof _directPrevMap[nextUid] === 'undefined') {
+                    _directPrevMap[nextUid] = [];
                 }
-                directPrevMap[nextUid].push(uid);
+                _directPrevMap[nextUid].push(uid);
             }
         }
         
-        return { directNextMap, directPrevMap };
+        return { _directNextMap, _directPrevMap };
     };
-    const GetNextDependency = (targetUid: number) => {
+    const _GetNextDependency = (targetUid: number) => {
         const map = getDirectChildDependencyGraph();
       
         return map[targetUid] || [];
     }
-    const GetPrevDependency = (targetUid: number) => {
+    const _GetPrevDependency = (targetUid: number) => {
         const map = getDirectParentDependencyGraph();
         return map[targetUid] || [];
     }
 
     return {
-        GetNextDependency,
-        GetPrevDependency,
-        GetAllPrevDependency,
-        GetAllNextDependency,
-        rebuildDirectDependencyMaps,
+        _GetNextDependency,
+        _GetPrevDependency,
+        _GetAllPrevDependency,
+        _GetAllNextDependency,
+        _rebuildDirectDependencyMaps,
     };
 }
 

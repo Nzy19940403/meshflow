@@ -4,6 +4,11 @@
       "utils/core/dependency/useSetRule.ts",
       "utils/core/engine/useEngineManager.ts"
     ], 
+    "exclude": [
+      "**/test/**/*",
+      "**/*.test.ts",
+      "**/*.testmodule.ts"
+    ],
     "tsconfig": "./tsconfig.json",
     "out": "docs/api",
     "plugin": ["typedoc-plugin-markdown","typedoc-plugin-merge-modules"],
@@ -22,5 +27,6 @@
     "navigationModel": {
       "excludeFolders": true
     },
+ 
     "flattenOutputFiles": true // 针对 Markdown 插件的扁平化
   }
