@@ -46,10 +46,16 @@ class ApiWrapperPool {
         wrapper.slot.targetMeta = undefined;
         this.pool.push(wrapper);
     }
-}
+} 
+
+/**
+* @internal
+* */ 
 export const globalWrapperPool = new ApiWrapperPool(POOL_SIZE);
 
- 
+/**
+ * @internal
+*/
 export const ExecuteMeshRule = <T>(rule: ReturnType<typeof CreateRule>, api: any) => {
     const { triggerUids, triggerKeys, targetUid, targetKey, logic, _preAllocatedDeps } = rule;
     
@@ -96,6 +102,9 @@ export const ExecuteMeshRule = <T>(rule: ReturnType<typeof CreateRule>, api: any
 // ==========================================
 // 🌟 纯数据构造器：不再创建任何闭包函数
 // ==========================================
+/**
+ * @internal
+*/
 export const CreateRule = <
     K,
     NM,

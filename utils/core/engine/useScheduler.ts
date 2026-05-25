@@ -7,9 +7,7 @@ import { SchemaBucket } from "./bucket";
 import { createTransactionScheduler } from './useTransactionSchduler';
 
 /**
- * 🌟 核心重构：MeshScheduler 类
- * 将所有局部变量提升为类属性，所有局部函数提升为原型方法 (Prototype Methods)
- * 彻底消灭闭包引起的 Context 内存泄漏
+ *  
  */
 export class MeshScheduler<
     T,
@@ -442,8 +440,7 @@ export class MeshScheduler<
 }
 
 /**
- * 🌟 暴露给外部的兼容 API 层
- * 保证外部业务代码完全不需要修改，无缝切换到 Class 引擎！
+ * @internal
  */
 export function useScheduler<
     T,

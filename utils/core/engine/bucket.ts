@@ -267,9 +267,10 @@ export class StrategyStore {
   }
 }
 
-// ==========================================
-// 🌟 4. SchemaBucket 类终极防抖重构
-// ==========================================
+ 
+/**
+ * @internal
+*/
 export class SchemaBucket<P> {
   private _path: any;
   private _strategy: StrategyStore;

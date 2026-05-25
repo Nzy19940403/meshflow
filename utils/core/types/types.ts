@@ -129,7 +129,9 @@ export type MeshFlowHistory = {
   updateRedoSize: any;
  
 };
-
+/**
+ * @internal
+*/
 export type InternalMeshFlowHistory = {
   StartTransaction: () => void;
   CommitTransaction: (version:number) => void;
@@ -814,14 +816,18 @@ export interface MeshFlowOptions<NM = any, M = any, T = any> {
   };
 }
 
-
+/**
+ * @internal
+*/
 export type SuggestKey<T> = IsAny<T> extends true 
   ? MeshPath 
   : IsNever<T> extends true 
     ? MeshPath 
     : (T extends any ? keyof T : never) | (string & {});
 
-
+ 
 export type TransactionArray<P,NM> = Array<(resolve: (res:{path:MeshPath,key:any,value:any}|{path:MeshPath  ,key:any,value:any}[])=>any,reject: (error?:any)=>any)=>any>
-
+/**
+ * @internal
+*/
 export type notifyArgs<P,NM> = {path:P  ,key:SuggestKey<NM>,value:any}

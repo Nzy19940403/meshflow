@@ -144,7 +144,7 @@ console.log(engine.modules.useInternalForm.GetFormData().billing.totalPrice); //
 
 ```
 
-* 👉 **[Live Interactive Demo: Click here to view the live Billing Form linkage](https://meshflow-docs.nzyhave.fun/)**
+* 👉 **[Live Interactive Demo: Click here to view the live Billing Form linkage](https://meshflow-docs.nzyhave.fun/guide/getting-started.html)**
 
 ---
 
