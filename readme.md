@@ -152,11 +152,15 @@ console.log(engine.modules.useInternalForm.GetFormData().billing.totalPrice); //
 
 While the billing form demonstrates standard unidirectional DAG flows, this hardcore **Real-time Combat Sandbox** was engineered to stress-test the engine's absolute limits under **Cross-node Dynamic Task Entanglement** and **Epoch-based Time Travel**.
 
+<p align="center">
+  <img src="./src/assets/hero.gif" width="750" alt="MeshFlow 沙盒战斗演示">
+</p>
+
 ### ⚔️ Spacetime Combat Sandbox Demo
 
 This simulator orchestrates a high-frequency, deterministic state deduction sandbox. By simulating a typical "Hero vs. Boss" real-time combat pipeline, it visually showcases the runtime's low-level scheduling capabilities across static graph limits and temporal unwinding.
 
-* 👉 **[Live Interactive Demo: Click here to view the Combat Sandbox](https://www.google.com/search?q=https://meshflow-docs.nzyhave.fun/demos/hero.html)**
+* 👉 **[Live Interactive Demo: Click here to view the Combat Sandbox](https://meshflow-docs.nzyhave.fun/demos/hero.html)**
 
 Below are the architectural topology maps and sequence lifecycles governing the combat simulation sandbox:
 
