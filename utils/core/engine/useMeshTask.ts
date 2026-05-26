@@ -1,4 +1,4 @@
-import {  createTimeScheduler, _nextMacroTick } from "../utils/util";
+import {  createTimeScheduler, _nextMacroTick, safeRequestAnimationFrame } from "../utils/util";
 import {
     MeshPath,
     MeshEmit,
@@ -2036,12 +2036,14 @@ function useMeshTask<P extends MeshPath, NM> (
                                 } else {
                                     // 🌟 证明：只有在幽灵还在飞 (>0) 时，才会执行这里的打印和递归
                              
-                                    requestAnimationFrame(monitor); 
+                            
+                                    safeRequestAnimationFrame(monitor)
                                 }
                             };
                             
                             // 启动帧循环监听
-                            requestAnimationFrame(monitor);
+                    
+                            safeRequestAnimationFrame(monitor)
                         }
                     }
                 }

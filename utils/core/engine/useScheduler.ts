@@ -1,7 +1,7 @@
  import { DependOnContext, InternalMeshFlowHistory, MeshEmit, MeshError, MeshFlowGroupNode, MeshFlowHistory, MeshFlowTaskNode, MeshPath, StandardUITrigger, SuggestKey, TransactionArray, notifyArgs } from "../types/types";
 import { useMeshTask } from "./useMeshTask";
 import { createMeshNode } from './useMeshNode';
-import { KeysOfUnion, createTimeScheduler } from "../utils/util";
+import { KeysOfUnion, createTimeScheduler, safeRequestAnimationFrame } from "../utils/util";
 import { UseSetEntangle } from "../dependency/useSetEntangle";
 import { SchemaBucket } from "./bucket";
 import { createTransactionScheduler } from './useTransactionSchduler';
@@ -184,7 +184,7 @@ export class MeshScheduler<
     public _requestUpdate = ()=> {
         if (this._isPending) return;
         this._isPending = true;
-        requestAnimationFrame(() => {
+        safeRequestAnimationFrame(() => {
             try {
                 while (this._flushPathArray.length > 0) {
                     this.flushUpdate();

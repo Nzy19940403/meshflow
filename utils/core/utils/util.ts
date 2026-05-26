@@ -105,7 +105,7 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
   const _checkInputPending = () => {
     if (typeof navigator === 'undefined') {
       return false;
-    }
+  }
     // @ts-ignore
     return !!(navigator?.scheduling?.isInputPending?.({ includeContinuous: true }));
   };
@@ -195,3 +195,7 @@ export const _nextMacroTick = (fn: () => void) => {
   _macroTaskQueue.push(fn);
   _channel.port2.postMessage(null);
 };
+
+export const safeRequestAnimationFrame = _isBrowser
+    ? requestAnimationFrame
+    : (cb: FrameRequestCallback) => setTimeout(cb, 16) as unknown as number;
