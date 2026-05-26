@@ -3,13 +3,10 @@
 import { MeshFlowGroupNode, MeshFlowTaskNode, MeshPath, MeshNodeProxy, SuggestKey } from "../types/types";
 import { SchemaBucket } from "./bucket";
 
-// 🌟 优化 1：将常量提到模块作用域，全网 48W 节点只创建一次该数组，不再是每次闭包都生成
+ 
 const IMPORTANT_KEYS = ['path', 'uid', 'type', 'dependOn', 'nodeBucket'];
 
-/**
- * 🌟 优化 2：抽离基类
- * 将公共逻辑和极其昂贵的 Proxy 生成逻辑放在基类原型链上
- */
+ 
 class MeshNodeBase<P extends MeshPath, V = any, NM = any> {
     public path: P;
     public uid: number;
@@ -24,7 +21,7 @@ class MeshNodeBase<P extends MeshPath, V = any, NM = any> {
     // 内部私有变量代替原本的闭包变量
     protected _proxyView: any = null;
     protected _isDisposed = false;
- 
+    protected _cachedOwnKeys: (string | symbol)[] | null = null;
 
     constructor(config: any) {
         this.path = config.path;
@@ -36,7 +33,7 @@ class MeshNodeBase<P extends MeshPath, V = any, NM = any> {
  
     }
 
-    // 🌟 挂载在原型链上的核心视图工厂
+    // 挂载在原型链上的核心视图工厂
     public createView = <E extends Record<string, any> = {}>(extraProps: E = {} as E): any => {
         if (this._proxyView && Object.keys(extraProps).length === 0) return this._proxyView;
 
@@ -66,14 +63,42 @@ class MeshNodeBase<P extends MeshPath, V = any, NM = any> {
             },
             ownKeys(target) {
                 if (self._isDisposed) return Reflect.ownKeys(target);
+                if (self._cachedOwnKeys) {
+                    return self._cachedOwnKeys;
+                }
 
-                const keys = new Set([
-                    ...Reflect.ownKeys(target),
-                    ...Object.keys(self.state || {}),
-                    ...Object.keys(self.meta || {}),
-                    ...IMPORTANT_KEYS
-                ]);
-                return Array.from(keys);
+                // 🌟 3. 慢速通道（整个生命周期只走一次）：手动的高性能去重
+                const uniqueKeys: (string | symbol)[] = [];
+                // 使用无原型链的纯净对象作为极其轻量的 Hash Map
+                const seen: Record<string | symbol, boolean> = Object.create(null);
+
+                const addKey = (k: string | symbol) => {
+                    if (!seen[k]) {
+                        seen[k] = true;
+                        uniqueKeys.push(k);
+                    }
+                };
+
+                // 老老实实地用 for 循环，绝对不要用 ... 展开语法
+                const targetKeys = Reflect.ownKeys(target);
+                for (let i = 0; i < targetKeys.length; i++) addKey(targetKeys[i]);
+
+                if (self.state) {
+                    const stateKeys = Object.keys(self.state);
+                    for (let i = 0; i < stateKeys.length; i++) addKey(stateKeys[i]);
+                }
+
+                if (self.meta) {
+                    const metaKeys = Object.keys(self.meta);
+                    for (let i = 0; i < metaKeys.length; i++) addKey(metaKeys[i]);
+                }
+
+                for (let i = 0; i < IMPORTANT_KEYS.length; i++) addKey(IMPORTANT_KEYS[i]);
+
+                // 🌟 4. 锁定缓存
+                self._cachedOwnKeys = uniqueKeys;
+
+                return uniqueKeys;
             },
             getOwnPropertyDescriptor(target, prop) {
                 if (self._isDisposed) return Reflect.getOwnPropertyDescriptor(target, prop);
@@ -105,7 +130,7 @@ class MeshNodeBase<P extends MeshPath, V = any, NM = any> {
         this._isDisposed = true;
         this._proxyView = null; // 释放 Proxy
  
- 
+        this._cachedOwnKeys = null;
         (this.meta as any) = null;       // 释放元数据
     }
 }

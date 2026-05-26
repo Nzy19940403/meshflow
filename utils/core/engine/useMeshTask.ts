@@ -18,7 +18,7 @@ import { EntangleTurnstile } from "../dependency/useSetEntangle";
 type MeshTask<NM> = {
     //source用来指定更新源触发是由历史模块触发还是业务触发，用来避免meshtask重复commit任务去历史模块
     TaskRunner: (triggerUid: number | null, initialNodes: number[],keys:any[],source?:number) => Promise<void>,
-    CancelTask: () => void,
+    _CancelTask: () => void,
     /**
      * @internal
      * */ 
@@ -53,8 +53,9 @@ function useMeshTask<P extends MeshPath, NM> (
         emit: MeshEmit;
     },
     uitrigger: {
-        requestUpdate: () => void;
-        _flushPathSet: Set<number>;
+        _requestUpdate: () => void;
+        // _flushPathSet: Set<number>;
+        _addToRender:(uid:number)=>void
     },
     timeScheduler: ReturnType<typeof createTimeScheduler>,
     taskSchduler:ReturnType<typeof createTransactionScheduler<P,NM>>,
@@ -82,6 +83,7 @@ function useMeshTask<P extends MeshPath, NM> (
     
     let AllAffectedPaths: Uint8Array; // 优化：替换原生 Array
     
+    let _dedupeSeenMap: Uint8Array;
     //背压参数
     const BACKPRESSURE_LIMIT = 30;
     //最大并发数
@@ -143,6 +145,10 @@ function useMeshTask<P extends MeshPath, NM> (
         if (triggerSourceArray) nextTriggerSourceArray.set(triggerSourceArray);
         triggerSourceArray = nextTriggerSourceArray;
 
+        const nextDedupeSeenMap = new Uint8Array(newCapacity);
+        if (_dedupeSeenMap) nextDedupeSeenMap.set(_dedupeSeenMap);
+        _dedupeSeenMap = nextDedupeSeenMap;
+
         // 对象数组扩容
         const oldCapacity = currentCapacity;
  
@@ -153,8 +159,9 @@ function useMeshTask<P extends MeshPath, NM> (
         currentCapacity = newCapacity;
     };
 
-    const CancelTask = ()=>{
+    const _CancelTask = ()=>{
         currentExecutionToken.clear();
+
     }
 
     const SHARED_DETAIL = {
@@ -360,7 +367,8 @@ function useMeshTask<P extends MeshPath, NM> (
                     }
                     // 1. 物理写值
                     node.state[key] = value;
-                    uitrigger._flushPathSet.add(uid);
+                    // uitrigger._flushPathSet.add(uid);
+                    uitrigger._addToRender(uid);
         
                     // 🌟 2. 核心修复：直接黄袍加身，不再绕道 currentEntangleArray
                     node.calledBy = TriggerCause.VOLITION;
@@ -527,7 +535,8 @@ function useMeshTask<P extends MeshPath, NM> (
 
             primeMovers.add(triggerUid);
             updateWatermark(triggerUid);
-            uitrigger._flushPathSet.add(triggerUid);
+            // uitrigger._flushPathSet.add(triggerUid);
+            uitrigger._addToRender(triggerUid)
  
         }
 
@@ -535,7 +544,7 @@ function useMeshTask<P extends MeshPath, NM> (
         const seedsOfChaos = typeof triggerUid==='number' ? [triggerUid] : [...initialNodes, ...stagedBufferUids];;
 
         if(timeScheduler._shouldYield()){
-            uitrigger.requestUpdate();
+            uitrigger._requestUpdate();
             await timeScheduler._yieldToMain();
             if (currentExecutionToken.get(triggerToken) !== curToken) return;
         }
@@ -575,7 +584,7 @@ function useMeshTask<P extends MeshPath, NM> (
 
         
         if (currentEntangleArray.length > 0 || seedsOfChaos.length > 1) {
-            uitrigger.requestUpdate();
+            uitrigger._requestUpdate();
             await timeScheduler._yieldToMain();
   
             if (currentExecutionToken.get(triggerToken) !== curToken) return;
@@ -697,8 +706,8 @@ function useMeshTask<P extends MeshPath, NM> (
                 isGhostly = true;
                 // targetSchema.calledBy = 0 ; // 卸下装甲，归还自由身，上面以及记录了这个节点是怎么被复活的，所以现在calledBy没有继续以1存在的必要
                 hasValueChanged = true; // 强制宣告变更，保证触发下游
-                uitrigger._flushPathSet.add(targetUid);
-
+                // uitrigger._flushPathSet.add(targetUid);
+                uitrigger._addToRender(targetUid)
                 
                 // 提取接力棒：把刚才 resolveGhosts 修改的 Key 拿过来！
                 // const incomingEntangleKeys = ghostBaton.get(targetPath);
@@ -947,7 +956,8 @@ function useMeshTask<P extends MeshPath, NM> (
       
                 }
 
-                if (hasValueChanged) uitrigger._flushPathSet.add(targetUid);
+                // if (hasValueChanged) uitrigger._flushPathSet.add(targetUid);
+                if(hasValueChanged) uitrigger._addToRender(targetUid)
 
                 const finishPropagation = (hitTargetUids: number[] = []) => {
                     if (currentExecutionToken.get(triggerToken) !== curToken) return;
@@ -1385,7 +1395,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             yieldCount++;
                             const shouldUpdateUI = isFirstFrame || yieldCount % 2 === 0;
                             if (shouldUpdateUI) {
-                                uitrigger.requestUpdate();
+                                uitrigger._requestUpdate();
                             }
                         }
 
@@ -1611,7 +1621,7 @@ function useMeshTask<P extends MeshPath, NM> (
                             break; 
                         }
                         if(timeScheduler._shouldYield()){
-                            uitrigger.requestUpdate();
+                            uitrigger._requestUpdate();
                             await timeScheduler._yieldToMain();
                             if (currentExecutionToken.get(triggerToken) !== curToken) break;
                         }
@@ -1631,9 +1641,21 @@ function useMeshTask<P extends MeshPath, NM> (
                             let minReversalLevel = currentLevel;
 
                             // 去重
-                            const uniqueHitTargetUids = Array.from(
-                                new Set(currentEntangleArray)
-                            );
+                            // const uniqueHitTargetUids = Array.from(
+                            //     new Set(currentEntangleArray)
+                            // );
+                            const uniqueHitTargetUids: number[] = [];
+                            for (let i = 0; i < currentEntangleArray.length; i++) {
+                                const u = currentEntangleArray[i];
+                                if (_dedupeSeenMap[u] === 0) {
+                                    _dedupeSeenMap[u] = 1;
+                                    uniqueHitTargetUids.push(u);
+                                }
+                            }
+                            // 清理现场
+                            for (let i = 0; i < uniqueHitTargetUids.length; i++) {
+                                _dedupeSeenMap[uniqueHitTargetUids[i]] = 0;
+                            }
                             currentEntangleArray.length = 0;   
                             
                             for (const targetUid of uniqueHitTargetUids) {
@@ -1650,9 +1672,22 @@ function useMeshTask<P extends MeshPath, NM> (
                                     targetNode.calledBy = TriggerCause.INVERSION;
 
                                     // 必须把坍缩修改的 key 塞进接力棒，等它进入 executor 时才能拿出来！
-                                    const existingBaton = ghostBaton[targetUid] || [];
-                                    ghostBaton[targetUid] = Array.from(new Set([...existingBaton, ...changedByGhost]));
-                                    // ghostBaton[targetUid] = changedByGhost;
+                                    // const existingBaton = ghostBaton[targetUid] || [];
+                                    // ghostBaton[targetUid] = Array.from(new Set([...existingBaton, ...changedByGhost]));
+                                    const currentBaton = ghostBaton[targetUid];
+                                    if (!currentBaton) {
+                                        // 第一次，直接把数组引用丢进去 (注意，如果 changedByGhost 是复用的，这里需要 slice，但根据你的 resolveGhosts 它是新建返回的，所以直接复用引用最快)
+                                        ghostBaton[targetUid] = changedByGhost;
+                                    } else {
+                                        // 已经有接力棒了，原地推入不存在的 Key
+                                        for (let i = 0; i < changedByGhost.length; i++) {
+                                            const changedKey = changedByGhost[i];
+                                            // 字符串比对在短数组里极快
+                                            if (currentBaton.indexOf(changedKey) === -1) {
+                                                currentBaton.push(changedKey);
+                                            }
+                                        }
+                                    }
 
                                     //  只抹除目标节点自己的记忆！
                                     // 绝对不要去扫荡 GetAllNextDependency！把唤醒下游的任务交给 calledBy 动能传导！
@@ -1681,7 +1716,8 @@ function useMeshTask<P extends MeshPath, NM> (
                                     }
 
                                     updateWatermark(targetNode.uid);
-                                    uitrigger._flushPathSet.add(targetNode.uid);
+                                    // uitrigger._flushPathSet.add(targetNode.uid);
+                                    uitrigger._addToRender(targetNode.uid)
                                 }
                             }
 
@@ -1689,7 +1725,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                 if (minReversalLevel <= currentLevel) {
                                     currentLevel = minReversalLevel;
                                 }
-                                uitrigger.requestUpdate();
+                                uitrigger._requestUpdate();
 
                                 if(timeScheduler._shouldYield()){
                                     await timeScheduler._yieldToMain();
@@ -1873,7 +1909,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     return;
                 }
 
-                uitrigger.requestUpdate();
+                uitrigger._requestUpdate();
  
                 
                 if (remaining === 0 && asyncRemaining === 0) {
@@ -2015,7 +2051,7 @@ function useMeshTask<P extends MeshPath, NM> (
         flushQueue();
     };
 
-    return {TaskRunner,CancelTask,_stageValueFn};
+    return {TaskRunner,_CancelTask,_stageValueFn};
 }
 
 export { useMeshTask };

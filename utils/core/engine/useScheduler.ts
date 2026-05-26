@@ -26,8 +26,13 @@ export class MeshScheduler<
     /**
      * @internal
      **/ 
-    public _flushPathSet = new Set<number>();
+    // public _flushPathSet = new Set<number>();
 
+    /**
+     * @internal
+    */
+    public _flushPathArray:Array<number> = []
+    public _flushPathPendingMap:Array<number> = []
     /**
      * @internal
      * */ 
@@ -48,6 +53,16 @@ export class MeshScheduler<
     private _taskSchduler: ReturnType<typeof createTransactionScheduler<P,NM>>;
     private _entangleSystem: ReturnType<typeof UseSetEntangle<P, NM>>;
     private _meshTaskSystem: ReturnType<typeof useMeshTask<P,NM>>;
+
+    /**
+     * @internal
+     * */ 
+    public _addToRender = (uid:number)=>{
+        if(!this._flushPathPendingMap[uid]){
+            this._flushPathArray.push(uid);
+            this._flushPathPendingMap[uid] = 1;
+        }
+    }
 
     constructor(
         public config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number },
@@ -102,15 +117,17 @@ export class MeshScheduler<
             },
             this.hooks,
             {
-                requestUpdate: () => this.requestUpdate(),
-                _flushPathSet: this._flushPathSet,
+                _requestUpdate: () => this._requestUpdate(),
+                // _flushPathSet: this._flushPathSet,
+                _addToRender:(uid:number)=>this._addToRender(uid)
             },
             this._timeScheduler,
             this._taskSchduler,
             this.history
         );
         this.dispose = ()=>{
-            this._meshTaskSystem.CancelTask();
+            this._meshTaskSystem._CancelTask();
+            this._entangleSystem._dispose();
             for (let i = 0; i < this._UidToNodeMap.length; i++) {
                 const node = this._UidToNodeMap[i];
                 if (node) {
@@ -126,39 +143,50 @@ export class MeshScheduler<
         
             // 3. 【清空集合与映射】
             this._PathToUidMap.clear();      // Map 必须用 clear()
-            this._flushPathSet.clear();      // Set 必须用 clear()
+            // this._flushPathSet.clear();      // Set 必须用 clear()
         
             // 4. 【重置状态】
             this.uid = 0;
             this._isPending = false;
-            console.log('清理成功')
+
+            this._flushPathPendingMap.length = 0;
+            this._flushPathArray.length = 0;
+            // console.log('清理成功')
 
         }; // 压平
         this._stageValueFn = this._meshTaskSystem._stageValueFn; // 压平
         this.SettleTasks = this._taskSchduler.settleTasks;
     }
-
     public flushUpdate = async () => {
-        const uids = Array.from(this._flushPathSet);
-        this._flushPathSet.clear();
+        // const uids = Array.from(this._flushPathSet);
+        // this._flushPathSet.clear();
+        const uids = this._flushPathArray;
+        const len = uids.length;
+        if (len === 0) return;
 
         // 🌟 完全保留你的双轨触发设计
         if ('signalTrigger' in this.UITrigger && typeof this.UITrigger.signalTrigger === 'function') {
             for (let uid of uids) {
                 let target = this.GetNodeByUid(uid);
                 this.UITrigger.signalTrigger(target.dirtySignal);
+                this._flushPathPendingMap[uid] = 0;
             }
         } else if ('emit' in this.UITrigger) {
-            this.UITrigger.emit(uids);
+            const safeUidsCopy = uids.slice();
+            this.UITrigger.emit(safeUidsCopy);
+            for (let i = 0; i < len; i++) {
+                this._flushPathPendingMap[uids[i]] = 0;
+            }
         }
+        this._flushPathArray.length = 0;
     };
 
-    public requestUpdate = ()=> {
+    public _requestUpdate = ()=> {
         if (this._isPending) return;
         this._isPending = true;
         requestAnimationFrame(() => {
             try {
-                while (this._flushPathSet.size > 0) {
+                while (this._flushPathArray.length > 0) {
                     this.flushUpdate();
                 }
             } finally {
@@ -313,8 +341,9 @@ export class MeshScheduler<
         let inDegree = this.GetNodeByPath(path);
         if (!inDegree) throw Error(MeshError.WrongId);
 
-        this._flushPathSet.add(inDegree.uid);
-        this.requestUpdate();
+        // this._flushPathSet.add(inDegree.uid);
+        this._addToRender(inDegree.uid)
+        this._requestUpdate();
 
         let nextOrder = this.dependency._GetNextDependency(inDegree.uid);
 
@@ -334,7 +363,7 @@ export class MeshScheduler<
                 this.hooks.callOnError(error);
                 throw error;
             } finally {
-                this.requestUpdate();
+                this._requestUpdate();
             }
         });
     }
@@ -406,12 +435,13 @@ export class MeshScheduler<
             if (this._dedupeScratchpad[uid] === 0) {
                 this._dedupeScratchpad[uid] = 1; // 标记已访问
                 updateRoots.push(uid);
-                this._flushPathSet.add(uid);
+                // this._flushPathSet.add(uid);
+                this._addToRender(uid);
             }
         }
         
         // 3. 触发调度
-        this.requestUpdate();
+        this._requestUpdate();
         if (updateRoots.length > 0) {
             // 第三个参数现在是 [{uid, key}, ...] 的扁平结构，不再有 Path
             this._meshTaskSystem.TaskRunner(null, updateRoots, keysPayload,source);
@@ -433,7 +463,8 @@ export class MeshScheduler<
         // 3. 物理覆写（不触碰任何引擎核心依赖）
         node.state[key] = value;
        
-        this._flushPathSet.add(node.uid);
+        // this._flushPathSet.add(node.uid);
+        this._addToRender(node.uid)
         return true; 
     }
  

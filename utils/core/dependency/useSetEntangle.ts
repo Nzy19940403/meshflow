@@ -15,7 +15,7 @@ import { createTimeScheduler } from "../utils/util";
 
 type EntangleLink<P extends MeshPath,NM> = {
   impact: P;
-  triggerKey: MeshPath;
+  triggerKey: MeshPath[];
   filter?: (obs: any, tgt: any) => boolean;
   emit:(src:any,tgt:any,propose:GhostProposalApi<any,NM>) => void | EntangleGhost<any> | undefined | Promise<void | EntangleGhost<any> | undefined>; 
   count: number;
@@ -52,6 +52,7 @@ export interface UseSetEntangleReturn<P extends MeshPath, NM> {
   _useEntangle: (config: EntangleArgType<P>) => void;
   _updateEntangleLevel: () => void;
   Turnstile: EntangleTurnstile<P, NM>;
+  _dispose:()=>void
 }
 
 export const UseSetEntangle = <P extends MeshPath, NM>(
@@ -69,11 +70,39 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
 ): UseSetEntangleReturn<P, NM> => {
   const MAX_ENTANGLE_DEPTH = config.useEntangleStep;
 
-  const _registry: Array<Map<MeshPath, EntangleLink<P,NM>[]>> = [];
+  // const _registry: Array<Map<MeshPath, EntangleLink<P,NM>[]>> = [];
   const _ghostBuffer: Array<EntangleGhost[]> = [];
   const _volatileLevels = new Set<number>();
 
   const _entangleMutations = new Map<string, { path: any; key: any; oldVal: any; newVal: any }>();
+
+  const _allLinks: EntangleLink<P, NM>[] = [];
+
+  const _uidToKeysCache: MeshPath[][] = [];
+  
+  const _uidToLinks: EntangleLink<P, NM>[][] = [];
+
+  const _sharedSeenMap: boolean[] = [];
+  const _dedupeUidsFast = (uids: number[]): number[] => {
+    if (uids.length <= 1) return uids;
+    
+    const unique: number[] = [];
+    for (let j = 0; j < uids.length; j++) {
+      const u = uids[j];
+      // 利用 V8 数组下标准确寻址，极速判断
+      if (_sharedSeenMap[u] !== true) {
+        _sharedSeenMap[u] = true;
+        unique.push(u);
+      }
+    }
+    
+    // 清理现场：极其重要，保证下次进入时这块内存是干净的
+    for (let j = 0; j < unique.length; j++) {
+      _sharedSeenMap[unique[j]] = false; 
+    }
+    
+    return unique;
+  };
 
   const _GetNodeByPath = GetNodeByPath;
   // const _GetNodeByUid = GetNodeByUid;
@@ -220,7 +249,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     EMIT_PAYLOAD.target = impactPath;
     EMIT_PAYLOAD.via = link.triggerKey;
     hooks.emit(MeshFlowEventsName.EntangleEmitCalled,EMIT_PAYLOAD);
-    if (emitResult instanceof Promise || (emitResult && typeof (emitResult as any).then === 'function')) {
+    // if (emitResult instanceof Promise || (emitResult && typeof (emitResult as any).then === 'function')) {
+    if (emitResult != null && typeof (emitResult as any).then === 'function'){
       activeAsyncCount++;
       return (async () => {
         try {
@@ -250,8 +280,14 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
   const _updateEntangleLevel = () => {
     const levelMap = _GetUidToLevelMap();
     _volatileLevels.clear();
-    for (let uid = 0; uid < _registry.length; uid++) {
-      if (_registry[uid] !== undefined) {
+    // for (let uid = 0; uid < _registry.length; uid++) {
+    //   if (_registry[uid] !== undefined) {
+    //     const level = levelMap.get(uid) || 0;
+    //     _volatileLevels.add(level);
+    //   }
+    // }
+    for (let uid = 0; uid < _uidToLinks.length; uid++) {
+      if (_uidToLinks[uid] !== undefined && _uidToLinks[uid].length > 0) {
         const level = levelMap.get(uid) || 0;
         _volatileLevels.add(level);
       }
@@ -271,11 +307,19 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     const causeNode = _GetNodeByPath(cause);
     const causeUid = causeNode.uid;
 
-    if (!_registry[causeUid]) {
-      _registry[causeUid] = new Map();
-    }
+    // if (!_registry[causeUid]) {
+    //   _registry[causeUid] = new Map();
+    // }
       
-    const causeMap = _registry[causeUid];
+    // const causeMap = _registry[causeUid];
+
+    if (!_uidToLinks[causeUid]) _uidToLinks[causeUid] = [];
+    // 🌟 初始化该 UID 的 Keys 缓存槽位
+    if (!_uidToKeysCache[causeUid]) _uidToKeysCache[causeUid] = [];
+  
+    const uidLinks = _uidToLinks[causeUid];
+    const cachedKeys = _uidToKeysCache[causeUid];
+
     _linkId++;
     const sharedLink: EntangleLink<P, NM> = {
       impact,
@@ -286,12 +330,22 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       isProxy: !!isProxy,
       _inBatch:false
     };
+    _allLinks.push(sharedLink);
+    uidLinks.push(sharedLink)
+
     for (let i = 0; i < via.length; i++) {
       const key = via[i];
-      if (!causeMap.has(key)) causeMap.set(key, []);
-      // causeMap.get(key)!.push({ triggerKey:key,impact, emit: emit as any, filter, count: 0, isProxy: !!isProxy });
-      causeMap.get(key)!.push(sharedLink);
+      if (cachedKeys.indexOf(key) === -1) {
+        cachedKeys.push(key);
+      }
     }
+
+    // for (let i = 0; i < via.length; i++) {
+    //   const key = via[i];
+    //   if (!causeMap.has(key)) causeMap.set(key, []);
+    //   // causeMap.get(key)!.push({ triggerKey:key,impact, emit: emit as any, filter, count: 0, isProxy: !!isProxy });
+    //   causeMap.get(key)!.push(sharedLink);
+    // }
   };
 
   const Turnstile: EntangleTurnstile<P, NM> = {
@@ -322,14 +376,15 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
      * @internal
     */
     _hasObserver: (uid: number) => {
-      return _registry[uid] !== undefined;
+      return _uidToLinks[uid] !== undefined && _uidToLinks[uid].length > 0;
     },
     /**
      * @internal
     */
     _getTriggerKeys: (uid: number): MeshPath[] => {
-      const causeMap = _registry[uid];
-      return causeMap ? Array.from(causeMap.keys()) : [];
+      // const causeMap = _registry[uid];
+      // return causeMap ? Array.from(causeMap.keys()) : [];
+      return _uidToKeysCache[uid] || [];
     },
     /**
      * @internal
@@ -337,25 +392,34 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     _receiveGhosts: (causeNode: MeshFlowTaskNode<P, any, NM>, changedKeys: MeshPath[] = []): number[] | Promise<number[]> => {
       const causeUid = causeNode.uid;
       const hitTargetUids: number[] = [];
-      const causeMap = _registry[causeUid];
+      // const causeMap = _registry[causeUid];
 
-      if (!causeMap || changedKeys.length === 0) return hitTargetUids;
+      // if (!causeMap || changedKeys.length === 0) return hitTargetUids;
+
+      const allLinksForThisUid = _uidToLinks[causeUid];
+
+      if (!allLinksForThisUid || changedKeys.length === 0) return hitTargetUids;
 
       const linksArray: EntangleLink<P,NM>[] = [];
     
       // 🌟 优化点 2：彻底砍掉 impactBuffer 的 new Set。原生数组极速展平。
-      for (let k = 0; k < changedKeys.length; k++) {
-        const links = causeMap.get(changedKeys[k]);
-        if (links) {
-          for (let j = 0; j < links.length; j++) {
-            // linksArray.push(links[j]);
-            const link = links[j];
-            if (link._inBatch !== true) {
-              link._inBatch = true;
-              linksArray.push(link);
-            }
+      for (let i = 0; i < allLinksForThisUid.length; i++) {
+        // const links = causeMap.get(changedKeys[k]);
+
+        const link = allLinksForThisUid[i];
+        let isMatch = false;
+        for (let k = 0; k < changedKeys.length; k++) {
+          if (link.triggerKey.includes(changedKeys[k])) {
+            isMatch = true;
+            break;
           }
         }
+    
+        if (isMatch && link._inBatch !== true) {
+          link._inBatch = true;
+          linksArray.push(link);
+        }
+    
       }
       
       for (let x = 0; x < linksArray.length; x++) {
@@ -382,19 +446,20 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       }
 
       // 🌟 提取的公共轻量级去重方法 (替代末尾的 Array.from(new Set))
-      const getUniqueHits = () => {
-        if (hitTargetUids.length <= 1) return hitTargetUids;
-        const unique: number[] = [];
-        const seen = Object.create(null); // 极轻量级字典，无原型链
-        for (let j = 0; j < hitTargetUids.length; j++) {
-          const u = hitTargetUids[j];
-          if (!seen[u]) { seen[u] = true; unique.push(u); }
-        }
-        return unique;
-      };
+      // const getUniqueHits = () => {
+      //   if (hitTargetUids.length <= 1) return hitTargetUids;
+      //   const unique: number[] = [];
+      //   const seen = Object.create(null); // 极轻量级字典，无原型链
+      //   for (let j = 0; j < hitTargetUids.length; j++) {
+      //     const u = hitTargetUids[j];
+      //     if (!seen[u]) { seen[u] = true; unique.push(u); }
+      //   }
+      //   return unique;
+      // };
 
       if (!wentAsync) {
-        return getUniqueHits();
+        // return getUniqueHits();
+        return _dedupeUidsFast(hitTargetUids);
       }
 
       return (async () => {
@@ -420,7 +485,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
           if (timeScheduler._shouldYield()) await timeScheduler._yieldToMain();
         }
 
-        return getUniqueHits();
+        // return getUniqueHits();
+        return _dedupeUidsFast(hitTargetUids);
       })();
     },
 
@@ -451,12 +517,12 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
         let bestSetWeight = -Infinity;
         let hasSet = false;
 
-        // Pass 1: 先处理 Patch 和 Set (保持你的业务顺序)
+        // Pass 1: 找出拥有最高权重的“绝对真理” (Set)
         for (let i = 0; i < proposals.length; i++) {
           const p = proposals[i];
-          if (p.patch !== undefined) {
-            finalValue = p.patch(finalValue);
-          }
+          // if (p.patch !== undefined) {
+          //   finalValue = p.patch(finalValue);
+          // }
           if (p.value !== undefined) {
             const weight = p.weight ?? 1;
             if (weight >= bestSetWeight) {
@@ -469,10 +535,16 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
 
         if (hasSet) finalValue = bestSetVal;
 
+        const thresholdWeight = hasSet ? bestSetWeight : -Infinity;
+
         // Pass 2: 处理 Delta 运算
         for (let i = 0; i < proposals.length; i++) {
           const p = proposals[i];
-          if (p.delta !== undefined) {
+          const proposalWeight = p.weight ?? 1;
+          if (proposalWeight < thresholdWeight) continue
+          if (p.patch !== undefined) {
+            finalValue = p.patch(finalValue); // 在新基准上执行函数
+          } else if (p.delta !== undefined) {
             const op:EntangleOp = p.op || "add";
             switch (op) {
               case "add": 
@@ -526,22 +598,26 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       }
 
       // 清空，并且追踪器 -1
-      _ghostBuffer[targetUid] = [];
+      // _ghostBuffer[targetUid] = [];
+      _ghostBuffer[targetUid].length = 0;
       pendingGhostNodesCount--; 
       
       return changedKeys.length > 0 ? changedKeys : [];
     },
 
     resetCounters: () => {
-      for (let i = 0; i < _registry.length; i++) {
-        const obsMap = _registry[i];
-        if (obsMap) {
-          for (const routes of obsMap.values()) {
-            for (let j = 0; j < routes.length; j++) {
-              routes[j].count = 0;
-            }
-          }
-        }
+      // for (let i = 0; i < _registry.length; i++) {
+      //   const obsMap = _registry[i];
+      //   if (obsMap) {
+      //     for (const routes of obsMap.values()) {
+      //       for (let j = 0; j < routes.length; j++) {
+      //         routes[j].count = 0;
+      //       }
+      //     }
+      //   }
+      // }
+      for (let i = 0; i < _allLinks.length; i++) {
+        _allLinks[i].count = 0;
       }
     },
     commit:()=>{
@@ -577,10 +653,40 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
    
     }
   };
+  const _dispose = () => {
+    // 1. 清空注册表 (Map 需要 clear, 数组可以赋 length = 0)
+    // for (let i = 0; i < _registry.length; i++) {
+    //   if (_registry[i]) {
+    //     _registry[i].clear();
+    //   }
+    // }
+    // _registry.length = 0;
 
+    _uidToLinks.length = 0;
+    _uidToKeysCache.length = 0;
+
+    // 2. 清空缓冲与状态
+    _ghostBuffer.length = 0;
+    _volatileLevels.clear();
+    _entangleMutations.clear();
+    
+    // 3. 清空我们新增的高性能数组
+    _allLinks.length = 0;
+    _sharedSeenMap.length = 0;
+
+    // 4. 清空对象池 (释放内存引用)
+    contextPool.length = 0;
+    
+    // 5. 重置计数器
+    activeAsyncCount = 0;
+    pendingGhostNodesCount = 0;
+    currentEpoch = 0;
+    _linkId = 0;
+  };
   return {
     _useEntangle,
     _updateEntangleLevel,
     Turnstile,
+    _dispose
   };
 };
