@@ -103,6 +103,9 @@ export const createTimeScheduler = (config = { frameQuota: 12 }) => {
   let _isFirstFrame = false;
 
   const _checkInputPending = () => {
+    if (typeof navigator === 'undefined') {
+      return false;
+    }
     // @ts-ignore
     return !!(navigator?.scheduling?.isInputPending?.({ includeContinuous: true }));
   };
