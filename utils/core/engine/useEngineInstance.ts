@@ -235,7 +235,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         _useEntangle,
         _updateEntangleLevel,
 
-        dispose,
+        dispose:schedulerDispose,
         _stageValueFn,
  
         SettleTasks,
@@ -417,7 +417,28 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         const node = GetNodeByPath(path);
         _stageValueFn(node.uid,key,value)
     }
-  
+    const customDispose = () => {
+        // 第一步：销毁调度器内部数据
+        schedulerDispose();
+
+        // 第二步：物理清空当前闭包中的海量拓扑数据 (斩草除根)
+        activeTopologyUids.clear();
+        
+        dependencyGraph.length = 0;
+        _dependencyGraph.length = 0;
+        
+        predecessorGraph.length = 0;
+        _predecessorGraph.length = 0;
+        
+        directChildDependencyGraph.length = 0;
+        directParentDependencyGraph.length = 0;
+        
+        dependencyOrder.length = 0;
+        uidToLevelMap.clear();
+
+        // 第三步：销毁插件
+        destroyPlugin();
+    };
    
 
     const instance = {
@@ -458,7 +479,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         scheduler,
 
         destroyPlugin,
-        dispose,
+        dispose:customDispose,
         StageValue,
         SilentSet,
 

@@ -413,7 +413,7 @@ const useEngine = <
  */
 const deleteEngine = (id: MeshPath) => {
   const engine = engineMap.get(id) ;
-  engine.destroyPlugin();    
+       
   engine.dispose();
 
   engineMap.delete(id);
