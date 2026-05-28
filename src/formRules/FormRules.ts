@@ -15,7 +15,7 @@ export function setupBusinessRules(
     outDegreePath: AllPath, 
     inDegreePath: AllPath, 
     key: K, 
-    options?: SetRuleOptions<NM,TKeys> // 使用泛型 Options
+    options?: SetRuleOptions<NM,TKeys,K> // 使用泛型 Options
 ) => void,
 
 // 🌟 核心：给 SetRules 也加上同样的泛型
@@ -23,7 +23,7 @@ SetRules: <K extends KeysOfUnion<NM>,TKeys extends KeysOfUnion<NM>>(
     outDegreePaths: AllPath[], 
     inDegreePath: AllPath, 
     key: K, 
-    options?: SetRuleOptions<NM,TKeys>
+    options?: SetRuleOptions<NM,TKeys,K>
 ) => void,
 
 // SetStrategy 保持原样即可，因为它不涉及 options 的联动
@@ -88,7 +88,7 @@ notifyAll: () => void
             return new Promise((resolve,reject)=>{
               setTimeout(() => {
                 resolve(calculatePrice(api))
-              }, 2000);
+              }, 20);
             })
             // return  calculatePrice(api);
           },
@@ -216,13 +216,14 @@ notifyAll: () => void
         {
           logic: (api) => {
             const [value] = api.slot.triggerTargets;
-            
+             
             if (value.value > 2000) {
               return "当前配置属于【高能耗规格】，建议联系客户经理获取大客户折扣。";
             }
       
             return undefined;
           },
+          // triggerKeys:['value']
         }
       );
       SetRule(
@@ -232,7 +233,7 @@ notifyAll: () => void
         {
           logic: (api) => {
             const [value] = api.slot.triggerTargets;
-          
+             
             if (value.value > 2000) {
               return "warning";
             }
@@ -250,12 +251,13 @@ notifyAll: () => void
         {
           logic: (api) => {
             const [value] = api.slot.triggerTargets;
-         
+             
             if (value.value > 0) {
               return "计费周期：按量计费。当前配置已包含基础 DDOS 防护能力。";
             }
             return undefined;
           },
+          triggerKeys:['value']
         }
       );
       
@@ -409,7 +411,7 @@ notifyAll: () => void
         {
           logic: async (api) => {
             const [region,compliance] = api.slot.triggerTargets;
-            
+        
             if(region.value=='global'&&compliance.value==='financial') return '跨境金融场景：需人工确认订单且不支持自动扣款'
 
             if (region.value === "global") return "海外机房暂不支持自动扣款";
