@@ -463,7 +463,7 @@ export class SchemaBucket<P> {
   /**
    * @internal
   */
-  public _setSideEffect(data: { fn: (args: any[]) => any; args: any[] }) {
+  public _setSideEffect(data: { fn: (args: any) => any; args: any[] }) {
     this._effectArray.push(data);
   }
 

@@ -183,7 +183,7 @@ export const useSetRule = <P extends MeshPath, NM>(
     const SetRule = <
         K extends SuggestKey<NM>,
         TKeys extends SuggestKey<NM> = SuggestKey<NM>
-    >(outDegreePath: P, inDegreePath: P, key: K, options: SetRuleOptions<NM, TKeys>) => {
+    >(outDegreePath: P, inDegreePath: P, key: K, options: SetRuleOptions<NM, TKeys,K>) => {
  
         const outDegree = GetByPath(outDegreePath);
         const inDegree = GetByPath(inDegreePath);
@@ -241,7 +241,7 @@ export const useSetRule = <P extends MeshPath, NM>(
         outDegreePaths: P[],
         inDegreePath: P,
         key: K,
-        options: SetRuleOptions<NM, TKeys> 
+        options: SetRuleOptions<NM, TKeys,K> 
     ) => {
         const inDegree = GetByPath(inDegreePath);
 

@@ -11,6 +11,7 @@ import { useOnStart } from "../hooks/useOnStart";
 import { EntangleArgType, FullHistory, InternalMeshFlowHistory, MeshFlowHistory, MeshFlowTaskNode, MeshPath, SetRuleOptions, SuggestKey } from "../types/types";
 import { useScheduler } from "./useScheduler";
  
+ 
 type HistoryTool = {
     (getEngineCtx: () => {
         BN: (updates: any[],source:number) => void;
@@ -354,7 +355,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     outDegreePath: P, 
     inDegreePath: P, 
     key: K  , 
-    options: SetRuleOptions<NM,TKeys>) => {
+    options: SetRuleOptions<NM,TKeys,K>) => {
         SetRule(outDegreePath, inDegreePath, key as SuggestKey<NM> , options);
         isRulesChanged = true;
         
@@ -362,11 +363,11 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         requestGraphUpdate();
        
     };
-    const setRulesWrapper = <TKeys extends SuggestKey<NM>>(
+    const setRulesWrapper = <TKeys extends SuggestKey<NM>,K extends SuggestKey<NM> | (string & {})>(
         outDegreePaths: P[],
         inDegreePath: P,
-        key: SuggestKey<NM> | (string & {})  ,
-        options: SetRuleOptions<NM,TKeys>
+        key:K ,
+        options: SetRuleOptions<NM,TKeys,K>
     ) => {
         SetRules(outDegreePaths, inDegreePath, key as SuggestKey<NM>, options);
         isRulesChanged = true;

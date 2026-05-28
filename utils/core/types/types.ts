@@ -275,7 +275,7 @@ export type InternalKeys = 'path'|'uid'|'type'|'meta'|'state'
  * @typeParam TKeys - 当前节点关联的键集合
  * @params logic - 桶计算的逻辑块，一个桶里面可以装多个逻辑块，根据策略进行计算，逻辑块入参参考{}
  */
-export interface SetRuleOptions<NM, TKeys extends (SuggestKey<NM> | Exclude<InternalKeys, 'state'>)  > {
+export interface SetRuleOptions<NM, TKeys extends (SuggestKey<NM> | Exclude<InternalKeys, 'state'>),K extends SuggestKey<NM>  > {
 /**
    * 结果覆盖值 (静态产出)
    * * @description
@@ -310,14 +310,14 @@ export interface SetRuleOptions<NM, TKeys extends (SuggestKey<NM> | Exclude<Inte
    * 
    * * @param args 由 {@link effectArgs} 指定的实时数据快照。
    */
-  effect?: (args: any) => any;
+  effect?: (args: IsAny<NM> extends true? Record<K|InternalKeys|(string & {}), any>:Record<InternalKeys| SuggestKey<NM>|K, any>) => any;
    /**
    * 📥 副作用参数声明
    * * @description 
    * 显式定义需要注入给 `effect` 函数的参数。
    * 引擎会从全局状态大盘 (NM) 中摘取这些字段的最新值，打包传递给副作用函数。
    */
-  effectArgs?: Array<KeysOfUnion<NM>>;
+  effectArgs?: IsAny<NM> extends true?Array<K|InternalKeys|(string & {})>:Array<InternalKeys| SuggestKey<NM>|K> ;
   /**
    * 桶的缓存策略
    * * @description 
@@ -609,7 +609,7 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
     SetRule: <
     K extends KeysOfUnion<NM>,
     TKeys extends KeysOfUnion<NM>  ,
-    >(outDegreePath: P, inDegreePath: P, key: K,options: SetRuleOptions<NM, TKeys>) => void;
+    >(outDegreePath: P, inDegreePath: P, key: K,options: SetRuleOptions<NM, TKeys,K>) => void;
     
   /**
    * @category DAG
@@ -637,7 +637,7 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
     TKeys extends KeysOfUnion<NM>>( outDegreePaths: P[],
       inDegreePath: P,
       key: K,
-      options: SetRuleOptions<NM,TKeys>) => void;
+      options: SetRuleOptions<NM,TKeys,K>) => void;
     
 /**
      * 设置引擎的桶计算策略
