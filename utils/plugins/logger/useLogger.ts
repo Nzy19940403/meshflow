@@ -288,14 +288,17 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         let isTransactionActive = false; 
 
-        const emitAnimEvent = (action: string, path?: MeshPath, triggerPath?:  MeshPath) => {
+        const emitTrace = (action: string, path?: MeshPath, triggerPath?:  MeshPath) => {
             if (!options.onLog || !path) return;
             // 🛡️ 核心防线 1：如果当前数据流被明确忽略，绝对不发射动画 (修复了你提到的痛点)
             if (isCurrentFlowIgnored) return;
             // 🛡️ 核心防线 2：严格遵守专注模式规则。无关的旁支节点不准在画布上乱闪
             if (!isNodeRelevant(path, triggerPath)) return;
-            
-            options.onLog(`ACTION:[${action}] NODE:[${path as string}]`);
+            const fromStr = triggerPath ? ` FROM:[${triggerPath as string}]` : '';
+    
+            // 🌟 修改这一行：把 FROM 也拼接进向外发射的字符串里
+            options.onLog(`ACTION:[${action}] NODE:[${path as string}]${fromStr}`);
+       
         };
 
         const pushTimeline = (phase: string, icon: string, label: string, color: string, path: string, desc: string, triggerSource?: string) => {
@@ -512,7 +515,7 @@ const useLogger = (options: LoggerOptions = {}) => {
         on(MeshFlowEventsName.NodeProcessing, (data) => {
             const { path, key } = data as any;
             const isCache = (data as any).isCache; 
-            emitAnimEvent(isCache ? 'TASK_CACHE' : 'TASK_EVAL', path);
+            emitTrace(isCache ? 'TASK_CACHE' : 'TASK_EVAL', path);
             if (isCurrentFlowIgnored || !isFocusMode) return;
             
             if (key && isNodeRelevant(path)) {
@@ -628,7 +631,7 @@ const useLogger = (options: LoggerOptions = {}) => {
         });
 
         on(MeshFlowEventsName.NodeSuccess, ({ path, calledBy }) => {
-            emitAnimEvent('OK', path);
+            emitTrace('OK', path);
             if (isCurrentFlowIgnored) return;
             
             // ⏱️ 埋点结算：记录节点总耗时
@@ -662,25 +665,25 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         // ------------------ 下方为原样保留的调度器与拦截防御逻辑 ------------------
         on(MeshFlowEventsName.NodeRelease, ({ path, type, detail }) => {
-            emitAnimEvent('RELEASE', path, detail?.path);
+            emitTrace('RELEASE', path, detail?.path);
             if (isCurrentFlowIgnored) return;
             if (isFocusMode && isNodeRelevant(path, detail?.path)) pushTimeline(t.timeline.phaseSch, '🌊', 'RELEASE', '#409EFF', path as string, t.release[type](detail), detail?.path);
             else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '🌊 Release', 'Target Node': path, 'Trigger Mode': t.release[type](detail) });
         });
         on(MeshFlowEventsName.NodeRevive, ({ path, triggerPath }) => {
-            emitAnimEvent('RESOLVE', path, triggerPath);
+            emitTrace('RESOLVE', path, triggerPath);
             if (isCurrentFlowIgnored) return;
             if (isFocusMode && isNodeRelevant(path, triggerPath)) pushTimeline(t.timeline.phaseSch, '✨', 'REVIVE', '#8e44ad', path as string, t.timeline.revive, triggerPath as string);
             else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '✨ Revive', 'Target Node': path, 'Trigger Mode': t.reports.revivedBy(path as string, triggerPath as string) });
         });
         on(MeshFlowEventsName.NodeIntercept, ({ path, type, detail }) => {
-            emitAnimEvent('BLOCK', path, detail?.path);
+            emitTrace('BLOCK', path, detail?.path);
             if (isCurrentFlowIgnored) return;
             if (isFocusMode && isNodeRelevant(path, detail?.path)) pushTimeline(t.timeline.phaseSch, '🛑', 'BLOCK', '#F56C6C', path as string, t.intercept[type](detail), detail?.path);
             else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '🛑 Intercept', 'Target Node': path, 'Trigger Mode': t.intercept[type](detail) });
         });
         on(MeshFlowEventsName.NodeStagnate, ({ path, type }) => {
-            emitAnimEvent('STAGNATE', path);
+            emitTrace('STAGNATE', path);
             if (isCurrentFlowIgnored) return;
             if (isFocusMode && isNodeRelevant(path)) pushTimeline(t.timeline.phaseSch, '🧊', 'STAGNATE', '#909399', path as string, t.stagnate[type]());
             else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '🧊 Stagnate', 'Target Node': path, 'Trigger Mode': t.stagnate[type]() });
