@@ -541,6 +541,8 @@ const useLogger = (options: LoggerOptions = {}) => {
             
             const config = causeConfigs[cause] || causeConfigs[0];
 
+            emitTrace(config.label, path);
+            
             if (isFocusMode && isNodeRelevant(path)) {
                 pushTimeline(config.phase, config.icon, config.label, config.color, path as string, config.desc);
             } 
