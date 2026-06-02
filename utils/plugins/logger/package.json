@@ -7,7 +7,7 @@
   "types": "./index.d.ts",
   "author": "nzy",
   "peerDependencies": {
-    "@meshflow/core": ">=0.8.7",
+    "@meshflow/core": ">=0.8.8",
     "consola": ">=3.0.0"
   },
   "publishConfig": {
