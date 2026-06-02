@@ -286,24 +286,22 @@ const useLogger = (options: LoggerOptions = {}) => {
 
     const ignoreTargets = options.ignorePaths ? (Array.isArray(options.ignorePaths) ? options.ignorePaths : [options.ignorePaths]) : [];
 
-    const isNodeRelevant = (path?: MeshPath, triggerPath?: MeshPath): boolean => {
+    // 🌟 修复 1：让 isNodeRelevant 变聪明，支持检查多个目标（比如靶心 targetPath）
+    const isNodeRelevant = (...paths: (MeshPath | undefined | null)[]): boolean => {
         if (!isFocusMode) return true; 
-        if (path && focusTargets.includes(path)) return true;
-        if (triggerPath && focusTargets.includes(triggerPath)) return true;
-        return false;
+        return paths.some(p => p && focusTargets.includes(p));
     };
 
     const apply = (api: any) => {
         let sessionSecurityLogs: any[] = [];
-        let sessionNodeTrace: any[] = []; // 用于构建因果树
-        let sessionCausalMutations: any[] = []; // 常规节点位移
-        let sessionEntangleMutations: any[] = []; // 纠缠节点位移
+        let sessionNodeTrace: any[] = []; 
+        let sessionCausalMutations: any[] = []; 
+        let sessionEntangleMutations: any[] = []; 
         
         let sessionSchedulerLogs: string[] = []; 
         let sessionEntangleLogs: any[] = []; 
         let lastWaitStamp = ''; 
 
-        // 🌟 性能追踪雷达 (Hotspots)
         let nodeStartTimes = new Map<string, number>();
         let nodeDurations = new Map<string, number>();
 
@@ -324,19 +322,16 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         let isTransactionActive = false; 
 
-        const emitTrace = (action: string, path?: MeshPath, triggerPath?:  MeshPath,targetPath?: MeshPath) => {
+        const emitTrace = (action: string, path?: MeshPath, triggerPath?: MeshPath, targetPath?: MeshPath) => {
             if (!options.onLog || !path) return;
-            // 🛡️ 核心防线 1：如果当前数据流被明确忽略，绝对不发射动画 (修复了你提到的痛点)
             if (isCurrentFlowIgnored) return;
-            // 🛡️ 核心防线 2：严格遵守专注模式规则。无关的旁支节点不准在画布上乱闪
-            if (!isNodeRelevant(path, triggerPath)) return;
+            // 🌟 修复 2：只要 source、trigger、target 中有一个在监控列表，就放行指令！
+            if (!isNodeRelevant(path, triggerPath, targetPath)) return; 
+            
             const fromStr = triggerPath ? ` 来源:[${triggerPath as string}]` : '';
             const targetStr = targetPath ? ` 靶心:[${targetPath as string}]` : '';
         
-            // 🚀 核心修改：去掉多余的 ACTION/NODE，直接输出 [动作] [节点]
-            // 比如：[PROPHECY] [bossA_panel] 靶心:[damageCourt]
             options.onLog(`[CMD] [${action}] [${path as string}]${fromStr}${targetStr}`);
-       
         };
 
         const pushTimeline = (phase: string, icon: string, label: string, color: string, path: string, desc: string, triggerSource?: string) => {
@@ -375,13 +370,13 @@ const useLogger = (options: LoggerOptions = {}) => {
 
             if (isFlowGroupActive) return; 
             isFlowGroupActive = true;
-            flowRealStartTime = getNow(); // 记录流起点
+            flowRealStartTime = getNow(); 
 
             sessionSecurityLogs = []; sessionNodeTrace = []; 
             sessionCausalMutations = []; sessionEntangleMutations = [];
             sessionSchedulerLogs = []; sessionEntangleLogs = []; 
             abortedPaths = [];
-            nodeStartTimes.clear(); nodeDurations.clear(); // 清空性能雷达
+            nodeStartTimes.clear(); nodeDurations.clear(); 
 
             lastWaitStamp = ''; finalDurationStr = ''; 
             masterTimeline = []; currentEpoch = 0;
@@ -430,7 +425,6 @@ const useLogger = (options: LoggerOptions = {}) => {
                 if (isFocusMode) {
                     masterTimeline.forEach(args => console.log(...args));
                 } else {
-                    // 🌲 渲染 ASCII 因果树
                     if (sessionNodeTrace.length > 0) {
                         console.groupCollapsed(`%c${t.reports.nodesTrace(sessionNodeTrace.length)}`, "color: #00bcd4; font-weight: bold; font-size: 11px;");
                         let currentEpochForTree = -1;
@@ -447,7 +441,6 @@ const useLogger = (options: LoggerOptions = {}) => {
                         console.groupEnd();
                     }
 
-                    // 📝 状态 Diff 渲染
                     if (sessionCausalMutations.length > 0) {
                         console.groupCollapsed(`%c${t.reports.causalMutations(sessionCausalMutations.length)}`, "color: #67c23a; font-weight: bold; font-size: 11px;");
                         console.table(sessionCausalMutations); 
@@ -466,7 +459,6 @@ const useLogger = (options: LoggerOptions = {}) => {
                         console.groupEnd();
                     }
 
-                    // 🛡️ 调度器与防御记录
                     const totalDefenseItems = sessionSecurityLogs.length + sessionSchedulerLogs.length;
                     if (totalDefenseItems > 0) {
                         console.groupCollapsed(`%c${t.reports.security(totalDefenseItems)}`, "color: #909399; font-style: italic; font-size: 11px;");
@@ -484,7 +476,6 @@ const useLogger = (options: LoggerOptions = {}) => {
 
                 console.log(''); 
                 
-                // ⏱️ 性能刺客雷达结算 (过滤耗时 > 3ms 的节点)
                 if (!isFocusMode) {
                     const totalFlowTime = getNow() - flowRealStartTime;
                     const hotNodes = Array.from(nodeDurations.entries())
@@ -541,6 +532,12 @@ const useLogger = (options: LoggerOptions = {}) => {
         on(MeshFlowEventsName.EntangleEpochChange, () => {
             if (isCurrentFlowIgnored) return;
             currentEpoch++;
+            
+            // 🌟 修复 3：向 VueFlow 明确发出跨越纪元的指令！
+            if (options.onLog) {
+                options.onLog(`[CMD] [EPOCH] [${currentEpoch}]`);
+            }
+
             if (isFocusMode) {
                 masterTimeline.push([
                     `%c 🌀 EPOCH ${currentEpoch} %c ${t.timeline.epochChange} `,
@@ -553,10 +550,13 @@ const useLogger = (options: LoggerOptions = {}) => {
         on(MeshFlowEventsName.NodeProcessing, (data) => {
             const { path, key } = data as any;
             const isCache = (data as any).isCache; 
-            emitTrace(isCache ? 'TASK_CACHE' : 'TASK_EVAL', path);
+            
             if (isCurrentFlowIgnored || !isFocusMode) return;
             
+            // 🌟 修复 4：把 emitTrace 关进笼子里！没有真实 key 的无头扫描绝不通知 VueFlow！
             if (key && isNodeRelevant(path)) {
+                emitTrace(isCache ? 'TASK_CACHE' : 'TASK_EVAL', path);
+                
                 if (isCache) pushTimeline(t.timeline.phaseEval, '💾', 'TASK_CACHE', '#909399', path as string, t.timeline.cacheHit(key));
                 else pushTimeline(t.timeline.phaseEval, '⚙️', 'TASK_EVAL', '#E6A23C', path as string, t.timeline.triggerEval(key));
             }
@@ -565,11 +565,9 @@ const useLogger = (options: LoggerOptions = {}) => {
         on(MeshFlowEventsName.NodeStart, ({ path, calledBy }) => {
             if (isCurrentFlowIgnored) return;
 
-            // ⏱️ 埋点：记录节点开始计算的时间戳
             nodeStartTimes.set(path as string, getNow());
 
             const cause = calledBy ?? 0;
-            // 🌟 纯数值枚举映射
             const causeConfigs: Record<number, any> = {
                 0: { phase: t.timeline.phaseEval, icon: '🚀', label: 'CAUSAL',  color: '#1a2b3c', desc: t.timeline.cause0 },
                 1: { phase: t.timeline.phaseProp, icon: '📜', label: 'RESOLVE', color: '#8e44ad', desc: t.timeline.cause1 },
@@ -595,9 +593,8 @@ const useLogger = (options: LoggerOptions = {}) => {
             const newValDisplay = formatVal(value);
             
             let diffDisplay = '';
-            let isRealMutated = oldVal !== value; // 标志位：是否发生了实质性数据内容位移
+            let isRealMutated = oldVal !== value; 
 
-            // 🔍 智能状态 Diff 分析
             if (oldVal === undefined) {
                 diffDisplay = t.diff.init(newValDisplay);
                 isRealMutated = true;
@@ -636,7 +633,6 @@ const useLogger = (options: LoggerOptions = {}) => {
                 diffDisplay = t.diff.keep(newValDisplay);
             }
             
-            // 更新全局字典
             globalStateCache.set(cacheKey, value);
             if (isRealMutated) {
                 emitTrace('UPDATE', path);
@@ -673,10 +669,9 @@ const useLogger = (options: LoggerOptions = {}) => {
         });
 
         on(MeshFlowEventsName.NodeSuccess, ({ path, calledBy }) => {
+            if (isCurrentFlowIgnored) return; // 🌟 修复 5：把拦截判定放在 emitTrace 之前！下面同理！
             emitTrace('OK', path);
-            if (isCurrentFlowIgnored) return;
             
-            // ⏱️ 埋点结算：记录节点总耗时
             const start = nodeStartTimes.get(path as string);
             if (start) {
                 const duration = getNow() - start;
@@ -705,17 +700,12 @@ const useLogger = (options: LoggerOptions = {}) => {
             }
         });
 
-        // ------------------ 下方为原样保留的调度器与拦截防御逻辑 ------------------
-        
-        // 🌟 核心修复：纯函数方式传递参数，0 临时对象分配！
         // @ts-ignore
         on(MeshFlowEventsName.NodeRelease, ({ path, type, detail, triggerPath }) => {
-            emitTrace('RELEASE', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
+            emitTrace('RELEASE', path, triggerPath as MeshPath);
             
-            // 直接传递两个参数，无需解构合并 detail
             const msg = t.release[type](detail, triggerPath); 
-            
             if (isFocusMode && isNodeRelevant(path, triggerPath as MeshPath)) 
                 pushTimeline(t.timeline.phaseSch, '🌊', 'RELEASE', '#409EFF', path as string, msg, triggerPath as string);
             else if (!isFocusMode) 
@@ -723,20 +713,19 @@ const useLogger = (options: LoggerOptions = {}) => {
         });
 
         on(MeshFlowEventsName.NodeRevive, ({ path, triggerPath }) => {
-            emitTrace('RESOLVE', path, triggerPath);
             if (isCurrentFlowIgnored) return;
+            emitTrace('RESOLVE', path, triggerPath);
+
             if (isFocusMode && isNodeRelevant(path, triggerPath)) pushTimeline(t.timeline.phaseSch, '✨', 'REVIVE', '#8e44ad', path as string, t.timeline.revive, triggerPath as string);
             else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '✨ Revive', 'Target Node': path, 'Trigger Mode': t.reports.revivedBy(path as string, triggerPath as string) });
         });
 
         // @ts-ignore
         on(MeshFlowEventsName.NodeIntercept, ({ path, type, detail, triggerPath }) => {
-            emitTrace('BLOCK', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
+            emitTrace('BLOCK', path, triggerPath as MeshPath);
             
-            // 直接传递两个参数
             const msg = t.intercept[type](detail, triggerPath);
-            
             if (isFocusMode && isNodeRelevant(path, triggerPath as MeshPath)) 
                 pushTimeline(t.timeline.phaseSch, '🛑', 'BLOCK', '#F56C6C', path as string, msg, triggerPath as string);
             else if (!isFocusMode) 
@@ -745,12 +734,10 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         // @ts-ignore
         on(MeshFlowEventsName.NodeStagnate, ({ path, type, triggerPath }) => {
-            emitTrace('STAGNATE', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
+            emitTrace('STAGNATE', path, triggerPath as MeshPath);
             
-            // stagnate 可能没有 detail，传 null 占位，第二个参数传 triggerPath
             const msg = t.stagnate[type](null, triggerPath);
-            
             if (isFocusMode && isNodeRelevant(path, triggerPath as MeshPath)) 
                 pushTimeline(t.timeline.phaseSch, '🧊', 'STAGNATE', '#909399', path as string, msg, triggerPath as string);
             else if (!isFocusMode) 
@@ -805,7 +792,6 @@ const useLogger = (options: LoggerOptions = {}) => {
         });
 
         on(MeshFlowEventsName.EntangleEmitCalled, ({ observer, target, via }) => {
-            // 如果是忽略的流，直接跳过
             if (isCurrentFlowIgnored) return;
 
             emitTrace('PROPHECY', observer as MeshPath, undefined, target as MeshPath);
@@ -814,7 +800,6 @@ const useLogger = (options: LoggerOptions = {}) => {
             const msg = t.timeline.emitProphecy(target as string, keysStr);
 
             if (isFocusMode && isNodeRelevant(observer as MeshPath)) {
-                // 专属的高亮粉色预言发射线！
                 pushTimeline(
                     t.timeline.phaseProp, 
                     '📡', 
@@ -824,7 +809,6 @@ const useLogger = (options: LoggerOptions = {}) => {
                     msg
                 );
             } else if (!isFocusMode) {
-                // 非专注模式下，推入调度追踪流
                 sessionSchedulerLogs.push(`[📡 PROPHECY] [${observer as string}] ${msg}`);
             }
         });
