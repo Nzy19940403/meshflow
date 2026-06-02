@@ -699,37 +699,68 @@ function useMeshTask<P extends MeshPath, NM> (
             // ==========================================================
             let isGhostly = false;
 
+            // if (targetSchema.calledBy === TriggerCause.INVERSION) {
+
+                
+
+            //     isGhostly = true;
+            //     // targetSchema.calledBy = 0 ; // 卸下装甲，归还自由身，上面以及记录了这个节点是怎么被复活的，所以现在calledBy没有继续以1存在的必要
+            //     hasValueChanged = true; // 强制宣告变更，保证触发下游
+            //     // uitrigger._flushPathSet.add(targetUid);
+            //     uitrigger._addToRender(targetUid)
+                
+            //     // 提取接力棒：把刚才 resolveGhosts 修改的 Key 拿过来！
+            //     // const incomingEntangleKeys = ghostBaton.get(targetPath);
+            //     // const incomingEntangleKeys = ghostBaton.get(targetUid)
+            //     const incomingEntangleKeys = ghostBaton[targetUid];
+            //     if (incomingEntangleKeys) {
+
+            //         dirtyEntangleKeys.push(...incomingEntangleKeys);
+                    
+            //         for (let i = 0; i < incomingEntangleKeys.length; i++) {
+            //             const key = incomingEntangleKeys[i] as any;
+            //             const bId = targetSchema.nodeBucket[key as SuggestKey<NM>];
+
+            //             if (bId === undefined) { 
+            //                 hasNotifyKeyTriggered = true;
+            //             } else {
+            //                 incomingBucketIds.push(bId);
+            //             }
+            //         }
+                    
+            //         ghostBaton[targetUid] = null;
+            //     }
+            // }
+ 
             if (targetSchema.calledBy === TriggerCause.INVERSION) {
-
-                
-
                 isGhostly = true;
-                // targetSchema.calledBy = 0 ; // 卸下装甲，归还自由身，上面以及记录了这个节点是怎么被复活的，所以现在calledBy没有继续以1存在的必要
-                hasValueChanged = true; // 强制宣告变更，保证触发下游
-                // uitrigger._flushPathSet.add(targetUid);
-                uitrigger._addToRender(targetUid)
+            }
+
+            const incomingEntangleKeys = ghostBaton[targetUid];
+            if (incomingEntangleKeys) {
+                hasValueChanged = true; 
+                uitrigger._addToRender(targetUid);
                 
-                // 提取接力棒：把刚才 resolveGhosts 修改的 Key 拿过来！
-                // const incomingEntangleKeys = ghostBaton.get(targetPath);
-                // const incomingEntangleKeys = ghostBaton.get(targetUid)
-                const incomingEntangleKeys = ghostBaton[targetUid];
-                if (incomingEntangleKeys) {
-
+                // 💥 终极精准修复：只有幽灵(INVERSION)的接力棒才允许进入纠缠二次发射池！
+                // 外部修改(VOLITION)在 Phase 0 已经发过预言，绝对不能发生重复发射（解决 4 times 的 Bug）！
+                if (isGhostly) {
                     dirtyEntangleKeys.push(...incomingEntangleKeys);
-                    
-                    for (let i = 0; i < incomingEntangleKeys.length; i++) {
-                        const key = incomingEntangleKeys[i] as any;
-                        const bId = targetSchema.nodeBucket[key as SuggestKey<NM>];
-
-                        if (bId === undefined) { 
-                            hasNotifyKeyTriggered = true;
-                        } else {
-                            incomingBucketIds.push(bId);
-                        }
-                    }
-                    
-                    ghostBaton[targetUid] = null;
                 }
+                 
+                for (let i = 0; i < incomingEntangleKeys.length; i++) {
+                    const key = incomingEntangleKeys[i] as any;
+                    const bId = targetSchema.nodeBucket[key as SuggestKey<NM>];
+
+                    if (bId === undefined) { 
+                        // 无论外部还是幽灵，只要改了基础值，必须激活下游（解决弱信号挂死 Bug）
+                        hasNotifyKeyTriggered = true;
+                    } else {
+                        // 如果有桶，把桶拉进免算名单
+                        incomingBucketIds.push(bId);
+                    }
+                }
+                
+                ghostBaton[targetUid] = null;
             }
 
             const releaseSlot = () => {
@@ -811,15 +842,20 @@ function useMeshTask<P extends MeshPath, NM> (
                         // if(processed[uid]===1) continue;
                         if(flagArray[uid] & NodeStatus.PROCESSED) continue;
 
-                        const pLevel = uidToLevelMap.get(uid) ?? 0;
+                        // const pLevel = uidToLevelMap.get(uid) ?? 0;
 
-                        // 🔥 核心逻辑：你的需求实现
-                        // 如果爸爸还没跑完，但爸爸的层级 <= 当前水位线，
-                        // 说明这个爸爸是“上一波”的人，它被跳过/剪枝了，不算阻力。
-                        // 只有那些层级比当前还高的（或者未来的）未完成节点，才是真正的阻力。
-                        if (pLevel > currentLevel) {
-                            pendingCount++;
-                        }
+                        // // 🔥 核心逻辑：你的需求实现
+                        // // 如果爸爸还没跑完，但爸爸的层级 <= 当前水位线，
+                        // // 说明这个爸爸是“上一波”的人，它被跳过/剪枝了，不算阻力。
+                        // // 只有那些层级比当前还高的（或者未来的）未完成节点，才是真正的阻力。
+                        // if (pLevel > currentLevel) {
+                        //     pendingCount++;
+                        // }
+                        if (AllAffectedPaths[uid] === 0) continue;
+
+                        // 只要是在波及范围内、且没处理完的，统统算作真正的阻力！
+                        // 彻底废除之前的 if (pLevel > currentLevel) 静态限制！
+                        pendingCount++;
                     }
                     newResistance = pendingCount;
 
@@ -846,6 +882,7 @@ function useMeshTask<P extends MeshPath, NM> (
  
                         SHARED_PAYLOAD.path = childPath;
                         SHARED_PAYLOAD.type = isAlreadyRunning ? 3 : 3.1;
+                        SHARED_PAYLOAD.triggerPath = targetPath;
                         hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
 
                         return;
@@ -876,7 +913,8 @@ function useMeshTask<P extends MeshPath, NM> (
                     SHARED_PAYLOAD.path = childPath;
                     SHARED_PAYLOAD.type = reasonType;
                     // SHARED_DETAIL.path = targetPath;
-                    SHARED_PAYLOAD.triggerPath = targetPath
+                    SHARED_PAYLOAD.triggerPath = targetPath;
+                 
                     hooks.emit(MeshFlowEventsName.NodeRelease,SHARED_PAYLOAD)
 
                 } else {
@@ -1054,6 +1092,7 @@ function useMeshTask<P extends MeshPath, NM> (
                                 // 正常情况下的已处理节点，或者虽然是幽灵但只是弱信号，老老实实拦截
                                 SHARED_PAYLOAD.path = childPath;
                                 SHARED_PAYLOAD.type = 2;
+                                SHARED_PAYLOAD.triggerPath = targetPath;
                                 hooks.emit(MeshFlowEventsName.NodeIntercept, SHARED_PAYLOAD);
                                 continue;
                             }
@@ -1448,20 +1487,31 @@ function useMeshTask<P extends MeshPath, NM> (
                             const targetPath = data.GetPathByUid(targetUid);
                             const targetLevel = uidToLevelMap.get(targetUid) ?? 0;
                             const staticParents = dependency._GetPrevDependency(targetUid);
-                            const isMergeNode = staticParents.length > 1;
-                            
-                            // 🌟 保持原样：完全没动你的 shouldIntercept 变量
-                            const shouldIntercept = (!isGreedy || isMergeNode) && targetLevel > currentLevel;
+
+                            // const isMergeNode = staticParents.length > 1;
+                            // // 🌟 保持原样：完全没动你的 shouldIntercept 变量
+                            // const shouldIntercept = (!isGreedy || isMergeNode) && targetLevel > currentLevel;
+
+                            const pendingParentsCount = staticParents.filter(
+                                (uid) => AllAffectedPaths[uid] === 1 && (flagArray[uid] & NodeStatus.PROCESSED ) === 0
+                            ).length;
+        
+                            const isLevelBlocked = !isGreedy && targetLevel > currentLevel;
+
+                            // 🌟 终极剪枝机制：只要活跃上游清零，哪怕我的静态 Level 是 100 级，我也立刻发车！
+                            // 彻底删除之前的 (!isGreedy || isMergeNode) && targetLevel > currentLevel;
+                            const shouldIntercept = pendingParentsCount > 0 || isLevelBlocked;
+
                     
                             if (shouldIntercept) {
 
                                 flagArray[targetUid] &= ~NodeStatus.READY;
                                 readyActiveCount--;
                     
-                                const pendingParentsCount = staticParents.filter(
-                                    // (uid) => AllAffectedPaths[uid] === 1 && processed[uid] === 0
-                                    (uid) => AllAffectedPaths[uid] === 1 && (flagArray[uid] & NodeStatus.PROCESSED )===0
-                                ).length;
+                                // const pendingParentsCount = staticParents.filter(
+                                //     // (uid) => AllAffectedPaths[uid] === 1 && processed[uid] === 0
+                                //     (uid) => AllAffectedPaths[uid] === 1 && (flagArray[uid] & NodeStatus.PROCESSED )===0
+                                // ).length;
                     
                                 resistanceArray[targetUid] = pendingParentsCount || 0;
                                 if (!(flagArray[targetUid] & NodeStatus.STAGING)) {
@@ -1470,13 +1520,14 @@ function useMeshTask<P extends MeshPath, NM> (
                                     stagingActiveCount++;
                                 }
                     
- 
+                                const tUid = triggerSourceArray[targetUid];
 
                                 SHARED_PAYLOAD.path = targetPath;
                                 SHARED_PAYLOAD.type = pendingParentsCount > 0 ? 4 : 5;
                                 SHARED_DETAIL.targetLevel = targetLevel;
                                 SHARED_DETAIL.currentLevel = currentLevel;
                                 SHARED_DETAIL.pendingParentsCount = pendingParentsCount;
+                                SHARED_PAYLOAD.triggerPath = tUid >= 0 ? data.GetPathByUid(tUid) : null;
                                 hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
 
                                 continue;
@@ -1581,10 +1632,12 @@ function useMeshTask<P extends MeshPath, NM> (
                                     releasedCount++;
                                     foundGreedy = true;
                                     const path = data.GetPathByUid(uid);
-                                     
+                                    const triggerUid = triggerSourceArray[uid];
+
                                     SHARED_PAYLOAD.path = path;
                                     SHARED_PAYLOAD.type = 4;
-                                    SHARED_PAYLOAD.triggerPath = null;
+                                    // SHARED_PAYLOAD.triggerPath = null;
+                                    SHARED_PAYLOAD.triggerPath = triggerUid >= 0 ? data.GetPathByUid(triggerUid) : null;
                                     hooks.emit(MeshFlowEventsName.NodeRelease,SHARED_PAYLOAD)
                                     continue; // 捞起的不进 nextStagingCount
                                 }
@@ -1818,10 +1871,12 @@ function useMeshTask<P extends MeshPath, NM> (
                                                 readyActiveCount++;
                                             }
                                             const path = data.GetPathByUid(uid);
+                                            const triggerUid = triggerSourceArray[uid];
                                             // hooks.emit(MeshFlowEventsName.NodeRelease, { path, type: 3, detail: { level: nextLevel } });
                                             SHARED_PAYLOAD.path = path;
                                             SHARED_PAYLOAD.type = 3;
                                             SHARED_DETAIL.level = nextLevel;
+                                            SHARED_PAYLOAD.triggerPath = triggerUid >= 0 ? data.GetPathByUid(triggerUid) : null;
                                             hooks.emit(MeshFlowEventsName.NodeRelease,SHARED_PAYLOAD)
                                         } else {
                                             stagingQueue[nextStagingCount++] = uid;
@@ -1839,9 +1894,10 @@ function useMeshTask<P extends MeshPath, NM> (
                                     // processed[uid] = 1;
                                     flagArray[uid] |= NodeStatus.PROCESSED
                                     const path = data.GetPathByUid(uid);
-                                     
+                                    const triggerUid = triggerSourceArray[uid];
                                     SHARED_PAYLOAD.path = path;
                                     SHARED_PAYLOAD.type = 6;
+                                    SHARED_PAYLOAD.triggerPath = triggerUid >= 0 ? data.GetPathByUid(triggerUid) : null;
                                     hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
                                 }
                             }
@@ -1855,9 +1911,10 @@ function useMeshTask<P extends MeshPath, NM> (
                                     // processed[uid] = 1;
                                     flagArray[uid] |= NodeStatus.PROCESSED
                                     const path = data.GetPathByUid(uid);
-                                    
+                                    const triggerUid = triggerSourceArray[uid];
                                     SHARED_PAYLOAD.path = path;
                                     SHARED_PAYLOAD.type = 6;
+                                    SHARED_PAYLOAD.triggerPath = triggerUid >= 0 ? data.GetPathByUid(triggerUid) : null;
                                     hooks.emit(MeshFlowEventsName.NodeIntercept,SHARED_PAYLOAD)
                                 }
                             }
