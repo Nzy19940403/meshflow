@@ -1,6 +1,6 @@
 {
   "name": "@meshflow/logger",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "The official logger plugin for MeshFlow",
   "main": "./index.js",
   "module": "./index.mjs",

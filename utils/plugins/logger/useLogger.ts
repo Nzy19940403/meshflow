@@ -335,7 +335,7 @@ const useLogger = (options: LoggerOptions = {}) => {
         
             // 🚀 核心修改：去掉多余的 ACTION/NODE，直接输出 [动作] [节点]
             // 比如：[PROPHECY] [bossA_panel] 靶心:[damageCourt]
-            options.onLog(`[${action}] [${path as string}]${fromStr}${targetStr}`);
+            options.onLog(`[CMD] [${action}] [${path as string}]${fromStr}${targetStr}`);
        
         };
 
