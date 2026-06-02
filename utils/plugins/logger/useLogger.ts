@@ -49,9 +49,27 @@ const locales: any = {
                 ? `⚠️ [Config Error] 缺失触发键: ${path}`
                 : `⚠️ [Level Error] 节点未分配层级: ${path}`
         },
-        release: { 1: (d: any) => `来源 ${d?.path} 变更`, 2: (d: any) => `来源 ${d?.path} 响应完成`, 3: (d: any) => `水位推进至 L${d?.level}，释放节点`, 4: (d: any) => `贪婪模式强制推进` },
-        intercept: { 1: () => '令牌失效', 2: () => '状态已定型', 3: () => '节点忙 (Processing)，忽略触发', 3.1: () => '已在队列中 (Ready)，忽略触发', 4: (d: any) => `等待上游解析 (L${d?.targetLevel}>L${d?.currentLevel})`, 5: (d: any) => `屏障拦截挂起 (L${d?.currentLevel} ➔ L${d?.targetLevel})`, 6: () => `无影响，链路收敛`, 7: () => `背压保护拦截` },
-        stagnate: { 1: () => '静默挂起入弱信号区', 2: () => `屏障激活，禁止渗透` },
+        // 🌟 核心修改 1：全部改为接收 (detail, triggerPath) 两个参数
+        release: { 
+            1: (d: any, tPath: any) => `来源 [${tPath || '未知'}] 变更`, 
+            2: (d: any, tPath: any) => `来源 [${tPath || '未知'}] 响应完成`, 
+            3: (d: any, tPath: any) => `水位推进至 L${d?.level}，释放节点`, 
+            4: (d: any, tPath: any) => `贪婪模式强制推进 ↤ (源: [${tPath || '未知'}])` 
+        },
+        intercept: { 
+            1: (d: any, tPath: any) => '令牌失效', 
+            2: (d: any, tPath: any) => '状态已定型', 
+            3: (d: any, tPath: any) => '节点忙 (Processing)，忽略触发', 
+            3.1: (d: any, tPath: any) => '已在队列中 (Ready)，忽略触发', 
+            4: (d: any, tPath: any) => `等待上游解析 (L${d?.targetLevel}>L${d?.currentLevel})`, 
+            5: (d: any, tPath: any) => `屏障拦截挂起 (L${d?.currentLevel} ➔ L${d?.targetLevel})`, 
+            6: (d: any, tPath: any) => `无影响，链路收敛`, 
+            7: (d: any, tPath: any) => `背压保护拦截` 
+        },
+        stagnate: { 
+            1: (d: any, tPath: any) => '静默挂起入弱信号区', 
+            2: (d: any, tPath: any) => `屏障激活，禁止渗透` 
+        },
         flowWait: { 1: () => `系统等待节点定型...`, 2: () => `并发上限，暂停分发`, 3: (d: any) => `等待 ${d?.asyncNums || 0} 个邻里效应收敛...` },
         flowFire: { 1: (d: any) => `调度反馈: ${d?.active} 活跃, ${d?.pending} 缓冲, ${d?.blocked} 挂起.` },
         flowEnd: { 1: () => `流结束，系统回归静默状态。` },
@@ -74,7 +92,7 @@ const locales: any = {
             success: '计算完成，提交稳态',
             revive: '被神谕强制唤醒',
             deadlock: (obs: string, tar: string) => `死循环链: [${obs}] ➔ [${tar}], 强制熔断`,
-
+            emitProphecy: (target: string, keys: string) => `🌌 发射量子预言 ➔ 靶心: [${target}] (触发键: ${keys})`,
             phaseEval: '[E 执行]',
             phaseProp: '[P 提案]',
             phaseRpl:  '[R 余波]',
@@ -152,9 +170,27 @@ const locales: any = {
                 ? `⚠️ [Config Error] Missing trigger keys: ${path}`
                 : `⚠️ [Level Error] Node level unassigned: ${path}`
         },
-        release: { 1: (d: any) => `Source [${d?.path}] mutated`, 2: (d: any) => `Source [${d?.path}] response finalized`, 3: (d: any) => `Watermark advanced to L${d?.level}, releasing node`, 4: (d: any) => `Greedy mode forced advancement` },
-        intercept: { 1: () => 'Token invalidated', 2: () => 'State finalized', 3: () => 'Node busy (Processing), ignoring trigger', 3.1: () => 'Already in queue (Ready), ignoring trigger', 4: (d: any) => `Awaiting upstream resolution (L${d?.targetLevel} > L${d?.currentLevel})`, 5: (d: any) => `Barrier interception suspended (L${d?.currentLevel} ➔ L${d?.targetLevel})`, 6: () => `No impact, path converged`, 7: () => `Backpressure protection intercept` },
-        stagnate: { 1: () => 'Silently suspended into weak signal zone', 2: () => `Barrier activated, penetration forbidden` },
+        // 🌟 核心修改 2：英文对齐参数
+        release: { 
+            1: (d: any, tPath: any) => `Source [${tPath || 'unknown'}] mutated`, 
+            2: (d: any, tPath: any) => `Source [${tPath || 'unknown'}] response finalized`, 
+            3: (d: any, tPath: any) => `Watermark advanced to L${d?.level}, releasing node`, 
+            4: (d: any, tPath: any) => `Greedy mode forced advancement (Source: [${tPath}])` 
+        },
+        intercept: { 
+            1: (d: any, tPath: any) => 'Token invalidated', 
+            2: (d: any, tPath: any) => 'State finalized', 
+            3: (d: any, tPath: any) => 'Node busy (Processing), ignoring trigger', 
+            3.1: (d: any, tPath: any) => 'Already in queue (Ready), ignoring trigger', 
+            4: (d: any, tPath: any) => `Awaiting upstream resolution (L${d?.targetLevel} > L${d?.currentLevel})`, 
+            5: (d: any, tPath: any) => `Barrier interception suspended (L${d?.currentLevel} ➔ L${d?.targetLevel})`, 
+            6: (d: any, tPath: any) => `No impact, path converged`, 
+            7: (d: any, tPath: any) => `Backpressure protection intercept` 
+        },
+        stagnate: { 
+            1: (d: any, tPath: any) => 'Silently suspended into weak signal zone', 
+            2: (d: any, tPath: any) => `Barrier activated, penetration forbidden` 
+        },
         flowWait: { 1: () => `System waiting for node finalization...`, 2: () => `Concurrency limit reached, suspending distribution`, 3: (d: any) => `Waiting for ${d?.asyncNums || 0} neighborhood effects to converge...` },
         flowFire: { 1: (d: any) => `Scheduler feedback: ${d?.active} active, ${d?.pending} pending, ${d?.blocked} blocked.` },
         flowEnd: { 1: () => `Flow ended, system returned to silent state.` },
@@ -177,7 +213,7 @@ const locales: any = {
             success: 'Computation complete, steady state committed',
             revive: 'Forced awakening by Oracle',
             deadlock: (obs: string, tar: string) => `Deadlock chain: [${obs}] ➔ [${tar}], forced clamping`,
-
+            emitProphecy: (target: string, keys: string) => `🌌 Emitting Quantum Prophecy ➔ Target: [${target}] (via: ${keys})`,
             phaseEval: '[E EVAL]',
             phaseProp: '[P PROP]',
             phaseRpl:  '[R RPL]',
@@ -296,7 +332,7 @@ const useLogger = (options: LoggerOptions = {}) => {
             if (!isNodeRelevant(path, triggerPath)) return;
             const fromStr = triggerPath ? ` FROM:[${triggerPath as string}]` : '';
     
-            // 🌟 修改这一行：把 FROM 也拼接进向外发射的字符串里
+            // 🌟 把 FROM 也拼接进向外发射的字符串里
             options.onLog(`ACTION:[${action}] NODE:[${path as string}]${fromStr}`);
        
         };
@@ -542,7 +578,7 @@ const useLogger = (options: LoggerOptions = {}) => {
             const config = causeConfigs[cause] || causeConfigs[0];
 
             emitTrace(config.label, path);
-            
+
             if (isFocusMode && isNodeRelevant(path)) {
                 pushTimeline(config.phase, config.icon, config.label, config.color, path as string, config.desc);
             } 
@@ -666,30 +702,57 @@ const useLogger = (options: LoggerOptions = {}) => {
         });
 
         // ------------------ 下方为原样保留的调度器与拦截防御逻辑 ------------------
-        on(MeshFlowEventsName.NodeRelease, ({ path, type, detail }) => {
-            emitTrace('RELEASE', path, detail?.path);
+        
+        // 🌟 核心修复：纯函数方式传递参数，0 临时对象分配！
+       
+        on(MeshFlowEventsName.NodeRelease, ({ path, type, detail, triggerPath }) => {
+            emitTrace('RELEASE', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
-            if (isFocusMode && isNodeRelevant(path, detail?.path)) pushTimeline(t.timeline.phaseSch, '🌊', 'RELEASE', '#409EFF', path as string, t.release[type](detail), detail?.path);
-            else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '🌊 Release', 'Target Node': path, 'Trigger Mode': t.release[type](detail) });
+            
+            // 直接传递两个参数，无需解构合并 detail
+            const msg = t.release[type](detail, triggerPath); 
+            
+            if (isFocusMode && isNodeRelevant(path, triggerPath as MeshPath)) 
+                pushTimeline(t.timeline.phaseSch, '🌊', 'RELEASE', '#409EFF', path as string, msg, triggerPath as string);
+            else if (!isFocusMode) 
+                sessionSecurityLogs.push({ 'Action': '🌊 Release', 'Target Node': path, 'Trigger Mode': msg });
         });
+
         on(MeshFlowEventsName.NodeRevive, ({ path, triggerPath }) => {
             emitTrace('RESOLVE', path, triggerPath);
             if (isCurrentFlowIgnored) return;
             if (isFocusMode && isNodeRelevant(path, triggerPath)) pushTimeline(t.timeline.phaseSch, '✨', 'REVIVE', '#8e44ad', path as string, t.timeline.revive, triggerPath as string);
             else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '✨ Revive', 'Target Node': path, 'Trigger Mode': t.reports.revivedBy(path as string, triggerPath as string) });
         });
-        on(MeshFlowEventsName.NodeIntercept, ({ path, type, detail }) => {
-            emitTrace('BLOCK', path, detail?.path);
+
+      
+        on(MeshFlowEventsName.NodeIntercept, ({ path, type, detail, triggerPath }) => {
+            emitTrace('BLOCK', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
-            if (isFocusMode && isNodeRelevant(path, detail?.path)) pushTimeline(t.timeline.phaseSch, '🛑', 'BLOCK', '#F56C6C', path as string, t.intercept[type](detail), detail?.path);
-            else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '🛑 Intercept', 'Target Node': path, 'Trigger Mode': t.intercept[type](detail) });
+            
+            // 直接传递两个参数
+            const msg = t.intercept[type](detail, triggerPath);
+            
+            if (isFocusMode && isNodeRelevant(path, triggerPath as MeshPath)) 
+                pushTimeline(t.timeline.phaseSch, '🛑', 'BLOCK', '#F56C6C', path as string, msg, triggerPath as string);
+            else if (!isFocusMode) 
+                sessionSecurityLogs.push({ 'Action': '🛑 Intercept', 'Target Node': path, 'Trigger Mode': msg });
         });
-        on(MeshFlowEventsName.NodeStagnate, ({ path, type }) => {
-            emitTrace('STAGNATE', path);
+
+    
+        on(MeshFlowEventsName.NodeStagnate, ({ path, type, triggerPath }) => {
+            emitTrace('STAGNATE', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
-            if (isFocusMode && isNodeRelevant(path)) pushTimeline(t.timeline.phaseSch, '🧊', 'STAGNATE', '#909399', path as string, t.stagnate[type]());
-            else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '🧊 Stagnate', 'Target Node': path, 'Trigger Mode': t.stagnate[type]() });
+            
+            // stagnate 可能没有 detail，传 null 占位，第二个参数传 triggerPath
+            const msg = t.stagnate[type](null, triggerPath);
+            
+            if (isFocusMode && isNodeRelevant(path, triggerPath as MeshPath)) 
+                pushTimeline(t.timeline.phaseSch, '🧊', 'STAGNATE', '#909399', path as string, msg, triggerPath as string);
+            else if (!isFocusMode) 
+                sessionSecurityLogs.push({ 'Action': '🧊 Stagnate', 'Target Node': path, 'Trigger Mode': msg });
         });
+
         on(MeshFlowEventsName.FlowWait, ({ type, detail }) => {
             if (isCurrentFlowIgnored || isFocusMode) return; 
             const currentStamp = `${type}-${detail?.asyncNums || detail?.nums || 0}`;
@@ -699,17 +762,21 @@ const useLogger = (options: LoggerOptions = {}) => {
             const s = styles[type as keyof typeof styles] || styles[1];
             sessionSchedulerLogs.push(`[${s.label}] ${(t.flowWait as any)[type](detail)}`);
         });
+
         on(MeshFlowEventsName.FlowFire, ({ path, type, detail }) => {
             if (!isCurrentFlowIgnored && !isFocusMode) sessionSchedulerLogs.push(`${t.tags.fire} ${path as string} ${(t.flowFire as any)[type](detail)}`);
         });
+
         on(MeshFlowEventsName.FlowEnd, ({ type }) => { 
             if (!isCurrentFlowIgnored && !isFocusMode) sessionSchedulerLogs.push(`${t.tags.end} ${(t.flowEnd as any)[type]()}`); 
         });
+
         on(MeshFlowEventsName.EntangleWarn, (d) => { 
             if (isCurrentFlowIgnored || (isFocusMode && !isNodeRelevant(d.path))) return;
             if (!isFocusMode) sessionEntangleLogs.push({ event: 'Config Warn', path: d.path, detail: t.reports.entangleWarn(d.path, d.type) }); 
             logger.warn(t.reports.entangleWarn(d.path, d.type)); 
         });
+
         on(MeshFlowEventsName.EntangleBlocked, (d) => { 
             if (isCurrentFlowIgnored) return;
             if (isFocusMode) {
@@ -729,6 +796,29 @@ const useLogger = (options: LoggerOptions = {}) => {
                     'Detail': t.reports.entangleBlocked(d.observer, d.target), 
                     'Depth': d.count 
                 }); 
+            }
+        });
+
+        on(MeshFlowEventsName.EntangleEmitCalled, ({ observer, target, via }) => {
+            // 如果是忽略的流，直接跳过
+            if (isCurrentFlowIgnored) return;
+            
+            const keysStr = Array.isArray(via) ? via.join(',') : String(via);
+            const msg = t.timeline.emitProphecy(target as string, keysStr);
+
+            if (isFocusMode && isNodeRelevant(observer as MeshPath)) {
+                // 专属的高亮粉色预言发射线！
+                pushTimeline(
+                    t.timeline.phaseProp, 
+                    '📡', 
+                    'PROPHECY', 
+                    '#e84393', 
+                    observer as string, 
+                    msg
+                );
+            } else if (!isFocusMode) {
+                // 非专注模式下，推入调度追踪流
+                sessionSchedulerLogs.push(`[📡 PROPHECY] [${observer as string}] ${msg}`);
             }
         });
     };
