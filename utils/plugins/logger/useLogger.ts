@@ -704,7 +704,7 @@ const useLogger = (options: LoggerOptions = {}) => {
         // ------------------ 下方为原样保留的调度器与拦截防御逻辑 ------------------
         
         // 🌟 核心修复：纯函数方式传递参数，0 临时对象分配！
-       
+        // @ts-ignore
         on(MeshFlowEventsName.NodeRelease, ({ path, type, detail, triggerPath }) => {
             emitTrace('RELEASE', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
@@ -725,7 +725,7 @@ const useLogger = (options: LoggerOptions = {}) => {
             else if (!isFocusMode) sessionSecurityLogs.push({ 'Action': '✨ Revive', 'Target Node': path, 'Trigger Mode': t.reports.revivedBy(path as string, triggerPath as string) });
         });
 
-      
+        // @ts-ignore
         on(MeshFlowEventsName.NodeIntercept, ({ path, type, detail, triggerPath }) => {
             emitTrace('BLOCK', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
@@ -739,7 +739,7 @@ const useLogger = (options: LoggerOptions = {}) => {
                 sessionSecurityLogs.push({ 'Action': '🛑 Intercept', 'Target Node': path, 'Trigger Mode': msg });
         });
 
-    
+        // @ts-ignore
         on(MeshFlowEventsName.NodeStagnate, ({ path, type, triggerPath }) => {
             emitTrace('STAGNATE', path, triggerPath as MeshPath);
             if (isCurrentFlowIgnored) return;
