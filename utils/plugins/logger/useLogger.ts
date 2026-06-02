@@ -324,16 +324,18 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         let isTransactionActive = false; 
 
-        const emitTrace = (action: string, path?: MeshPath, triggerPath?:  MeshPath) => {
+        const emitTrace = (action: string, path?: MeshPath, triggerPath?:  MeshPath,targetPath?: MeshPath) => {
             if (!options.onLog || !path) return;
             // 🛡️ 核心防线 1：如果当前数据流被明确忽略，绝对不发射动画 (修复了你提到的痛点)
             if (isCurrentFlowIgnored) return;
             // 🛡️ 核心防线 2：严格遵守专注模式规则。无关的旁支节点不准在画布上乱闪
             if (!isNodeRelevant(path, triggerPath)) return;
-            const fromStr = triggerPath ? ` FROM:[${triggerPath as string}]` : '';
-    
-            // 🌟 把 FROM 也拼接进向外发射的字符串里
-            options.onLog(`ACTION:[${action}] NODE:[${path as string}]${fromStr}`);
+            const fromStr = triggerPath ? ` 来源:[${triggerPath as string}]` : '';
+            const targetStr = targetPath ? ` 靶心:[${targetPath as string}]` : '';
+        
+            // 🚀 核心修改：去掉多余的 ACTION/NODE，直接输出 [动作] [节点]
+            // 比如：[PROPHECY] [bossA_panel] 靶心:[damageCourt]
+            options.onLog(`[${action}] [${path as string}]${fromStr}${targetStr}`);
        
         };
 
@@ -636,7 +638,9 @@ const useLogger = (options: LoggerOptions = {}) => {
             
             // 更新全局字典
             globalStateCache.set(cacheKey, value);
-
+            if (isRealMutated) {
+                emitTrace('UPDATE', path);
+            }
             if (isFocusMode) {
                 if (isNodeRelevant(path)) {
                     hasFocusNodeLogs = true;
@@ -779,6 +783,7 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         on(MeshFlowEventsName.EntangleBlocked, (d) => { 
             if (isCurrentFlowIgnored) return;
+            emitTrace('BLOCK', d.observer as MeshPath, undefined, d.target as MeshPath);
             if (isFocusMode) {
                 if (isNodeRelevant(d.observer, d.target)) {
                     hasFocusNodeLogs = true;
@@ -802,7 +807,9 @@ const useLogger = (options: LoggerOptions = {}) => {
         on(MeshFlowEventsName.EntangleEmitCalled, ({ observer, target, via }) => {
             // 如果是忽略的流，直接跳过
             if (isCurrentFlowIgnored) return;
-            
+
+            emitTrace('PROPHECY', observer as MeshPath, undefined, target as MeshPath);
+
             const keysStr = Array.isArray(via) ? via.join(',') : String(via);
             const msg = t.timeline.emitProphecy(target as string, keysStr);
 
