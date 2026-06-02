@@ -54,7 +54,7 @@ export interface BaseMeshEvents {
   [MeshFlowEventsName.NodeError]: { path: MeshPath; error: any };
   [MeshFlowEventsName.NodePending]: { path: MeshPath };
 
-  [MeshFlowEventsName.NodeIntercept]: { path: MeshPath; type: number; detail?: any };
+  [MeshFlowEventsName.NodeIntercept]: { path: MeshPath; type: number;triggerPath:MeshPath; detail?: any };
   [MeshFlowEventsName.NodeRelease]: { path: MeshPath; type: number;triggerPath:MeshPath; detail?: any };
   [MeshFlowEventsName.NodeStagnate]: { path: MeshPath; triggerPath:MeshPath; type: number };
 
