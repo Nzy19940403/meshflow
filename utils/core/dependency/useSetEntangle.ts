@@ -8,8 +8,9 @@ import {
   GhostProposalApi,
   EntangleOp,
   MeshFlowEventsName,
-  MeshFlowHistory,
-  InternalMeshFlowHistory
+  
+  InternalMeshFlowHistory,
+   
 } from "../types/types";
 import { createTimeScheduler } from "../utils/util";
 
@@ -151,7 +152,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
       set: (key: string, value: any, weight = 1) => {
         if (cell.epoch !== currentEpoch) return;
 
-        if (value === cell.impactNode.state[key]) return;
+        // if (value === cell.impactNode.state[key]) return;
         cell.link.count++;
         
         // 🌟 O(1) 幽灵追踪：如果这是该节点第一个幽灵，计数器 +1
@@ -246,12 +247,14 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     cell.impactUid = impactNode.uid;
     cell.hitTargetUids = hitTargetUids;
 
-    const emitResult = link.emit(causeArg, impactArg, cell.propose);
+    
     EMIT_PAYLOAD.observer = causePath;
     EMIT_PAYLOAD.target = impactPath;
     // EMIT_PAYLOAD.via = link.triggerKey;
     EMIT_PAYLOAD.via = viakeys;
     hooks.emit(MeshFlowEventsName.EntangleEmitCalled,EMIT_PAYLOAD);
+    const emitResult = link.emit(causeArg, impactArg, cell.propose);
+
     // if (emitResult instanceof Promise || (emitResult && typeof (emitResult as any).then === 'function')) {
     if (emitResult != null && typeof (emitResult as any).then === 'function'){
       activeAsyncCount++;
@@ -615,7 +618,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
           RESOLVE_PAYLOAD.value = finalValue;
           // (calledBy: 1 已经在初始化时写死，代表它是量子纠缠导致的)
           hooks.emit(MeshFlowEventsName.NodeBucketSuccess, RESOLVE_PAYLOAD as any);
-        }
+        } 
       }
 
       // 清空，并且追踪器 -1

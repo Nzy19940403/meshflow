@@ -49,7 +49,6 @@ const locales: any = {
                 ? `⚠️ [Config Error] 缺失触发键: ${path}`
                 : `⚠️ [Level Error] 节点未分配层级: ${path}`
         },
-        // 🌟 核心修改 1：全部改为接收 (detail, triggerPath) 两个参数
         release: { 
             1: (d: any, tPath: any) => `来源 [${tPath || '未知'}] 变更`, 
             2: (d: any, tPath: any) => `来源 [${tPath || '未知'}] 响应完成`, 
@@ -57,14 +56,14 @@ const locales: any = {
             4: (d: any, tPath: any) => `贪婪模式强制推进 ↤ (源: [${tPath || '未知'}])` 
         },
         intercept: { 
-            1: (d: any, tPath: any) => '令牌失效', 
-            2: (d: any, tPath: any) => '状态已定型', 
-            3: (d: any, tPath: any) => '节点忙 (Processing)，忽略触发', 
-            3.1: (d: any, tPath: any) => '已在队列中 (Ready)，忽略触发', 
+            1: (d: any, tPath: any) => '令牌失效: 会话已过期', 
+            2: (d: any, tPath: any) => '状态定型: 数值未发生实质变更', 
+            3: (d: any, tPath: any) => '节点忙碌: Processing 队列已满', 
+            3.1: (d: any, tPath: any) => '已在队列：等待调度中', 
             4: (d: any, tPath: any) => `等待上游解析 (L${d?.targetLevel}>L${d?.currentLevel})`, 
             5: (d: any, tPath: any) => `屏障拦截挂起 (L${d?.currentLevel} ➔ L${d?.targetLevel})`, 
-            6: (d: any, tPath: any) => `无影响，链路收敛`, 
-            7: (d: any, tPath: any) => `背压保护拦截` 
+            6: (d: any, tPath: any) => `链路收敛: 无额外变更，链路收敛`, 
+            7: (d: any, tPath: any) => `背压触发: 系统负载过高，自动拦截保护` 
         },
         stagnate: { 
             1: (d: any, tPath: any) => '静默挂起入弱信号区', 
@@ -77,18 +76,18 @@ const locales: any = {
             transStep: (path: string) => `事务接力 ➔ [${path}]`,
             transProgress: (time: string) => `子任务收敛 (净耗时: ${time}ms) ➔ 移交接力棒`,
             transLog: (time: string) => `[🔗 TRANSACTION] 异步履约成功 (${time}ms), 发车.`,
-            epochChange: '系统进行量子迭代，重算不稳定链路',
+            epochChange: '势能已收敛，进入新纪元演化',
             epochTree: (epoch: number) => `▽ EPOCH ${epoch} 演化阵列`,
             cacheHit: (key: string) => `⚡ 缓存命中 ➔ [${key}]`,
             triggerEval: (key: string) => `🔥 触发重算 ➔ [${key}]`,
             cause0: '上游变更触发自然点火',
-            cause1: '接收反向对账提案',
+            cause1: '对账生效，节点唤醒重算',
             cause2: '顺向推导连锁余波',
             cause3: '天神下凡：外部强行注入状态',
-            label0: 'CAUSAL (顺向推导)',
-            label1: 'RESOLVE (量子预言)',
-            label2: 'RIPPLE (连锁余波)',
-            label3: 'EXTERNAL (第一推动)',
+            label0: 'CAUSAL',
+            label1: 'AWAKE',
+            label2: 'RIPPLE',
+            label3: 'EXTERNAL',
             success: '计算完成，提交稳态',
             revive: '被神谕强制唤醒',
             deadlock: (obs: string, tar: string) => `死循环链: [${obs}] ➔ [${tar}], 强制熔断`,
@@ -98,7 +97,7 @@ const locales: any = {
             phaseRpl:  '[R 余波]',
             phaseSrc:  '[S 源头]',
             phaseDone: '[F 结算]',
-            phaseSch:  '[Q 调度]'
+            phaseSch:  '[Q 裁决]'
         },
         diff: {
             init: (val: string) => `✨ [初始化] ➔ ${val}`,
@@ -170,7 +169,6 @@ const locales: any = {
                 ? `⚠️ [Config Error] Missing trigger keys: ${path}`
                 : `⚠️ [Level Error] Node level unassigned: ${path}`
         },
-        // 🌟 核心修改 2：英文对齐参数
         release: { 
             1: (d: any, tPath: any) => `Source [${tPath || 'unknown'}] mutated`, 
             2: (d: any, tPath: any) => `Source [${tPath || 'unknown'}] response finalized`, 
@@ -178,14 +176,14 @@ const locales: any = {
             4: (d: any, tPath: any) => `Greedy mode forced advancement (Source: [${tPath}])` 
         },
         intercept: { 
-            1: (d: any, tPath: any) => 'Token invalidated', 
-            2: (d: any, tPath: any) => 'State finalized', 
-            3: (d: any, tPath: any) => 'Node busy (Processing), ignoring trigger', 
-            3.1: (d: any, tPath: any) => 'Already in queue (Ready), ignoring trigger', 
+            1: (d: any, tPath: any) => 'Token expired: Session has expired', 
+            2: (d: any, tPath: any) => 'Status unchanged: The value has not changed substantially.', 
+            3: (d: any, tPath: any) => 'Node busy: Processing queue is full', 
+            3.1: (d: any, tPath: any) => 'Already in the queue: awaiting scheduling', 
             4: (d: any, tPath: any) => `Awaiting upstream resolution (L${d?.targetLevel} > L${d?.currentLevel})`, 
             5: (d: any, tPath: any) => `Barrier interception suspended (L${d?.currentLevel} ➔ L${d?.targetLevel})`, 
-            6: (d: any, tPath: any) => `No impact, path converged`, 
-            7: (d: any, tPath: any) => `Backpressure protection intercept` 
+            6: (d: any, tPath: any) => `Link convergence: No additional changes, link convergence.`, 
+            7: (d: any, tPath: any) => `Back pressure trigger: The system load is too high, and automatic interception and protection are initiated.` 
         },
         stagnate: { 
             1: (d: any, tPath: any) => 'Silently suspended into weak signal zone', 
@@ -198,16 +196,16 @@ const locales: any = {
             transStep: (path: string) => `Transaction Relay ➔ [${path}]`,
             transProgress: (time: string) => `Sub-task Converged (Net time: ${time}ms) ➔ Relay Handover`,
             transLog: (time: string) => `[🔗 TRANSACTION] Async fulfillment success (${time}ms), dispatching.`,
-            epochChange: 'System quantum iteration, recalculating unstable links',
+            epochChange: 'Potential converged. Advancing to new evolutionary epoch.',
             epochTree: (epoch: number) => `▽ EPOCH ${epoch} Evolution Array`,
             cacheHit: (key: string) => `⚡ Cache hit ➔ [${key}]`,
             triggerEval: (key: string) => `🔥 Triggered eval ➔ [${key}]`,
             cause0: 'Upstream mutation triggered natural ignition',
-            cause1: 'Received reverse reconciliation proposal',
+            cause1: 'Reconciliation takes effect, node wake-up and recalculation',
             cause2: 'Forward derivation chain ripple',
             cause3: 'Deus ex machina: External forced state injection',
             label0: 'CAUSAL',
-            label1: 'RESOLVE',
+            label1: 'AWAKE',
             label2: 'RIPPLE',
             label3: 'EXTERNAL',
             success: 'Computation complete, steady state committed',
@@ -219,7 +217,7 @@ const locales: any = {
             phaseRpl:  '[R RPL]',
             phaseSrc:  '[S SRC]',
             phaseDone: '[F DONE]',
-            phaseSch:  '[Q SCHD]'
+            phaseSch:  '[Q RULE]'
         },
         diff: {
             init: (val: string) => `✨ [Init] ➔ ${val}`,
@@ -286,7 +284,6 @@ const useLogger = (options: LoggerOptions = {}) => {
 
     const ignoreTargets = options.ignorePaths ? (Array.isArray(options.ignorePaths) ? options.ignorePaths : [options.ignorePaths]) : [];
 
-    // 🌟 修复 1：让 isNodeRelevant 变聪明，支持检查多个目标（比如靶心 targetPath）
     const isNodeRelevant = (...paths: (MeshPath | undefined | null)[]): boolean => {
         if (!isFocusMode) return true; 
         return paths.some(p => p && focusTargets.includes(p));
@@ -322,10 +319,12 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         let isTransactionActive = false; 
 
+        // 🌟 核心追踪：记录上一次在 masterTimeline 输出的 path 是谁，防止跨节点错误缩进！
+        let lastTimelinePath = ''; 
+
         const emitTrace = (action: string, path?: MeshPath, triggerPath?: MeshPath, targetPath?: MeshPath) => {
             if (!options.onLog || !path) return;
             if (isCurrentFlowIgnored) return;
-            // 🌟 修复 2：只要 source、trigger、target 中有一个在监控列表，就放行指令！
             if (!isNodeRelevant(path, triggerPath, targetPath)) return; 
             
             const fromStr = triggerPath ? ` 来源:[${triggerPath as string}]` : '';
@@ -336,6 +335,9 @@ const useLogger = (options: LoggerOptions = {}) => {
 
         const pushTimeline = (phase: string, icon: string, label: string, color: string, path: string, desc: string, triggerSource?: string) => {
             hasFocusNodeLogs = true;
+            // 🌟 任何新发出的主线日志，都必须更新 lastTimelinePath
+            lastTimelinePath = path;
+
             const sourceStr = triggerSource ? `   ↤ (源: ${triggerSource})` : '';
             masterTimeline.push([
                 `%c E${currentEpoch} %c ${phase} %c ${icon} [${label}] %c [${path}] %c ${desc}%c${sourceStr}`,
@@ -381,6 +383,9 @@ const useLogger = (options: LoggerOptions = {}) => {
             lastWaitStamp = ''; finalDurationStr = ''; 
             masterTimeline = []; currentEpoch = 0;
             hasFocusNodeLogs = false;
+            
+            // 🌟 Flow 开始时，重置追踪器
+            lastTimelinePath = ''; 
             
             currentFlowGroupInfo = {
                 title: isFocusMode ? `%c🎯 [FOCUS MODE] 监控链路: ${focusTargets.join(', ')}` : `%c${t.tags.engineStart} ↤ 起源: [${path as string}]`,
@@ -533,12 +538,13 @@ const useLogger = (options: LoggerOptions = {}) => {
             if (isCurrentFlowIgnored) return;
             currentEpoch++;
             
-            // 🌟 修复 3：向 VueFlow 明确发出跨越纪元的指令！
             if (options.onLog) {
                 options.onLog(`[CMD] [EPOCH] [${currentEpoch}]`);
             }
 
             if (isFocusMode) {
+                // 🌟 跨越纪元，重置追踪器，防止新纪元第一条日志接在旧纪元节点下面
+                lastTimelinePath = ''; 
                 masterTimeline.push([
                     `%c 🌀 EPOCH ${currentEpoch} %c ${t.timeline.epochChange} `,
                     `background: #8e44ad; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 11px;`,
@@ -553,7 +559,6 @@ const useLogger = (options: LoggerOptions = {}) => {
             
             if (isCurrentFlowIgnored || !isFocusMode) return;
             
-            // 🌟 修复 4：把 emitTrace 关进笼子里！没有真实 key 的无头扫描绝不通知 VueFlow！
             if (key && isNodeRelevant(path)) {
                 emitTrace(isCache ? 'TASK_CACHE' : 'TASK_EVAL', path);
                 
@@ -569,12 +574,12 @@ const useLogger = (options: LoggerOptions = {}) => {
 
             const cause = calledBy ?? 0;
             const causeConfigs: Record<number, any> = {
-                0: { phase: t.timeline.phaseEval, icon: '🚀', label: 'CAUSAL',  color: '#1a2b3c', desc: t.timeline.cause0 },
-                1: { phase: t.timeline.phaseProp, icon: '📜', label: 'RESOLVE', color: '#8e44ad', desc: t.timeline.cause1 },
-                2: { phase: t.timeline.phaseRpl, icon: '💥', label: 'RIPPLE',  color: '#e67e22', desc: t.timeline.cause2 },
-                3: { phase: t.timeline.phaseSrc, icon: '🌍', label: 'EXTERNAL', color: '#f39c12', desc: t.timeline.cause3 }
+                0: { phase: t.timeline.phaseEval, icon: '🚀', label:t.timeline.label0,  color: '#1a2b3c', desc: t.timeline.cause0 },
+                1: { phase: t.timeline.phaseEval, icon: '📜', label:t.timeline.label1, color: '#8e44ad', desc: t.timeline.cause1 },
+                2: { phase: t.timeline.phaseRpl, icon: '💥', label: t.timeline.label2,  color: '#e67e22', desc: t.timeline.cause2 },
+                3: { phase: t.timeline.phaseSrc, icon: '🌍', label: t.timeline.label3, color: '#f39c12', desc: t.timeline.cause3 }
             };
-            
+ 
             const config = causeConfigs[cause] || causeConfigs[0];
 
             emitTrace(config.label, path);
@@ -641,7 +646,26 @@ const useLogger = (options: LoggerOptions = {}) => {
                 if (isNodeRelevant(path)) {
                     hasFocusNodeLogs = true;
                     const valueColorStyle = isRealMutated ? "color: #a6e22e; font-weight: bold" : "color: #909399";
-                    masterTimeline.push([`      %c└─ %c[${path as string}] %c${key} %c➔ %c${diffDisplay}`, "color: #4a4a4a", "color: #58b9ff", "color: #e0e0e0; font-weight: bold", "color: #909399", valueColorStyle]);
+                    
+                    // 🌟 终极修复：严格比对当前 path 是否等于上一个发声的 path
+                    // 如果等，则缩进；如果不等，则生成一条带有当前节点名字的新行！
+                    if (lastTimelinePath === path) {
+                        masterTimeline.push([`      %c└─ %c[${path as string}] %c${key} %c➔ %c${diffDisplay}`, "color: #4a4a4a", "color: #58b9ff", "color: #e0e0e0; font-weight: bold", "color: #909399", valueColorStyle]);
+                    } else {
+                        masterTimeline.push([
+                            `%c E${currentEpoch} %c [D 对账] %c 📝 [DIFF] %c [${path as string}] %c${key} %c➔ %c${diffDisplay}`,
+                            `background: #333; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 10px; margin-right: 4px;`,
+                            `background: #606266; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 10px; margin-right: 4px;`,
+                            `background: #67c23a; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 10px; font-weight: bold; margin-right: 4px;`,
+                            "color: #58b9ff; font-weight: bold;",
+                            "color: #e0e0e0; font-weight: bold",
+                            "color: #909399",
+                            valueColorStyle
+                        ]);
+                    }
+                    
+                    // 更新追踪器
+                    lastTimelinePath = path as string;
                 }
             } else {
                 if (shouldFold(path, calledBy)) return; 
@@ -669,7 +693,7 @@ const useLogger = (options: LoggerOptions = {}) => {
         });
 
         on(MeshFlowEventsName.NodeSuccess, ({ path, calledBy }) => {
-            if (isCurrentFlowIgnored) return; // 🌟 修复 5：把拦截判定放在 emitTrace 之前！下面同理！
+            if (isCurrentFlowIgnored) return; 
             emitTrace('OK', path);
             
             const start = nodeStartTimes.get(path as string);
@@ -725,11 +749,12 @@ const useLogger = (options: LoggerOptions = {}) => {
             if (isCurrentFlowIgnored) return;
             emitTrace('BLOCK', path, triggerPath as MeshPath);
             
-            const msg = t.intercept[type](detail, triggerPath);
+            const reason = t.intercept[type](detail, triggerPath);
+        
             if (isFocusMode && isNodeRelevant(path, triggerPath as MeshPath)) 
-                pushTimeline(t.timeline.phaseSch, '🛑', 'BLOCK', '#F56C6C', path as string, msg, triggerPath as string);
+                pushTimeline(t.timeline.phaseSch, '🛑', 'BLOCK', '#F56C6C', path as string, reason, triggerPath as string);
             else if (!isFocusMode) 
-                sessionSecurityLogs.push({ 'Action': '🛑 Intercept', 'Target Node': path, 'Trigger Mode': msg });
+                sessionSecurityLogs.push({ 'Action': '🛑 Intercept', 'Target Node': path, 'Trigger Mode': reason });
         });
 
         // @ts-ignore

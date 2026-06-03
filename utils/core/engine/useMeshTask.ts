@@ -818,7 +818,7 @@ function useMeshTask<P extends MeshPath, NM> (
                     // processed.delete(childUid); // 抹除本轮 Flow 的记忆
                     // processed[childUid] = 0;
                     flagArray[childUid] &= ~NodeStatus.PROCESSED;
-               
+                    
                     // 注意：这里不要写 childNode.calledBy = 2！我们统一在入队的时候发工牌！
                     // hooks.emit(MeshFlowEventsName.NodeRevive , { path: childPath, triggerPath: targetPath });
                     SHARED_PAYLOAD.path = childPath;
@@ -1111,7 +1111,7 @@ function useMeshTask<P extends MeshPath, NM> (
                              
                             // 🌟 2. 核心后门：如果它是幽灵，并且上游传来了物理强信号，允许它重塑肉身！
                             if (shouldFire) {
-     
+                                
                                 // 抹除幽灵的已处理状态，这样它就不会被 continue 掉
                                 // 并且后续进入 tryActivateChild 时，也会被当做正常节点计算阻力！
                                 flagArray[childUid] &= ~NodeStatus.PROCESSED; 
@@ -1304,6 +1304,7 @@ function useMeshTask<P extends MeshPath, NM> (
             };
 
             if (originalCause !== TriggerCause.VOLITION) {
+               
                 SHARED_PAYLOAD.path = targetPath;
                 SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
                 SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
@@ -1802,7 +1803,14 @@ function useMeshTask<P extends MeshPath, NM> (
 
                                     updateWatermark(targetNode.uid);
                                     // uitrigger._flushPathSet.add(targetNode.uid);
-                                    uitrigger._addToRender(targetNode.uid)
+                                    uitrigger._addToRender(targetNode.uid);
+ 
+                                }else{
+                                    //没有发生变更就走这里
+                                    SHARED_PAYLOAD.path = targetNode.path;
+                                    SHARED_PAYLOAD.type = 2; // 对应 "状态已定型"
+                                    SHARED_PAYLOAD.triggerPath = null; 
+                                    hooks.emit(MeshFlowEventsName.NodeIntercept, SHARED_PAYLOAD);
                                 }
                             }
 
