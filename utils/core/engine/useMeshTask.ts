@@ -543,6 +543,36 @@ function useMeshTask<P extends MeshPath, NM> (
         // 核心：seedsOfChaos 用于发射预言，它必须包含 triggerUid
         const seedsOfChaos = typeof triggerUid==='number' ? [triggerUid] : [...initialNodes, ...stagedBufferUids];;
 
+        for (let i = 0; i < seedsOfChaos.length; i++) {
+            const seedUid = seedsOfChaos[i];
+            const seedNode = data.GetNodeByUid(seedUid);
+            const seedPath = data.GetPathByUid(seedUid);
+
+            // 1. 统一打上神谕标签，确保后面的 executorNodeCalculate 会闭嘴
+            seedNode.calledBy = TriggerCause.VOLITION as any;
+
+            // 2. 统一发射源头点火日志
+            SHARED_PAYLOAD.path = seedPath;
+            SHARED_PAYLOAD.calledBy = TriggerCause.VOLITION;
+            SHARED_PAYLOAD.triggerPath = null;
+            SHARED_PAYLOAD.key = undefined;
+            hooks.emit(MeshFlowEventsName.NodeStart, SHARED_PAYLOAD);
+
+            // 3. 完美利用 ghostBaton 精准提取刚刚被修改的属性，发射变更日志
+            const changedKeys = ghostBaton[seedUid];
+            if (changedKeys && changedKeys.length > 0) {
+                for (let k = 0; k < changedKeys.length; k++) {
+                    const keyName = changedKeys[k] as string;
+                    SHARED_PAYLOAD.path = seedPath;
+                    SHARED_PAYLOAD.key = keyName;
+                    SHARED_PAYLOAD.value = seedNode.state[keyName];
+                    SHARED_PAYLOAD.calledBy = TriggerCause.VOLITION;
+                    SHARED_PAYLOAD.triggerPath = null;
+                    hooks.emit(MeshFlowEventsName.NodeBucketSuccess, SHARED_PAYLOAD);
+                }
+            }
+        }
+
         if(timeScheduler._shouldYield()){
             uitrigger._requestUpdate();
             await timeScheduler._yieldToMain();
@@ -1273,11 +1303,13 @@ function useMeshTask<P extends MeshPath, NM> (
                 }
             };
 
- 
-            SHARED_PAYLOAD.path = targetPath;
-            SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
-            SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
-            hooks.emit(MeshFlowEventsName.NodeStart,SHARED_PAYLOAD)
+            if (originalCause !== TriggerCause.VOLITION) {
+                SHARED_PAYLOAD.path = targetPath;
+                SHARED_PAYLOAD.calledBy = targetSchema.calledBy;
+                SHARED_PAYLOAD.triggerPath = immediateTriggerPath;
+                hooks.emit(MeshFlowEventsName.NodeStart,SHARED_PAYLOAD)
+            }
+            
          
             try {
                 // --- 循环遍历开始 ---

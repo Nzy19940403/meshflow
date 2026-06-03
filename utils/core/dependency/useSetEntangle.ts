@@ -126,7 +126,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     count:0 ,
     path:'' as any,
     error:null as any,
-    type:'' as "no_keys" | "no_level"
+    type:'' as "no_keys" | "no_level",
+    triggerPath: null as any
   };
   const RESOLVE_PAYLOAD = {
     path: "" as any,
@@ -206,6 +207,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     link: EntangleLink<P,NM>, 
     causeNode: MeshFlowTaskNode<P, any, NM>, 
     hitTargetUids: number[],
+    viakeys: MeshPath[]
   ): Promise<void> | void => {
     const causePath = causeNode.path;
     const impactPath = link.impact;
@@ -247,7 +249,8 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     const emitResult = link.emit(causeArg, impactArg, cell.propose);
     EMIT_PAYLOAD.observer = causePath;
     EMIT_PAYLOAD.target = impactPath;
-    EMIT_PAYLOAD.via = link.triggerKey;
+    // EMIT_PAYLOAD.via = link.triggerKey;
+    EMIT_PAYLOAD.via = viakeys;
     hooks.emit(MeshFlowEventsName.EntangleEmitCalled,EMIT_PAYLOAD);
     // if (emitResult instanceof Promise || (emitResult && typeof (emitResult as any).then === 'function')) {
     if (emitResult != null && typeof (emitResult as any).then === 'function'){
@@ -258,6 +261,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
         } catch (e) {
           EMIT_PAYLOAD.path = causePath;
           EMIT_PAYLOAD.error = e;
+          EMIT_PAYLOAD.triggerPath = null
           hooks.emit(MeshFlowEventsName.NodeError, EMIT_PAYLOAD);
           hooks.onError({ path: causePath as string, error: e as Error });
         } finally {
@@ -392,86 +396,104 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     _receiveGhosts: (causeNode: MeshFlowTaskNode<P, any, NM>, changedKeys: MeshPath[] = []): number[] | Promise<number[]> => {
       const causeUid = causeNode.uid;
       const hitTargetUids: number[] = [];
-      // const causeMap = _registry[causeUid];
-
-      // if (!causeMap || changedKeys.length === 0) return hitTargetUids;
-
       const allLinksForThisUid = _uidToLinks[causeUid];
 
       if (!allLinksForThisUid || changedKeys.length === 0) return hitTargetUids;
 
-      const linksArray: EntangleLink<P,NM>[] = [];
-    
-      // 🌟 优化点 2：彻底砍掉 impactBuffer 的 new Set。原生数组极速展平。
-      for (let i = 0; i < allLinksForThisUid.length; i++) {
-        // const links = causeMap.get(changedKeys[k]);
+      // 🌟 极限优化 1：使用平行数组（Parallel Arrays）彻底消灭临时对象 {}
+      const activeLinks: EntangleLink<P, NM>[] = [];
+      const activeKeysList: MeshPath[][] = [];
+      let activeCount = 0;
 
+      // 🌟 极限优化 2：彻底消灭 filter 和闭包，采用传统的 for 循环和惰性初始化
+      for (let i = 0; i < allLinksForThisUid.length; i++) {
         const link = allLinksForThisUid[i];
-        let isMatch = false;
-        for (let k = 0; k < changedKeys.length; k++) {
-          if (link.triggerKey.includes(changedKeys[k])) {
-            isMatch = true;
-            break;
+        if (link._inBatch) continue;
+
+        let matchedKeys: MeshPath[] | null = null; // 💧 惰性游标：没命中前，绝对不分配内存！
+        const triggers = link.triggerKey;
+
+        // 手写 O(N*M) 嵌套判断：因为 triggers 和 changedKeys 通常极小(1~3个元素)，
+        // 在 V8 引擎中，这种没有任何函数调用的裸 for 循环，速度碾压一切 Array 原生方法。
+        for (let c = 0; c < changedKeys.length; c++) {
+          const key = changedKeys[c];
+          for (let t = 0; t < triggers.length; t++) {
+            if (key === triggers[t]) {
+              if (matchedKeys === null) {
+                matchedKeys = []; // 💥 只有真正发生碰撞了，才分配数组空间
+              }
+              matchedKeys.push(key);
+              break; // 这个 key 命中了，不用再查 triggerKey 了，继续查下一个 changedKey
+            }
           }
         }
-    
-        if (isMatch && link._inBatch !== true) {
+
+        // 如果找到了交集，将其压入平行数组
+        if (matchedKeys !== null) {
           link._inBatch = true;
-          linksArray.push(link);
+          activeLinks[activeCount] = link;
+          activeKeysList[activeCount] = matchedKeys;
+          activeCount++;
         }
-    
-      }
-      
-      for (let x = 0; x < linksArray.length; x++) {
-        linksArray[x]._inBatch = false;
       }
 
-      let i = 0;
+      if (activeCount === 0) return hitTargetUids;
+
+      // 立即恢复批次标记，保持无副作用
+      for (let i = 0; i < activeCount; i++) {
+        activeLinks[i]._inBatch = false;
+      }
+
+      // 🌟 3. 同步快速路径探测 (使用 while 循环精准控制边界)
+      let processedCount = 0;
       let wentAsync = false;
       let firstAsyncPromise: Promise<void> | null = null;
 
-      for (; i < linksArray.length; i++) {
+      while (processedCount < activeCount) {
         if (timeScheduler._shouldYield()) {
           wentAsync = true;
-          break;
+          break; // 超时，将剩下的交给异步
         }
 
-        const p = processLink(linksArray[i], causeNode, hitTargetUids);
+        // 🌟 直接从平行数组中按索引取值，没有任何解构和对象读取开销
+        const p = processLink(
+          activeLinks[processedCount], 
+          causeNode, 
+          hitTargetUids, 
+          activeKeysList[processedCount]
+        );
+        
+        processedCount++; // 处理完一个，指针向前推进
+
         if (p) {
           firstAsyncPromise = p;
           wentAsync = true;
-          i++; 
-          break;
+          break; // 撞到异步，立刻跳出，此时 processedCount 刚好指向已被触发的这个异步任务之后
         }
       }
 
-      // 🌟 提取的公共轻量级去重方法 (替代末尾的 Array.from(new Set))
-      // const getUniqueHits = () => {
-      //   if (hitTargetUids.length <= 1) return hitTargetUids;
-      //   const unique: number[] = [];
-      //   const seen = Object.create(null); // 极轻量级字典，无原型链
-      //   for (let j = 0; j < hitTargetUids.length; j++) {
-      //     const u = hitTargetUids[j];
-      //     if (!seen[u]) { seen[u] = true; unique.push(u); }
-      //   }
-      //   return unique;
-      // };
-
+      // 性能最高路径：全部同步跑完
       if (!wentAsync) {
-        // return getUniqueHits();
         return _dedupeUidsFast(hitTargetUids);
       }
 
+      // 🌟 4. 异步分片阶段
       return (async () => {
         if (firstAsyncPromise) await firstAsyncPromise;
         if (timeScheduler._shouldYield()) await timeScheduler._yieldToMain();
 
-        for (; i < linksArray.length; ) {
+        // 用传统的步进方式处理剩下的平行数组，避免 slice 产生新数组！
+        for (let chunkStart = processedCount; chunkStart < activeCount; chunkStart += MESH_CAPACITY) {
+          const chunkEnd = Math.min(chunkStart + MESH_CAPACITY, activeCount);
           const chunkPromises: Promise<void>[] = [];
-          const boundary = Math.min(i + MESH_CAPACITY, linksArray.length);
 
-          for (; i < boundary; i++) {
-            const p = processLink(linksArray[i], causeNode, hitTargetUids);
+          for (let idx = chunkStart; idx < chunkEnd; idx++) {
+            const p = processLink(
+              activeLinks[idx], 
+              causeNode, 
+              hitTargetUids, 
+              activeKeysList[idx]
+            );
             if (p) chunkPromises.push(p);
           }
 
@@ -485,7 +507,6 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
           if (timeScheduler._shouldYield()) await timeScheduler._yieldToMain();
         }
 
-        // return getUniqueHits();
         return _dedupeUidsFast(hitTargetUids);
       })();
     },

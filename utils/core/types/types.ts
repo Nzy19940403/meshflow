@@ -48,17 +48,17 @@ export interface BaseMeshEvents {
   [MeshFlowEventsName.FlowWait]: { type: number; detail?: any };
   [MeshFlowEventsName.FlowFire]: { path: MeshPath; type: number; detail?: any };
 
-  [MeshFlowEventsName.NodeStart]: { path: MeshPath; calledBy: number };
-  [MeshFlowEventsName.NodeSuccess]: { path: MeshPath; calledBy: number };
-  [MeshFlowEventsName.NodeProcessing]: { path: MeshPath; calledBy: number,key:any };
-  [MeshFlowEventsName.NodeError]: { path: MeshPath; error: any };
+  [MeshFlowEventsName.NodeStart]: { path: MeshPath; calledBy: number;triggerPath:MeshPath; };
+  [MeshFlowEventsName.NodeSuccess]: { path: MeshPath; calledBy: number;triggerPath:MeshPath; };
+  [MeshFlowEventsName.NodeProcessing]: { path: MeshPath; calledBy: number,key:any ;triggerPath:MeshPath;};
+  [MeshFlowEventsName.NodeError]: { path: MeshPath; error: any;triggerPath:MeshPath; };
   [MeshFlowEventsName.NodePending]: { path: MeshPath };
 
   [MeshFlowEventsName.NodeIntercept]: { path: MeshPath; type: number;triggerPath:MeshPath; detail?: any };
   [MeshFlowEventsName.NodeRelease]: { path: MeshPath; type: number;triggerPath:MeshPath; detail?: any };
   [MeshFlowEventsName.NodeStagnate]: { path: MeshPath; triggerPath:MeshPath; type: number };
 
-  [MeshFlowEventsName.NodeBucketSuccess]: { path: MeshPath; key: string; value: any; calledBy: number };
+  [MeshFlowEventsName.NodeBucketSuccess]: { path: MeshPath; key: string; value: any; calledBy: number;triggerPath:MeshPath; };
 
   [MeshFlowEventsName.EntangleWarn]: { path: string; type: 'no_keys' | 'no_level' };
   [MeshFlowEventsName.EntangleBlocked]: { observer: string; target: string; count: number };
