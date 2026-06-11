@@ -123,15 +123,51 @@ type NormalizeSchema<T> = T extends readonly any[]
 const engineMap = new Map<MeshPath, any>();
 
  /**
- * 初始化并获取 MeshFlow 引擎实例
- * * @description 
- *  
- * * **查看完整的引擎实例 API 文档，请点击这里：** {@link EngineCoreAPI}
- *  @group Core Api 
+ * [BOT] 初始化并获取 MeshFlow 引擎实例——**这是所有 API 的入口**
+ *
+ * ## 返回的 Engine 对象包含五大模块
+ * | 模块 | 用途 | 核心 API |
+ * |------|------|----------|
+ * | `engine.config` | 规则与拓扑编排 | `SetRule` `SetRules` `useEntangle` `notifyAll` |
+ * | `engine.data` | 数据大盘读写 | `SetValue` `GetValue` `StageValue` `SilentSet` |
+ * | `engine.hooks` | 生命周期钩子 | `onError` `onSuccess` `onStart` |
+ * | `engine.dependency` | 图分析工具 | `GetAllDependency` `GetDependencyOrder` |
+ * | `engine.modules` | 扩展模块 | `history` `form` `validator` `render` |
+ *
+ * ## 写入 API 速查
+ * | 方法 | 触发拓扑? | 使用场景 |
+ * |------|----------|---------|
+ * | `SetValue` | 立即点火 | 用户交互、表单输入 |
+ * | `SetValues` | 批量点火 | 一次修改多个节点 |
+ * | `StageValue` | 微任务聚合 | WebSocket 高频推送 |
+ * | `SilentSet` | 不点火 | 系统重置、背景降噪 |
+ *
+ * * **查看完整 API 文档：** {@link EngineCoreAPI}
+ * @group Core Api
  * @category 入口函数
- * @param id 引擎实例的唯一 ID
- * @param Schema 类型定义模板（仅用于 TS 类型约束，不参与运行逻辑）,注册节点通过模块的方式进行
- * @param options 引擎配置项与扩展模块 {@link MeshFlowOptions}
+ * @param id — 引擎实例唯一标识（字符串/数字/符号），跨组件通过此 ID 复用
+ * @param Schema — 类型定义模板（仅 TS 类型推导，运行时通过 modules 注册节点）
+ * @param options — 引擎配置项与扩展模块 {@link MeshFlowOptions}
+ * @returns Engine 对象，完整类型签名见 {@link EngineCoreAPI}
+ * @typeParam S — Schema 类型定义（`as const` 可推导精确路径字面量）
+ * @typeParam T — UI 信号类型（Vue `Ref<number>` 或 React `()=>void`）
+ * @typeParam M — 扩展模块映射类型（如 `{ useInternalForm, useHistory }`）
+ * @typeParam NM — MetaType，推导各节点的属性键名供 `triggerKeys` 自动补全
+ * @typeParam P — 路径字面量联合类型（由 Schema 自动推导）
+ * @example
+ * ```ts
+ * const engine = useMeshFlow('my-engine', schema, {
+ *   UITrigger: {
+ *     signalCreator: () => ref(0),      // Vue
+ *     signalTrigger: (s) => s.value++,
+ *   },
+ *   modules: { useInternalForm },
+ * });
+ * engine.config.SetRule('a.path', 'b.path', 'value', {
+ *   logic: ({ slot }) => slot.triggerTargets[0].count + 1,
+ * });
+ * engine.config.notifyAll();
+ * ```
  */
 const useMeshFlow = <
   const S extends Record<string, any> | readonly Record<string, any>[],
@@ -334,18 +370,26 @@ const useMeshFlow = <
 };
 
 /**
- * 类型工厂：锁定全局路径与元数据类型，生成定制化的实例化函数。
- * @description
- * 这是一个高阶函数（Currying），旨在解决泛型冗余。通过预先注入 `MeshPath` (P) 和 `MetaType` (NM)，
- * 你会得到一个“专属”的实例化工具，从而避免在业务代码中反复书写冗长的泛型尖括号。
- * **工作流：**
- * 1. 在项目初始化/配置文件中定义：`const defineMesh = useMeshFlowDefiner<MyPaths, MyMeta>();`
- * 2. 在业务逻辑中实例化：`const engine = defineMesh('app-engine', schema, { ... });`
- * @template P - 当前项目定义的路径字面量类型 (MeshPath)
- * @template S - 初始 Schema 的结构定义
- * @template NM - 节点元数据 (Node Metadata) 的类型定义
+ * [BOT] 类型工厂（Currying）——预先锁定泛型，生成专属实例化函数
+ *
+ * ## 与 `useMeshFlow` 的差异
+ * | | `useMeshFlow` | `useMeshFlowDefiner` |
+ * |--|--------------|---------------------|
+ * | 泛型位置 | 每次调用都写 | 工厂定义时写一次 |
+ * | 路径推导 | 从 Schema 推导 | 手动锁定 |
+ * | 适用场景 | 单页面/简单项目 | 大型项目、多次实例化 |
+ *
+ * 工作流:
+ * 1. 配置文件中定义: `const mesh = useMeshFlowDefiner<MyPaths, MyMeta>();`
+ * 2. 业务中实例化: `const engine = mesh('app-engine', schema, { ... });`
+ *
  * @group Core Api
  * @category 入口函数
+ * @template P — 预锁定的路径字面量类型
+ * @template S — Schema 结构类型
+ * @template NM — 预锁定的 MetaType
+ * @returns 返回一个接收 (id, schema, options) 的实例化函数
+ * @see useMeshFlow 直接创建引擎
  */
 const useMeshFlowDefiner = <
   P extends MeshPath,
@@ -372,16 +416,19 @@ const useMeshFlowDefiner = <
 };
 
 /**
- * 实例检索：跨文件/组件获取已激活的 Engine 实例
- * @description
- * 只要引擎通过 `useMeshFlow` 或 `defineMesh` 初始化过，你就可以在任何地方通过 ID 直接拿到它。
- * 无需 Prop Drilling，它是跨组件通讯的核心桥梁。
- * @template M - 动态插件类型 (可选)
- * @template P - 路径类型标识 (可选)
- * @param id - 引擎实例的唯一 ID
- * @throws {MeshError.EngineNotFound} 如果 ID 对应实例不存在则抛错
+ * [BOT] 实例检索——跨文件/组件获取已激活的 Engine 实例
+ *
+ * 只要引擎通过 `useMeshFlow` 初始化过，任何地方通过 ID 即可获取，无需 Prop Drilling。
+ *
+ * @param id — 引擎实例的唯一 ID
+ * @returns Engine 对象，与 `useMeshFlow` 返回类型一致
+ * @throws MeshError.EngineNotFound — ID 对应的实例不存在
  * @group Core Api
  * @category 实例管理
+ * @template M — 动态插件类型 (可选)
+ * @template P — 路径类型标识 (可选)
+ * @see useMeshFlow 创建引擎
+ * @see deleteEngine 销毁引擎
  */
 const useEngine = <
   M extends Record<string, any> = {},
@@ -404,12 +451,15 @@ const useEngine = <
   return instance as Engine<SchedulerType<T, P, S, M, NM>, M, P>; 
 };
 /**
- * 🗑️ 实例销毁：从全局池中注销并释放引擎资源。
- * * @description
+ * [BOT] 实例销毁——从全局池注销并释放引擎全部资源
+ *
  * 彻底切断引擎与其所有插件、异步任务的联系，并从内存中移除引用。
- * * @param id - 待销毁引擎的唯一标识符
+ *
+ * @param id — 待销毁引擎的唯一标识符
  * @group Core Api
  * @category 实例管理
+ * @see useMeshFlow 创建引擎
+ * @see useEngine 获取引擎
  */
 const deleteEngine = (id: MeshPath) => {
   const engine = engineMap.get(id) ;

@@ -7,7 +7,19 @@ import { SchemaBucket } from "./bucket";
 import { createTransactionScheduler } from './useTransactionSchduler';
 
 /**
- *  
+ * [BOT] MeshScheduler — 引擎核心调度器
+ *
+ * 职责:
+ *   1. 节点注册中心 — Path→UID 映射 / UID→Node 索引
+ *   2. 拓扑推演入口 — `notify` / `_batchNotify` / `_notifyAll` 三种点火方式
+ *   3. UI 刷新协调 — 收集脏节点 → rAF 批量触发 `signalTrigger` / `emit`
+ *   4. 子系统编排 — 组装 `useMeshTask` / `useSetEntangle` / `transactionScheduler`
+ *
+ * 子系统:
+ * - `_meshTaskSystem`  — 拓扑执行循环 (TaskRunner + flushQueue)
+ * - `_entangleSystem`  — 纠缠预言与幽灵提案 (Turnstile)
+ * - `_taskSchduler`    — 事务链调度器 (串行异步任务)
+ * - `_timeScheduler`   — 时间切片管理器 (帧预算与 yield)
  */
 export class MeshScheduler<
     T,
@@ -353,21 +365,40 @@ export class MeshScheduler<
      * @internal
      * */ 
     public _notifyAll = async () => {
-        Promise.resolve().then(async () => {
-            const order = this.dependency.GetDependencyOrder();
-            if (!order || order.length === 0) return;
-            const roots = order[0];
-            try {
-                this._meshTaskSystem.TaskRunner(null, roots,[]);
-            } catch (error) {
-                this.hooks.callOnError(error);
-                throw error;
-            } finally {
-                this._requestUpdate();
-            }
-        });
+         const order = this.dependency.GetDependencyOrder();
+        if (!order || order.length === 0) return;
+        const roots = order[0];
+        try {
+            this._meshTaskSystem.TaskRunner(null, roots,[]);
+        } catch (error) {
+            this.hooks.callOnError(error);
+            throw error;
+        } finally {
+            this._requestUpdate();
+        }
+        // Promise.resolve().then(async () => {
+        //     const order = this.dependency.GetDependencyOrder();
+        //     if (!order || order.length === 0) return;
+        //     const roots = order[0];
+        //     try {
+        //         this._meshTaskSystem.TaskRunner(null, roots,[]);
+        //     } catch (error) {
+        //         this.hooks.callOnError(error);
+        //         throw error;
+        //     } finally {
+        //         this._requestUpdate();
+        //     }
+        // });
     }
-    private _dedupeScratchpad = new Uint8Array(1024);
+    /**
+   * [BOT] 去重刮刮卡 + 批量点火入口 — 多节点变更加入同一次 TaskRunner
+   *
+   * 扩容去重刮刮卡 → 遍历 updates 写值+记录历史+去重收集 roots
+   * → _requestUpdate(rAF UI刷新) → TaskRunner(null,roots,keysPayload) 单次推演
+   *
+   * @param source — 0:业务触发 / 1:历史模块触发(Undo/Redo, 不重复commit)
+   */
+  private _dedupeScratchpad = new Uint8Array(1024);
     public _batchNotify = (updates: { path: P; key: SuggestKey<NM>; value: any }[],source:number = 0) => {
         // if (!updates || updates.length === 0) return;
  
@@ -402,8 +433,7 @@ export class MeshScheduler<
 
         const updateLen = updates.length;
         if (updateLen === 0) return;
-
-        // 1. 扩容去重刮刮卡（如果节点数超过当前容量）
+ 
         const maxUid = this.GetMaxUid();
         if (this._dedupeScratchpad.length <= maxUid) {
             this._dedupeScratchpad = new Uint8Array(maxUid + 1);

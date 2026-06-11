@@ -24,6 +24,13 @@ type EntangleLink<P extends MeshPath,NM> = {
   _inBatch: boolean;
 };
 
+/**
+ * [BOT] 缠结转门 (Turnstile) — 纪元并发控制接口
+ *
+ * "旋转门"隐喻: 每个纪元是一扇旋转门。_nextEpoch() 推进后，
+ * 旧纪元提案仍可被 resolveGhosts 处理，新纪元 epoch 标记
+ * 会使旧纪元的 propose 调用自动失效，确保多轮纠缠不互相污染。
+ */
 export interface EntangleTurnstile<P extends MeshPath, NM> {
   volatileLevels: Set<number>;
   
@@ -138,6 +145,41 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     triggerPath: null as any // 幽灵由多源提案汇总，物理上游是多维的，这里设为 null 即可
   };
 
+  /**
+   * [BOT] 对象池单元工厂 — 每次纠缠链路执行时从此池借一个 cell
+   *
+   * cell 承载"发射→提案→收集→归还"的完整生命周期。
+   *
+   * ### propose 三种操作 (对应 GhostProposalApi):
+   * - `set(key, value, weight=1)` — 绝对值覆盖。resolveGhosts 中最高权重获胜
+   * - `update(key, delta, op)`   — 增量运算。支持 add/remove/intersect/union/merge
+   * - `patch(key, patchFn)`      — 函数式补丁。以当前 state 为输入推导新值
+   *
+   * ### 同一 key 收到多个提案时的执行逻辑 (resolveGhosts 内部):
+   *
+   * **无论 emit 中 propose 的调用顺序如何，resolveGhosts 始终分两趟扫描:**
+   *
+   * Pass 1: 遍历同 key 的**全部**提案，找出权重最高的 set。
+   *         有 set → finalValue = 最高权重 set 的值，threshold = 该权重
+   *         无 set → finalValue = node.state[key] (当前值)，threshold = -Infinity
+   *         （所以即使写 propose.patch(...); propose.set(...)，也是 set 先生效）
+   *
+   * Pass 2: 再次遍历全部提案，按 _ghostBuffer push 顺序依次执行:
+   *         set → 已在 Pass1 处理，跳过
+   *         patch → finalValue = patchFn(finalValue)
+   *         update → 按 op 操作 finalValue
+   *         权重 < threshold → 跳过（低权重 set 的跟随操作全部被否决）
+   *
+   * 举例 (无论哪种调用顺序，结果都一样):
+   *   emit 中: propose.set('price', 100); propose.patch('price', v=>v+10)
+   *   → Pass1: finalValue=100, Pass2: finalValue=100+10=110
+   *
+   *   emit 中: propose.patch('price', v=>v+10); propose.set('price', 100)
+   *   → Pass1: finalValue=100 (先扫了全部提案找到 set), Pass2: 110
+   *   **注意**: 即使 patch 写在 set 前面，结果也是 110 而非先 patch 再 set 覆盖 = 100
+   *
+   * ### 纪元隔离: cell.epoch !== currentEpoch → 提案被丢弃
+   */
   const createPoolCell = () => {
     const cell: any = {
       link: null,
@@ -151,7 +193,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     cell.propose = {
       set: (key: string, value: any, weight = 1) => {
         if (cell.epoch !== currentEpoch) return;
-
+       
         // if (value === cell.impactNode.state[key]) return;
         cell.link.count++;
         
@@ -465,7 +507,7 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
           hitTargetUids, 
           activeKeysList[processedCount]
         );
-        
+         
         processedCount++; // 处理完一个，指针向前推进
 
         if (p) {
@@ -515,6 +557,17 @@ export const UseSetEntangle = <P extends MeshPath, NM>(
     },
 
     _resolveGhosts: (node: MeshFlowTaskNode<P, any, NM>): string[] => {
+    /**
+     * [BOT] 幽灵提案清算 — 纠缠系统的终极裁决
+     *
+     * 对每个被纠缠命中的节点执行:
+     *   Pass 1 (采集) — 收集 _ghostBuffer 中同 key 权重最高的 set 提案
+     *   Pass 2 (应用) — 以 Pass1 结果为基准, 依次应用 patch/delta
+     *     (权重 < thresholdWeight 的提案被否决)
+     *
+     * 终值≠原始值 → 写入 node.state → 记录 _entangleMutations
+     *   (供 turnstile.commit 写入历史) → 加入 changedKeys 返回
+     */
       const targetUid = node.uid;
       const buffer = _ghostBuffer[targetUid];
       

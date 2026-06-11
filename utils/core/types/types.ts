@@ -293,9 +293,16 @@ export interface SetRuleOptions<NM, TKeys extends (SuggestKey<NM> | Exclude<Inte
   priority?: number;
   forceNotify?: boolean;
   /**
-   * 核心逻辑片段 (Logic Fragment)
+   * [BOT] 核心逻辑片段 (Logic Fragment)
+   * 节点规则的执行体。允许针对同一节点注册多个逻辑片段。
+   *
+   * **策略影响:**
+   * - **OR**: 任一返回 truthy → 终止计算并输出 value
+   * - **PRIORITY**: 按 priority 顺序，取第一个非 undefined 返回值
+   * - **MERGE**: 执行所有逻辑片段，结果进行结构化合并
+   *
+   * @param api 注入的运行上下文 {@link logicApi}
    * * @description
-   * 节点规则的执行体。它是碎片化的，允许针对同一节点注册多个逻辑片段。
    * * **策略影响 (Strategy Impact)：**
    * - **OR (逻辑或)**: 只要有一个逻辑片段返回真值，即终止计算并输出该值。
    * - **PRIORITY (优先级)**: 按 `priority` 顺序执行，取第一个非 `undefined` 的返回值。
@@ -345,8 +352,9 @@ export interface SetRuleOptions<NM, TKeys extends (SuggestKey<NM> | Exclude<Inte
 export type EntangleOp = "add" | "intersect" | "union" | "merge" | "remove";
 
 /**
- * 幽灵提案 API (Ghost Proposal API)
- * * ### 架构思想：延迟决议 (Deferred Resolution)
+ * [BOT] 幽灵提案 API (Ghost Proposal API) —— useEntangle 的 emit 回调中提交提案
+ *
+ * ### 架构思想：延迟决议 (Deferred Resolution)
  * 在复杂的 DAG (有向无环图) 状态机中，如果在副作用函数中直接修改目标状态（如 `tgt.price = 100`），
  * 极易引发不可控的竞态条件 (Race Condition)、级联重绘或死循环。
  *   为了系统性地规避上述风险，MeshFlow 设计了 **“幽灵提案”** 机制。其核心交互模式借鉴了 **Git 的 Pull Request**：
@@ -354,6 +362,21 @@ export type EntangleOp = "add" | "intersect" | "union" | "merge" | "remove";
  * 都不会立即生效，而是转化为数据对象并暂存于引擎的缓冲池 (`_ghostBuffer`) 中。
  * 2. **🛡️ 统一清算 (Resolve)**：当当前批次的所有计算流执行完毕后，引擎会作为调度中心，统一收集并合并这些提案。
  * 3. **⚖️ 权重裁决 (Weight)**：面对多源并发修改，引擎严格按照提案的**权重 (`weight`)** 和预设策略进行确定性计算，而非依赖执行的先后顺序。
+ *
+ * ### 提案执行顺序（不依赖 emit 中的书写顺序）
+ *
+ * resolveGhosts 分两趟扫描同 key 的全部提案，**与 emit 中写 propose 的先后顺序无关**：
+ *
+ *   Pass 1 采集 — 扫描全部提案，找出最高权重的 set 作为基准值
+ *   Pass 2 应用 — 再次遍历全部提案
+ *     · set → 已在 Pass1 处理，跳过
+ *     · patch → finalValue = patchFn(finalValue)
+ *     · update → 按 op 修改 finalValue
+ *
+ *   例: emit 中写 propose.patch('v', v=>v+10); propose.set('v', 100);
+ *   结果仍是 110 而非 100 —— Pass1 先扫描全部提案找到 set，Pass2 才叠加 patch。
+ *   **不是按书写顺序 set 覆盖了 patch。**
+ *
  * > **💡 总结**：幽灵提案机制将不可控的“时间依赖”转化为了安全的“逻辑依赖”，从而保证了每次状态计算的原子性与确定性。
  * @example
  * // 场景：多个规则并发更新购物车总价
@@ -503,13 +526,20 @@ export const enum TriggerCause {
  * @category 节点类型
  */
 export const enum NodeStatus {
+  /** [BOT] 初始态——节点尚未被本轮 Flow 触及 */
   NONE    = 0,
-  READY   = 1 << 0, // 1 
-  STAGING = 1 << 1, // 2
-  RESURE  = 1 << 2, // 4
-  DIRTY   = 1 << 3, // 8 (备用：标记节点是否需要重算)
-  PROCESSED  = 1 << 4, // 16  替代 processed 数组
-  PROCESSING = 1 << 5, // 32  替代 processingSet 数组
+  /** [BOT] 就绪——已通过安检，等待 flushQueue 取出执行 */
+  READY   = 1 << 0,
+  /** [BOT] 阻塞——还有活跃上游父节点未完成，暂存 stagingQueue */
+  STAGING = 1 << 1,
+  /** [BOT] 挂起——节点层级高于当前水位，等待水位推进后唤醒 */
+  RESURE  = 1 << 2,
+  /** [BOT] 预留——标记节点数据已脏需重算（当前版本未启用） */
+  DIRTY   = 1 << 3,
+  /** [BOT] 已完成——本轮不再参与调度（可被纠缠复活清除） */
+  PROCESSED  = 1 << 4,
+  /** [BOT] 执行中——正在运行 executorNodeCalculate 桶计算 */
+  PROCESSING = 1 << 5,
 }
 /**
  * 异常字典：汇总内核运行时的循环依赖、实例缺失等核心错误
@@ -520,10 +550,15 @@ export const enum NodeStatus {
  * @category 错误类型
  */
 export const MeshError = {
+  /** [BOT] 检测到环路——DAG 中存在首尾相接的依赖链 */
   cycle : "Circular dependency detected",
+  /** [BOT] 引擎实例未找到——useEngine(id) 时 ID 不存在 */
   EngineNotFound : "Engine not found.",
+  /** [BOT] 引擎 ID 已被占用——请使用不同 ID 或先 deleteEngine */
   EngineIdRepeated : "engineID repeated",
+  /** [BOT] 节点路径或 UID 无效——访问了不存在的节点 */
   WrongId : "Wrong id",
+  /** [BOT] 节点路径已被注册——检查是否误创建了重复节点 */
   DuplicatePath: (path: any) => `[MeshFlow] Duplicate Path: ${String(path)}`
 } as const;
 /**
@@ -614,6 +649,11 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
   /**
    * @category DAG
    * @description 建立多对一的聚合依赖关系，将多个源节点状态收敛至目标节点。
+   *
+   * **与 SetRule 的区别**: SetRule 第一个参数是单个路径；SetRules 是路径数组。
+   * 当你需要多个节点的值共同决定一个下游时用这个。
+   *
+   * @see SetRule 一对一依赖
    * @remarks
    * **聚合逻辑**：只要 `outDegreePaths` 数组中的任何一个节点发生变更（匹配 `triggerKeys`），
    * 引擎就会触发一次目标节点的 `logic` 计算。
@@ -670,13 +710,29 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
  */
     notifyAll: () => void;
     
-    /** 挂载外部插件 */
+    /**
+     * [BOT] 挂载外部插件——注册插件到引擎事件总线
+     * @param plugin — 需实现 apply({ on }) 方法
+     * @returns 卸载函数
+     */
     usePlugin: (plugin: any) => void;
-    
-    /** 检查当前引擎是否启用了渲染网关 (Render Gate) */
+
+    /**
+     * [BOT] 检查当前引擎是否启用了渲染网关
+     * @returns true 如果 modules 中注册了 useMeshRenderGate
+     */
     hasRenderGate: () => boolean;
-    
-    /** 挂载量子纠缠 (Entanglement) 机制 */
+
+    /**
+     * [BOT] 挂载量子纠缠——解决循环依赖的核心机制
+     *
+     * 当 A→B 和 B→A 同时存在时，传统事件监听会陷入死循环。
+     * useEntangle 将修改转化为"幽灵提案"暂存，引擎在纪元结束时
+     * 按权重裁决后统一生效。
+     *
+     * @param entangleFn — {@link EntangleArgType} 纠缠配置
+     * @see GhostProposalApi 幽灵提案 API（在 emit 回调中使用）
+     */
     useEntangle: <State=any>(entangleFn: any) => void;
   };
 
@@ -686,16 +742,39 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
    */
   data: {
     /**
-     * 写入数据触发点火
-     * @param path 节点的唯一路径标识
-     * @param value 要写入的最新值
+     * [BOT] 写入数据并立即点火——触发拓扑推演
+     *
+     * ## 写入 API 差异速查
+     * | 方法 | 点火时机 | 适用场景 |
+     * |------|---------|---------|
+     * | `SetValue` | 立即 | 用户交互、表单输入 |
+     * | `SetValues` | 立即(合并) | 批量修改多个节点 |
+     * | `StageValue` | 微任务聚合 | WebSocket / 高频推送 |
+     * | `SilentSet` | 不点火 | 系统重置、背景降噪 |
+     *
+     * @param path — 目标节点路径
+     * @param key  — 要修改的属性键名
+     * @param value — 新值
+     * @see SetValues 批量写入
+     * @see StageValue 高频场景
+     * @see SilentSet 静默覆写
      */
     SetValue: (path: P,key: SuggestKey<NM>, value: any) => void;
     
-    /** 读取指定节点的值 */
+    /**
+     * [BOT] 读取节点指定 key 的当前值（默认 'value'）
+     * @param path — 节点路径
+     * @param key  — 属性键名
+     * @returns 当前值
+     */
     GetValue: (path: P,key:SuggestKey<NM>) => any;
     
-    /** 批量写入数据 */
+    /**
+     * [BOT] 批量写入并点火——多节点变更加入同一次 TaskRunner
+     * 与 SetValue 逐条调用不同，引擎内部去重后仅启动一次 flushQueue。
+     * @param updates — { path, key, value } 数组
+     * @see SetValue 单节点写入
+     */
     SetValues: (updates: { path: P, key: SuggestKey<NM>, value: any }[]) => void;
 
  /**
@@ -734,8 +813,11 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
     GetGroupByPath: (path: P) => any;
 
      /**
-      * 事务性任务列表，支持传入回调，回调的入参是resolve和reject，在回调里面调用resolve就会启动task，这个task执行完就会执行下一个回调
-     */
+      * [BOT] 事务性任务列表——串行执行异步回调队列
+      * 每个回调接收 resolve/reject，调用 resolve(updates) 后自动触发拓扑推演，
+      * 推演结束后执行下一个回调。适合 Undo/Redo、向导式多步操作。
+      * @param array — 回调队列，每个元素签名为 (resolve, reject) => void
+      */
     SettleTasks: (array: TransactionArray<P,NM>) => void;
   };
 
@@ -756,13 +838,22 @@ export interface EngineCoreAPI<P extends MeshPath, NM> {
    * @group 核心模块
    */
   hooks: {
-    /** 引擎执行过程发生错误时的回调 */
+    /**
+     * [BOT] 引擎执行过程发生错误时触发
+     * @param cb — 接收 MeshErrorContext（含 path 和 error）或原始 Error
+     */
     onError: (cb: (err: MeshErrorContext | Error) => void) => void;
-    
-    /** 当前批次任务全部执行成功时的回调 */
+
+    /**
+     * [BOT] 当前批次全部拓扑任务执行成功后触发
+     * @param cb — 无参数回调
+     */
     onSuccess: (cb: () => void) => void;
-    
-    /** 引擎开始点火执行时的回调 */
+
+    /**
+     * [BOT] 引擎每次点火执行时触发
+     * @param cb — 回调，接收 { path } 表示触发源路径
+     */
     onStart: (cb: () => void) => void;
   };
 }

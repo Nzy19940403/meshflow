@@ -587,7 +587,17 @@ export class SchemaBucket<P> {
     api.iscache = false
     // 🌟 将 API 暂存到实例上供内部 CheckDirty 使用，彻底切断参数闭包！
     this._currentApi = api;
-    
+
+    /**
+     * [BOT] 桶计算入口 — 带三层缓存的惰性求值 (详见类头注释)
+     *
+     * L1 并发去重: _pendingPromise 存在 → 返回同一 Promise (避免重复请求)
+     * L2 依赖脏检查: 遍历 _depUids 扁平数组，ref 比较当前值 vs 快照
+     * L3 缓存命中: shouldSkipCalculate && _useCache → 返回 _cache
+     *
+     * _finalizeSync 执行后更新所有依赖快照，为下次脏检查做准备
+     */
+
     // 🌟 传入复用容器 this._evalResult
     const p = this._strategy._evaluate(api, currentVersion, this._boundCheckDirty, this._evalResult);
 

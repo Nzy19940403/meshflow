@@ -321,7 +321,22 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
             isEntangleChecking = false;
         });
     }
+    const flushGraphUpdate = () => {
+        if (!isRulesChanged) return;
 
+        // 这一步不仅查了环、更新了 dependencyOrder，还顺带调了 forceSyncEngineState() 更新纠缠
+        CheckCycleInGraph(); 
+
+        // 补上以前漏掉的直连图重建逻辑！(这才是解 Bug 的关键)
+        const { _directNextMap, _directPrevMap } = _rebuildDirectDependencyMaps(
+            dependencyOrder.flat()
+        );
+        directChildDependencyGraph = _directNextMap;
+        directParentDependencyGraph = _directPrevMap;
+
+        isRulesChanged = false;
+        isCircleChecking = false;
+    };
     const requestGraphUpdate = () => {
         // 如果已经在检查中，直接跳过，等待当前的微任务完成
         if (isCircleChecking) return;
@@ -335,11 +350,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     
             // 2. 如果规则确实变了，重建直连依赖图
             if (isRulesChanged) {
-                const { _directNextMap, _directPrevMap } = _rebuildDirectDependencyMaps(
-                    dependencyOrder.flat()
-                );
-                directChildDependencyGraph = _directNextMap;
-                directParentDependencyGraph = _directPrevMap;
+                flushGraphUpdate();
             }
         }).finally(() => {
             // 重置状态
@@ -377,8 +388,8 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
     };
 
     const notifyAllWrapper = async () => {
+        flushGraphUpdate();
         
-        CheckCycleInGraph();
         await _notifyAll();
         // isReady = true;
     };

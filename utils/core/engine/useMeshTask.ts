@@ -211,6 +211,25 @@ function useMeshTask<P extends MeshPath, NM> (
 
     let isTaskActive:boolean = false;
 
+    /**
+     * [BOT] stageBuffer — 外部干预缓冲池 ("避震器")
+     *
+     * 外部修改 (StageValue/SilentSet 之外的所有入口) 不直接写入 node.state，
+     * 而是先进入这个缓冲池。设计意图:
+     *
+     * 1. 引擎运行时 (isTaskActive=true) 直接修改 node.state 会绕过 token 系统
+     *    → 可能导致竞态条件。stageBuffer 将修改"暂存"起来，等安全时机消费。
+     *
+     * 2. 聚合点火: 同一个 tick 内多次 StageValue 调用只触发一次 TaskRunner
+     *    (ignitionTimer 微任务排他锁)
+     *
+     * 3. 纠缠协作: applyStageValue 中修改的节点标记为 VOLITION，确保与纠缠
+     *    系统的预言发射正确协作。
+     *
+     * 消费时机:
+     *   a. 引擎空闲 (isTaskActive=false) → ignitionTimer 微任务 → TaskRunner
+     *   b. 引擎运行中 → 等当前 Flow 结算完毕，finally 中收割 → flushQueue
+     */
     const stageBuffer: Array<{ uid: number, key: SuggestKey<NM>, value: any }> = [];
     let ignitionTimer: Promise<void> | null = null;
     /**
@@ -250,6 +269,65 @@ function useMeshTask<P extends MeshPath, NM> (
 
     
 
+/**
+     * [BOT] TaskRunner — 拓扑推演主循环 (引擎所有计算流的唯一入口)
+     *
+     * 每次点火（`SetValue`/`_batchNotify`/`StageValue`/`notifyAll`）最终都会调用这里。
+     * TaskRunner 内部按严格的 Phase 顺序执行，确保复杂拓扑中因果关系不被并发打乱。
+     *
+     * ### 三种队列 (节点在推演中的三种等待状态)
+     * - `readyQueue`   — 就绪节点。所有活跃上游已完成，安检通过后即可执行
+     * - `stagingQueue` — 阻塞节点。还有至少一个活跃上游未完成，在此等待阻力归零
+     * - `resureQueue`  — 挂起节点。上游已完成但节点层级高于当前水位，
+     *                    必须等水位推进到当前层才放行 (防止"抢跑")
+     *
+     * ### 执行阶段详解
+     *
+     * **Phase 0 — 源力探针 (Prime Mover Prophecy)**
+     * > 在所有正常节点推演前，先并发发射"纠缠预言"。如果源头节点的变更 key
+     * > 匹配了 `useEntangle` 注册的 via 列表，预言回调会把目标节点 uid 收集到
+     * > `currentEntangleArray`。预言命中后，normal 节点打入 RESURE 而非 ready，
+     * > 防止正常流计算结果被后续纠缠修改覆盖。
+     *
+     * **Phase 1 — 正常发车**
+     * > flushQueue 循环从 readyQueue 取节点，安检(pendingParentsCount+水位)，
+     * > 通过后标记 PROCESSING，调用 `executorNodeCalculate` 执行桶计算。
+     *
+     * **Phase 2 — 贪婪捞取 (仅 isGreedy 模式)**
+     * > 扫描 stagingQueue，如果某个节点阻力已归零且层级允许，绕过正常流程
+     * > 直接捞入 readyQueue。单亲节点可提前执行 (因为不依赖多个父节点同步)。
+     *
+     * **Phase 3 — 水位/纠缠结算**
+     * > 当前水位所有节点处理完毕后的结算阶段：
+     * > - 3A 量子逆转: `resolveGhosts` 坍缩幽灵提案 → 被修改节点打入 ready
+     * > - 3B 水位推进: 找到下一个有待处理节点的最小层级 → 推进 currentLevel
+     * > - 3C 截流退出: 无更高层级 → break → FlowSuccess
+     *
+     * **Phase 4 — 并发等待**
+     * > 就绪节点存在但 40 个工位占满，break 等待异步节点完成回调。
+     *
+     * ### 关键变量
+     * - `currentLevel`     — 当前水位线。节点层级 <= 此值才允许发车
+     * - `quantumWatermark` — 纠缠震荡天花板。低于此的节点可被纠缠复活 (INVERSION)
+     * - `AllAffectedPaths` — 本轮 Flow 波及范围的位图。用于阻力计算和剪枝
+     * - `maxAffectedLevel` — 本轮波及的最高层级。超过此值的水位推进无意义
+     *
+     * ### Token 机制
+     * 每次点火产生唯一 `curToken` (Symbol)。所有异步操作完成后校验 token：
+     * - token 匹配 → 本轮仍然有效，继续执行
+     * - token 不匹配 → 有新一轮点火开始，丢弃本轮所有结果 (防竞态)
+     *
+     * ### TriggerCause 溯源链
+     * ```
+     * VOLITION(3) ——外部修改直接注入 (applyStageValue/SetValue)
+     *     ↓
+     * CAUSALITY(0) ——标准因果推导 (正常下游传播)
+     *     ↓
+     * REPERCUSSION(2) ——纠缠余波 (INVERSION 节点的下游连带)
+     *     ↑
+     * INVERSION(1) ——纠缠直接修改的目标节点
+     * ```
+     */
     //运行调用入口
     const TaskRunner:MeshTask<NM>['TaskRunner'] = async (
         triggerUid: number | null, 
@@ -336,6 +414,17 @@ function useMeshTask<P extends MeshPath, NM> (
         }
         // ==========================================================
         // 预言弹药库：只在阶段三集中引爆
+        /**
+         * [BOT] 纠缠预言弹药库
+         *
+         * `currentEntangleArray` — 本纪元待 resolveGhosts 清算的命中节点 uid 列表
+         * `nextEntangleArray`    — 正常节点执行过程中新产生的纠缠命中节点 (下一纪元处理)
+         *
+         * 为什么分"当前"和"下一"? 因为 resolveGhosts 修改节点后可能触发新的下游
+         * 纠缠，如果混在一起会导致无限震荡 (A→B→A→B...)。引擎通过 Turnstile 的
+         * epoch 机制分隔: 当前纪元只处理 Phase 0 预言产生的命中，正常节点执行中
+         * 产生的命中先暂存到 nextEntangleArray，等当前纪元结算完再推进。
+         */
         // ==========================================================
         const currentEntangleArray: number[] = [];
         const nextEntangleArray: number[] = [];
@@ -345,6 +434,16 @@ function useMeshTask<P extends MeshPath, NM> (
 
         const stagedBufferUids: number[] = [];
 
+        /**
+         * [BOT] applyStageValue — 消费 stageBuffer 中的外部干预
+         *
+         * 将暂存的修改批量注入节点:
+         *   1. 物理写值到 node.state
+         *   2. 标记 calledBy = VOLITION (外部自由意志)
+         *   3. 接力棒传递: 修改的 key 存入 ghostBaton[uid]
+         *   4. 清理旧状态: 清除 STAGING 标记 → 打入 readyQueue
+         *   5. 水位修复: 如果注入节点层级低于 currentLevel → 压低水位
+         */
         const applyStageValue = () => {
             if (stageBuffer.length === 0) return false;
             
@@ -440,6 +539,13 @@ function useMeshTask<P extends MeshPath, NM> (
         //  2. 捞取火种 
         // ==========================================================
 
+        /**
+         * [BOT] IS_ENTANGLEMENT_ENABLED — 纠缠系统开关
+         *
+         * 如果拓扑中完全没有调用过 useEntangle, volatileLevels.size=0。
+         * 此时所有纠缠相关逻辑被短路: hasObserver 永远返回 false,
+         * emitGhosts/resolveGhosts 被替换为空操作函数，零开销跳过。
+         */
         // 终极上帝开关：不仅要看 Turnstile 存不存在，还要看它里面有没有真实注册的高危层级！
         // 如果当前拓扑完全没有注册过 useEntangle，那么 volatileLevels.size 就是 0
         const IS_ENTANGLEMENT_ENABLED = turnstile.volatileLevels.size > 0;
@@ -522,6 +628,22 @@ function useMeshTask<P extends MeshPath, NM> (
         applyStageValue();
        // ==========================================================
         // 阶段 0：源力探针 (Prime Mover Prophecy)
+        /**
+         * [BOT] Phase 0 — 正式推演前并发发射"纠缠预言"
+         *
+         * 对所有变更种子节点，并行调用 emitGhosts (底层是 _receiveGhosts)。
+         * 预言回调检查变更 key 是否匹配 useEntangle 注册的 via 列表:
+         * - 匹配 → 收集被命中的目标节点 uid → currentEntangleArray
+         * - 不匹配 → 跳过
+         *
+         * 预言命中后的关键决策:
+         *   normal downstream 节点打入 RESURE (挂起等待)，而非 readyQueue。
+         *   原因: 如果先发车计算，后续纠缠修改可能覆盖计算结果，
+         *   产生 4 倍的重复计算 bug。
+         *
+         * 预言未命中:
+         *   normal downstream 直接进入 readyQueue，立即发车。
+         */
         // ==========================================================
 
         const primeMovers = new Set<number>();
@@ -679,6 +801,37 @@ function useMeshTask<P extends MeshPath, NM> (
         // let isFlowFinished = false;
 
 
+        /**
+         * [BOT] executorNodeCalculate — 单节点完整执行单元
+         *
+         * 这是引擎的"原子计算单元"，每个节点进入此函数后经历五个步骤:
+         *
+         * 1. 【工位分配】从 availableSlots 池 pop 一个工位 ID，复用预分配的数组池
+         *    (slotDirtyKeys/slotPromises/slotEffects/slotIncomingBucketIds)，避免 GC
+         *
+         * 2. 【幽灵装甲处理】检查 ghostBaton[targetUid]: 该节点是否被外部或纠缠修改过?
+         *    - 被修改过 → hasValueChanged=true, incomingEntangleKeys 记录变更 key
+         *    - isGhostly(INVERSION 唤醒) → dirtyEntangleKeys 收集 (二次纠缠发射)
+         *    - 非 Ghostly(VOLITION/CAUSALITY) → dirtyEntangleKeys 不收集
+         *      (Phase 0 已发射过预言，重复发射 = 4x bug)
+         *
+         * 3. 【桶计算循环】遍历 nodeBucket 中的所有桶:
+         *    - 幽灵拦截: isGhostly && bucketId 在 incomingBucketIds → skip (纠缠已确定终值)
+         *    - bucket._evaluate(api) → 同步返回或 Promise
+         *    - handleSingleResult(): 值变检测 → hasNotifyKeyTriggered 判定
+         *    - effectsToRun 收集副作用函数
+         *
+         * 4. 【决断时刻】
+         *    - 全部同步: 直接 finalizeExecution() → releaseSlot() → return
+         *    - 有异步: Promise.all → finalizeExecution() → releaseSlot()
+         *
+         * 5. 【finalizeExecution】收尾:
+         *    - 执行副作用 effects (effect 返回值写入 state)
+         *    - 标记 PROCESSED
+         *    - 纠缠发射: emitGhosts(本节点的 dirtyEntangleKeys)
+         *    - tryActivateChild: 对每个直接下游子节点减阻力 → 归零则入 readyQueue
+         *    - scheduleNext(): 如果主循环空闲则继续 flushQueue
+         */
         const executorNodeCalculate = (targetUid: number, currentTriggerUid: number | null) => {
             
             const slotId = availableSlots.pop()!;
@@ -726,6 +879,27 @@ function useMeshTask<P extends MeshPath, NM> (
 
             // ==========================================================
             // 幽灵装甲 (Ghost Armor)
+            /**
+             * [BOT] 幽灵装甲 (Ghost Armor) — 处理纠缠/外部修改留下的接力棒
+             *
+             * `ghostBaton[targetUid]` 是 string[] 数组，记录当前 Flow 中该节点
+             * 被修改了哪些属性 key。两个来源:
+             *   - Phase 0 外部修改 (applyStageValue/SetValue, calledBy=VOLITION)
+             *   - Phase 3 纠缠坍缩 (resolveGhosts 写入后, calledBy=INVERSION)
+             *
+             * `isGhostly` = calledBy === INVERSION
+             *   该节点是被纠缠 resolveGhosts 直接修改的。桶计算循环中:
+             *     - 如果 key 在 incomingBucketIds 中 (有桶的 key) → skip 推演
+             *       (纠缠已经确定了这个 key 的终值，不需要重新计算)
+             *     - 如果 key 没有桶 (基础属性) → 正常推演
+             *
+             * `dirtyEntangleKeys` 收集规则 (极其重要):
+             *   - isGhostly → 接力棒进入 dirtyEntangleKeys → finalizeExecution 中二次发射
+             *   - 非 Ghostly → 接力棒不进入 (Phase 0 已发射过预言)
+             *   违反此规则会导致同一个纠缠被处理 4 次 (2个源 * 2次发射)
+             *
+             * `incomingBucketIds`: 被纠缠修改过的桶 bucketId 列表，这些桶跳过推演。
+             */
             // ==========================================================
             let isGhostly = false;
 
@@ -798,6 +972,29 @@ function useMeshTask<P extends MeshPath, NM> (
             };
 
             // 这个函数只负责：减阻力 -> 判断归零 -> 入队
+            /**
+             * [BOT] tryActivateChild — 下游节点的阻力计算与激活 (DAG 水位线核心)
+             *
+             * 每个节点完成执行后，对其每个直接下游子节点调用此函数递减阻力。
+             * 只有当子节点的所有活跃上游都完成后 (阻力归零)，子节点才能发车。
+             *
+             * 阻力计算两种策略:
+             *   Case A (惰性初始化): 子节点第一次被触碰 → 遍历所有上游父节点，
+             *     计数在 AllAffectedPaths 中且未 PROCESSED 的数量
+             *   Case B (递减): 子节点已在 stagingQueue 中 → resistanceArray 记录的值 - 1
+             *
+             * 阻力归零后的行为:
+             *   - 在震荡辐射区 (isInRepercussionZone) → calledBy = REPERCUSSION (纠缠余波)
+             *   - 正常流 → calledBy = CAUSALITY → 打入 readyQueue
+             *
+             * 阻力未归零:
+             *   - pendingParentsCount > 0 → 打入 stagingQueue，记录剩余阻力
+             *   - 如果 stagingActiveCount > BACKPRESSURE_LIMIT(30) 且 childLevel > currentLevel
+             *     → 打入 resureQueue (背压保护，防止 staging 堆积过多)
+             *
+             * @param childUid  — 下游子节点 uid
+             * @param reasonType — 1=上游值变了(强信号) 2=上游完成但值未变(穿透信号)
+             */
             //reasontype -> 1:上游 ${targetPath} 值变了 2: 当上游值没有变但是下游节点已经在stagingArea的时候`上游 ${targetPath} 完成(穿透)`
             const tryActivateChild = (childUid: number, reasonType: number) => {
                 const childLevel = uidToLevelMap.get(childUid) ?? 0;
@@ -1422,6 +1619,37 @@ function useMeshTask<P extends MeshPath, NM> (
             }
         };
 
+        /**
+         * [BOT] flushQueue — 引擎主调度循环 (while true 事件循环)
+         *
+         * 这是整个引擎的"心跳"。一个无限循环，每次迭代处理一批次工作，
+         * 批次由三个边界条件控制:
+         *   - 时间片: timeScheduler._shouldYield() 超过 12ms → 让出主线程
+         *   - 名额限制: nodesProcessedInFrame >= NODE_QUOTA_PER_FRAME (首帧30, 后续按配置)
+         *   - 并发上限: processingCount >= MAX_CONCURRENT_TASKS (40)
+         *
+         * 循环内部按优先级处理四个阶段:
+         *
+         * 阶段 1【正常发车】从 readyQueue 取出节点 → 安检(活跃上游数+水位检测)
+         *   → 通过: PROCESSING → executorNodeCalculate
+         *   → 失败: STAGING (阻塞) 或 RESURE (挂起)
+         *
+         * 阶段 2【贪婪捞取】仅 isGreedy 模式。扫描 stagingQueue:
+         *   阻力归零 && (层级<=currentLevel || 单亲节点) → 直接捞入 readyQueue
+         *
+         * 阶段 3【水位/纠缠】processingCount=0 && readyActiveCount=0 时进入:
+         *   3A 量子逆转: resolveGhosts 坍缩幽灵提案 → 压低水位 → continue 回 1
+         *   3B 水位推进: 找到最小下一层级 → currentLevel 推进 → 捞出节点 → continue
+         *   3C 截流退出: 无可用下级 → RESURE/STAGING 全标记 PROCESSED → break
+         *
+         * 阶段 4【并发等待】有就绪节点但 40 工位占满 → break
+         *   等异步节点 finalizeExecution → scheduleNext → flushQueue 重入
+         *
+         * 退出路径:
+         *   正常退出: 阶段 3C 截流 → break → finally → FlowSuccess
+         *   挂起退出: 并发满/有异步 → break → finally → FlowWait + 心跳监听
+         *   异常退出: token 失效 → break → finally → FlowAbort
+         */
         const flushQueue = async () => {
             // 1. 令牌检查 (安全熔断)
             
@@ -1482,6 +1710,18 @@ function useMeshTask<P extends MeshPath, NM> (
                         isFirstFrame = timeScheduler._getIsFirstFrame();
                     }
                      
+                    /**
+                     * [BOT] 阶段 1: 正常发车 — 从 readyQueue 取节点安检后执行
+                     *
+                     * 安检流程 (shouldIntercept):
+                     *   - pendingParentsCount > 0 → 还有活跃上游未完成 → 打入 STAGING
+                     *   - !isGreedy && targetLevel > currentLevel → 水位不足 → 打入 STAGING
+                     *
+                     * 通过安检 → 标记 PROCESSING → executorNodeCalculate(targetUid, triggerUid)
+                     *
+                     * 中途中止 (isMidFlightAborted):
+                     *   名额用完 / 时间超了 / 并发满了 → 搬运剩余节点到 readyQueue 前部 → break
+                     */
                     if (readyActiveCount > 0 && processingCount < MAX_CONCURRENT_TASKS) {
                         // 🌟 保持原样：快照发车前的长度
                         const originalReadyCount = readyCount;
@@ -1625,6 +1865,15 @@ function useMeshTask<P extends MeshPath, NM> (
                   
                     // ==========================================================
                     // 阶段二：贪婪捞取 (Greedy Catch-up)
+                    /**
+                     * [BOT] 阶段 2: 贪婪捞取 — 仅 isGreedy 模式
+                     *
+                     * 扫描 stagingQueue: 阻力归零 (resistance<=0) 且 (层级<=currentLevel 或单亲节点)
+                     * → 绕过正常 tryActivateChild 流程直接捞入 readyQueue
+                     *
+                     * 单亲节点特殊处理: 它的唯一父节点完成时阻力就归零了，可提前执行。
+                     * 多亲节点必须等水位推进 → 阶段 3 处理。
+                     */
                     // ==========================================================
                     if (
                         nodesProcessedInFrame < NODE_QUOTA_PER_FRAME &&
@@ -1695,6 +1944,28 @@ function useMeshTask<P extends MeshPath, NM> (
                   
                     // ==========================================================
                     // 阶段三：水位推进 (逻辑出口 A)
+                    /**
+                     * [BOT] 阶段 3: 水位推进 & 量子逆转 (当前水位工作全部完成的结算阶段)
+                     *
+                     * 条件: processingCount===0 && readyActiveCount===0
+                     *
+                     * 3A【量子逆转】currentEntangleArray 非空:
+                     *   1. 对每个命中节点调用 resolveGhosts() — 坍缩幽灵提案
+                     *      (按权重裁决 set/update/patch，将终值写入 node.state)
+                     *   2. 标记 calledBy=INVERSION → 打入 readyQueue
+                     *   3. 压低水位: 如果纠缠命中了超低层级节点，currentLevel 回退
+                     *   4. continue → 回到阶段 1 (纠缠修改需要重新推演下游)
+                     *
+                     * 3B【水位推进】无量子逆转，但有更高层待处理节点:
+                     *   1. 从 RESURE (弱信号) 和 STAGING (强信号) 中找最小下一层级
+                     *   2. currentLevel = nextLevel (推进水位)
+                     *   3. 捞出该层级所有节点 → continue → 回到阶段 1
+                     *
+                     * 3C【截流退出】无更高层级可推进:
+                     *   1. 所有 RESURE/STAGING 节点标记 PROCESSED (静默丢弃)
+                     *   2. break → 退出 while → finally → FlowSuccess
+                     *   (这些节点因为上游没有真正变更而被剪枝)
+                     */
                     // ==========================================================
                     if (processingCount === 0 && readyActiveCount === 0) {    
                      
@@ -1966,6 +2237,12 @@ function useMeshTask<P extends MeshPath, NM> (
 
                     // ==========================================================
                     // 阶段四：判定是否进入物理等待 (逻辑出口 B)
+                    /**
+                     * [BOT] 阶段 4: 并发等待 — 就绪节点存在但并发工位已满
+                     *
+                     * break 退出 while，等正在执行的异步节点 finalizeExecution 完成后
+                     * 通过 scheduleNext() 重新调起 flushQueue，形成天然背压回流。
+                     */
                     // ==========================================================
                     if (
                         // readyToRunBuffer.size > 0 &&
@@ -1985,6 +2262,24 @@ function useMeshTask<P extends MeshPath, NM> (
                     break;
                 }
             } finally {
+                /**
+                 * [BOT] finally 结算 — 无论 while 如何退出都走到这里，处理三种结果:
+                 *
+                 * 【FlowSuccess】remaining===0 && asyncRemaining===0 (全部完成，无异步飞行):
+                 *   1. 检查 stageBuffer 是否有残留外部输入 → 收割后重新 flushQueue
+                 *   2. 发射 FlowEnd → FlowSuccess 事件
+                 *   3. turnstile.commit() — 将纠缠修改写入历史模块
+                 *   4. callOnSuccess() — 触发用户注册的成功钩子
+                 *   5. 事务链则 taskSchduler.runNext() 执行下一个事务
+                 *
+                 * 【FlowWait】remaining>0 || asyncRemaining>0 (还有工作未完成):
+                 *   waitType=1: 有节点在执行中 (等 finalizeExecution 回调重入 flushQueue)
+                 *   waitType=3: 纠缠异步任务未归 → 启动 rAF 心跳监听器 (monitor)
+                 *     每帧检查 turnstile.inFlightCount → 归零则 applyStageValue + flushQueue
+                 *
+                 * 【FlowAbort】globalLatestSessionToken !== curToken (本轮被新点火废弃):
+                 *   发射 FlowAbort 事件 → 直接 return，不执行任何清理 (新轮已接管)
+                 */
                 isLooping = false;
                 // 最终结算检查
                 const remaining =
