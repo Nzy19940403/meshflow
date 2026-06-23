@@ -205,7 +205,7 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         {
             useGreedy: options.config.useGreedy,
             useEntangleStep:options.config.useEntangleStep||100,
-            NODE_QUOTA_PER_FRAME:options.config.useEntangleStep||100
+            NODE_QUOTA_PER_FRAME:options.config.NODE_QUOTA_PER_FRAME||100
         },
         {
             GetDependencyOrder: () => dependencyOrder,
