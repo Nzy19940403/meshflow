@@ -34,7 +34,13 @@ type HistoryFactory = {
 export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record<string, any> = {},NM = any>(
     data:S,
     options:{
-        config: { useGreedy: boolean;useEntangleStep?:number,NODE_QUOTA_PER_FRAME?:number },
+        config: { 
+            useGreedy: boolean;
+            useEntangleStep?:number;
+            NODE_QUOTA_PER_FRAME?:number;
+            MAX_CONCURRENT_TASKS?: number;
+            BACKPRESSURE_LIMIT?: number;
+        },
         UITrigger?: {
             signalCreator: () => T;
             signalTrigger: (signal: T) => void;
@@ -205,7 +211,9 @@ export function useEngineInstance<T, P extends MeshPath,S = any,M extends Record
         {
             useGreedy: options.config.useGreedy,
             useEntangleStep:options.config.useEntangleStep||100,
-            NODE_QUOTA_PER_FRAME:options.config.NODE_QUOTA_PER_FRAME||100
+            NODE_QUOTA_PER_FRAME:options.config.NODE_QUOTA_PER_FRAME||100,
+            MAX_CONCURRENT_TASKS:options.config.MAX_CONCURRENT_TASKS||40,
+            BACKPRESSURE_LIMIT:options.config.BACKPRESSURE_LIMIT||30
         },
         {
             GetDependencyOrder: () => dependencyOrder,

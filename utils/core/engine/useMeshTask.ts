@@ -29,6 +29,8 @@ function useMeshTask<P extends MeshPath, NM> (
     config: {
         useGreedy: boolean;
         NODE_QUOTA_PER_FRAME:number
+        MAX_CONCURRENT_TASKS: number;
+        BACKPRESSURE_LIMIT: number;
     },
     dependency: {
         _GetAllNextDependency: (targetUid: number) => number[];
@@ -85,9 +87,9 @@ function useMeshTask<P extends MeshPath, NM> (
     
     let _dedupeSeenMap: Uint8Array;
     //背压参数
-    const BACKPRESSURE_LIMIT = 30;
+    const BACKPRESSURE_LIMIT = config.BACKPRESSURE_LIMIT;
     //最大并发数
-    const MAX_CONCURRENT_TASKS = 40;
+    const MAX_CONCURRENT_TASKS = config.MAX_CONCURRENT_TASKS;
 
     // 普通数组池
     let ghostBaton: Array<MeshPath[] | null> = [];

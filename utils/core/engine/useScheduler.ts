@@ -77,7 +77,7 @@ export class MeshScheduler<
     }
 
     constructor(
-        public config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number },
+        public config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number, MAX_CONCURRENT_TASKS: number, BACKPRESSURE_LIMIT: number },
         public dependency:{
             _GetAllNextDependency: (targetUid: number) => number[];
             _GetAllPrevDependency: (targetUid: number) => number[];
@@ -117,7 +117,12 @@ export class MeshScheduler<
         this._updateEntangleLevel = this._entangleSystem._updateEntangleLevel;
 
         this._meshTaskSystem = useMeshTask<P, NM>(
-            { useGreedy: this.config.useGreedy, NODE_QUOTA_PER_FRAME: this.config.NODE_QUOTA_PER_FRAME },
+            { 
+                useGreedy: this.config.useGreedy, 
+                NODE_QUOTA_PER_FRAME: this.config.NODE_QUOTA_PER_FRAME ,
+                MAX_CONCURRENT_TASKS: this.config.MAX_CONCURRENT_TASKS,
+                BACKPRESSURE_LIMIT: this.config.BACKPRESSURE_LIMIT
+            },
             this.dependency,
             {
                 GetNodeByPath: (p: P) => this.GetNodeByPath(p),
@@ -509,7 +514,13 @@ export function useScheduler<
     B extends Record<string, any> = StandardUITrigger<T>,
     NM = any
 >(
-    config: { useGreedy: boolean, useEntangleStep: number, NODE_QUOTA_PER_FRAME: number },
+    config: { 
+        useGreedy: boolean, 
+        useEntangleStep: number,
+        NODE_QUOTA_PER_FRAME: number,
+        MAX_CONCURRENT_TASKS: number,
+        BACKPRESSURE_LIMIT: number
+    },
     dependency: {
         _GetAllNextDependency: (targetUid: number) => number[];
         _GetAllPrevDependency: (targetUid: number) => number[];

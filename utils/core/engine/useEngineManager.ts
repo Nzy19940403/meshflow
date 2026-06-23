@@ -184,8 +184,10 @@ const useMeshFlow = <
     metaType?: NM;
     config?: {
       useGreedy?: boolean;
-      useEntangleStep?:number,
-      NODE_QUOTA_PER_FRAME?:number
+      useEntangleStep?:number;
+      NODE_QUOTA_PER_FRAME?:number;
+      MAX_CONCURRENT_TASKS?: number;
+      BACKPRESSURE_LIMIT?: number;
     };
     modules?: M;
     UITrigger?: {
