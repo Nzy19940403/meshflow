@@ -1,5 +1,5 @@
  
-import { useScheduler ,SchemaBucket,MeshPath } from "@/utils/core/engine/useEngineManager";
+import { useScheduler ,SchemaBucket,MeshPath } from "@meshflow/core";
  
  
 export type FormItemValidationFn = (value: any) => boolean | string;

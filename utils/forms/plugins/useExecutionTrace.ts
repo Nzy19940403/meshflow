@@ -70,9 +70,7 @@ export function useExecutionTrace<P>(
   
       // 3. 计算启动：正式施工
       api.on( MeshFlowEventsName.NodeStart , ({ path }: { path: P }) => {
-        // if(path==='cloudConsole.billing.totalPrice'){
-        //   debugger
-        // }
+ 
         currentSessionAffected.add(path);
         updateStatus(path, 'calculating');
       
@@ -83,7 +81,18 @@ export function useExecutionTrace<P>(
         updateStatus(path, 'calculated');
       });
   
-      // 5. 路径终结信号：确保 UI 不会悬挂
+      // 5. 流程完成：把仍在 calculating/pending 的节点（触发源节点）收尾为 idle
+      //    触发源节点只会经历 NodeStart→calculating，不会收到 NodeSuccess
+      api.on( MeshFlowEventsName.FlowSuccess , () => {
+        currentSessionAffected.forEach(p => {
+          const s = statusMap.get(p);
+          if (s === 'calculating' || s === 'pending') {
+            updateStatus(p, 'idle');
+          }
+        });
+      });
+
+      // 6. 路径终结信号：确保 UI 不会悬挂
       api.on( MeshFlowEventsName.NodeIntercept , ({ path ,type}) => {
         //3是节点正在被计算的拦截信号,所以显示正在被计算
         if(type==3){
