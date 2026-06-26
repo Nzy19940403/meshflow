@@ -1,0 +1,129 @@
+<template>
+  <!-- Group with title (type: "Group" in uiSchema) -->
+  <div v-if="layout.uischema.type === 'Group'" class="mesh-group">
+    <div v-if="groupLabel" class="mesh-group__header">
+      <span class="mesh-group__title">{{ groupLabel }}</span>
+      <v-divider class="mesh-group__divider" />
+    </div>
+    <div class="mesh-group__body" :class="layoutClass">
+      <dispatch-renderer
+        v-for="(element, index) in layout.uischema.elements"
+        :key="`${layout.path}-${index}`"
+        :schema="layout.schema"
+        :uischema="element"
+        :path="layout.path"
+        :enabled="layout.enabled"
+        :renderers="layout.renderers"
+        :cells="layout.cells"
+      />
+    </div>
+  </div>
+
+  <!-- Horizontal layout -->
+  <div v-else-if="layout.uischema.type === 'HorizontalLayout'" class="mesh-layout mesh-layout--horizontal">
+    <dispatch-renderer
+      v-for="(element, index) in layout.uischema.elements"
+      :key="`${layout.path}-${index}`"
+      class="mesh-layout__item"
+      :schema="layout.schema"
+      :uischema="element"
+      :path="layout.path"
+      :enabled="layout.enabled"
+      :renderers="layout.renderers"
+      :cells="layout.cells"
+    />
+  </div>
+
+  <!-- Vertical layout (default) -->
+  <div v-else class="mesh-layout mesh-layout--vertical">
+    <dispatch-renderer
+      v-for="(element, index) in layout.uischema.elements"
+      :key="`${layout.path}-${index}`"
+      :schema="layout.schema"
+      :uischema="element"
+      :path="layout.path"
+      :enabled="layout.enabled"
+      :renderers="layout.renderers"
+      :cells="layout.cells"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { rendererProps, useJsonFormsLayout, DispatchRenderer, type LayoutProps } from '@jsonforms/vue'
+
+const props = defineProps({ ...rendererProps() })
+const { layout } = useJsonFormsLayout(props as LayoutProps)
+
+const groupLabel = computed(() => {
+  const uischema = layout.value.uischema as any
+  return uischema?.label || uischema?.options?.label || null
+})
+
+const layoutClass = computed(() => {
+  const uischema = layout.value.uischema as any
+  const hint = uischema?.options?.['x-layout'] ?? 'vertical'
+  return hint === 'horizontal'
+    ? 'mesh-group__body--horizontal'
+    : 'mesh-group__body--vertical'
+})
+</script>
+
+<style scoped>
+.mesh-group {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.mesh-group__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  margin-top: 24px;
+}
+
+.mesh-group__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mesh-group__divider {
+  opacity: 0.15;
+}
+
+.mesh-group__body--vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.mesh-group__body--horizontal {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0 16px;
+}
+
+.mesh-layout--vertical {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.mesh-layout--horizontal {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0 16px;
+  width: 100%;
+}
+
+.mesh-layout__item {
+  width: 100%;
+}
+</style>
