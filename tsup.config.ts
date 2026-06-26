@@ -158,7 +158,7 @@ export default defineConfig([
     splitting: false,
     treeshake: true,
     target: "esnext",
-    external: ["@meshflow/core"],
+    external: ["@meshflow/core", "@jsonforms/core"],
     onSuccess: async () => {
       // 拷贝 package.json 的逻辑保持不变
       const pkgPath = path.resolve(__dirname, "utils/forms/package.json");
