@@ -11,7 +11,8 @@ on:
       - 'utils/plugins/meshPulse/package.json'
       - 'utils/plugins/meshRenderGate/package.json'
       - 'utils/plugins/history/package.json'
-      
+      - 'utils/meshform-vue/package.json'
+
   # 🌟 2. 手动触发：支持在 GitHub Actions 页面手动点击运行，并选择要强制发布的包
   workflow_dispatch:
     inputs:
@@ -35,8 +36,12 @@ on:
         description: '是否强制发布 RenderGate 包?'
         type: boolean
         default: false
-      force_history: 
+      force_history:
         description: '是否强制发布 History 包?'
+        type: boolean
+        default: false
+      force_form_vue:
+        description: '是否强制发布 form-vue 包?'
         type: boolean
         default: false
 
@@ -51,6 +56,7 @@ jobs:
       meshPulse: ${{ steps.changes.outputs.meshPulse }}
       rendergate: ${{ steps.changes.outputs.rendergate }}
       history: ${{ steps.changes.outputs.history }}
+      form_vue: ${{ steps.changes.outputs.form_vue }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -63,6 +69,7 @@ jobs:
             meshPulse: 'utils/plugins/meshPulse/package.json'
             rendergate: 'utils/plugins/meshRenderGate/package.json'
             history: 'utils/plugins/history/package.json'
+            form_vue: 'utils/meshform-vue/package.json'
             
   # 📦 发布 Core 包
   publish-core:
@@ -176,6 +183,24 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm install && npm run build:lib
       - name: 🚢 Publish History
-        # ⚠️ 请确认你的打包输出路径。根据 meshPulse 的逻辑推测为：
-        working-directory: ./lib-plugins/history 
+        working-directory: ./lib-plugins/history
+        run: npm publish --access public --provenance
+
+  # 📦 发布 form-vue 包
+  publish-form-vue:
+    needs: filter
+    if: ${{ needs.filter.outputs.form_vue == 'true' || inputs.force_form_vue == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install && npm run build:form-vue
+      - name: 🚢 Publish form-vue
+        working-directory: ./lib-form-vue
         run: npm publish --access public --provenance

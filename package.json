@@ -9,6 +9,7 @@
     "build:qiankun": "set qiankun=true&& webpack --mode production",
     "build:lib": "set NODE_OPTIONS=--max-old-space-size=8192 && tsup",
     "build:lib:analyse": "npx tsup --metafile",
+    "build:form-vue": "vite build --config vite.form-vue.config.ts",
     "login": "npm login --registry=https://registry.npmjs.org/"
   },
   "author": "",
@@ -21,7 +22,7 @@
     "@jsonforms/core": "^3.8.0",
     "@jsonforms/vue": "^3.8.0",
     "@meshflow/core": "^0.8.8",
-    "@meshflow/form": "^0.2.1",
+    "@meshflow/form": "^0.3.0",
     "@meshflow/history": "^0.1.9",
     "@meshflow/logger": "^0.2.8",
     "@meshflow/pulse": "^1.0.0",
@@ -45,6 +46,8 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite-plugin-dts": "^4.0.0",
     "@mdi/font": "^7.4.47",
     "@tailwindcss/postcss": "^4.1.11",
     "@vue/compiler-sfc": "^3.5.17",

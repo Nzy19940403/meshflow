@@ -1,0 +1,46 @@
+{
+  "name": "@meshflow/form-vue",
+  "version": "0.1.0",
+  "description": "Vue 3 rendering layer for @meshflow/form — wraps @jsonforms/vue with meshflow reactive bindings and Vuetify components.",
+  "main": "./index.js",
+  "module": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./index.d.mts",
+        "default": "./index.mjs"
+      },
+      "require": {
+        "types": "./index.d.ts",
+        "default": "./index.js"
+      }
+    }
+  },
+  "author": "nzy",
+  "license": "AGPL-3.0-or-later",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "keywords": [
+    "vue",
+    "form",
+    "meshflow",
+    "jsonforms",
+    "reactive",
+    "vuetify"
+  ],
+  "peerDependencies": {
+    "vue": ">=3.0.0",
+    "vuetify": ">=3.0.0",
+    "@jsonforms/vue": ">=3.0.0",
+    "@jsonforms/core": ">=3.0.0",
+    "@meshflow/form": ">=0.3.0",
+    "@meshflow/core": ">=0.8.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nzy19940403/meshflow.git",
+    "directory": "utils/meshform-vue"
+  }
+}
