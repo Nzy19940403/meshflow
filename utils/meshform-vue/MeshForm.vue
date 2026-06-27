@@ -5,7 +5,7 @@
       :schema="props.schema"
       :uischema="effectiveUiSchema"
       :data="formData"
-      :renderers="meshRenderers"
+      :renderers="effectiveRenderers"
       @change="() => {}"
     />
     <slot name="actions" :submit="submit" :getFormData="getFormData" />
@@ -13,32 +13,51 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide, onMounted, nextTick } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted, nextTick } from 'vue'
 import { JsonForms } from '@jsonforms/vue'
 import { meshRenderers } from './renderers/renderers'
 import { MESH_NODE_MAP_KEY } from './inject-keys'
 import { generateUiSchema } from './generateUiSchema'
+import { useMeshFormVue, deleteEngine } from './useMeshFormVue'
 import type { MeshFormSchema } from '../forms/jsonforms/types'
+import type { FromDescriptor } from '../forms/useMeshForm'
 
 const props = defineProps<{
-  engine: any
   schema: MeshFormSchema
+  /** Initial field values — same shape as JSON Forms :data prop */
+  data?: Record<string, any>
+  /** Dependency rules, applied before notifyAll() */
+  rules?: Record<string, FromDescriptor>
+  /** Override auto-generated UISchema */
   uischema?: any
+  /** Custom renderers, prepended before meshRenderers */
+  renderers?: any[]
 }>()
 
 const emit = defineEmits<{
   (e: 'submit', data: Record<string, any>): void
+  /** Fired after every engine computation cycle — same shape as JSON Forms @change data */
+  (e: 'change', data: Record<string, any>): void
 }>()
 
-const ready = ref(false)
-const formData = ref({})
+// Unique engine ID per component instance
+const engineId = crypto.randomUUID()
+const engine = useMeshFormVue(engineId, props.schema)
 
-// Use explicit uiSchema if provided, otherwise auto-generate from schema
-const effectiveUiSchema = computed(() =>
-  props.uischema ?? generateUiSchema(props.schema)
-)
+// Register rules before notifyAll()
+if (props.rules) {
+  engine.define(props.rules)
+}
 
-// ── Node map ──────────────────────────────────────────────────────────────
+// Emit @change after every engine computation (initial notifyAll + user input).
+// Registered synchronously so it's in place before the first notifyAll() call.
+// JSON round-trip guarantees a new object reference so Vue ref detects changes.
+engine.hooks.onSuccess(() => {
+  emit('change', JSON.parse(JSON.stringify(getFormData())))
+})
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function buildNodeMap(node: any, map: Record<string, any> = {}): Record<string, any> {
   if (!node) return map
   if (node.type !== 'group') {
@@ -48,16 +67,54 @@ function buildNodeMap(node: any, map: Record<string, any> = {}): Record<string, 
   return map
 }
 
+/** Flatten { a: { b: 1 } } to { 'a.b': 1 } */
+function flattenData(obj: Record<string, any>, prefix = ''): Record<string, any> {
+  const result: Record<string, any> = {}
+  for (const [key, val] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${key}` : key
+    if (val !== null && val !== undefined && typeof val === 'object' && !Array.isArray(val)) {
+      Object.assign(result, flattenData(val, path))
+    } else {
+      result[path] = val
+    }
+  }
+  return result
+}
+
+// Write :data initial values into engine nodes before notifyAll()
+if (props.data) {
+  const root = (engine as any)?.modules?.internalModules?.internalForm?.uiSchema
+  const map = root ? buildNodeMap(root) : {}
+  for (const [path, value] of Object.entries(flattenData(props.data))) {
+    const node = map[path]
+    if (node && value !== undefined) node.dependOn?.(() => value, 'value')
+  }
+}
+
+// ── Reactive state ────────────────────────────────────────────────────────────
+
+const ready = ref(false)
+const formData = ref({})
+
+const effectiveUiSchema = computed(() =>
+  props.uischema ?? generateUiSchema(props.schema)
+)
+
+const effectiveRenderers = computed(() =>
+  props.renderers ? [...props.renderers, ...meshRenderers] : meshRenderers
+)
+
 const nodeMap = computed<Record<string, any>>(() => {
-  const root = props.engine?.modules?.internalModules?.internalForm?.uiSchema
+  const root = (engine as any)?.modules?.internalModules?.internalForm?.uiSchema
   return root ? buildNodeMap(root) : {}
 })
 
 provide(MESH_NODE_MAP_KEY, nodeMap)
 
-// ── Public API ────────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────
+
 function getFormData(): Record<string, any> {
-  return props.engine?.modules?.internalModules?.internalForm?.GetFormData?.() ?? {}
+  return (engine as any)?.modules?.internalModules?.internalForm?.GetFormData?.() ?? {}
 }
 
 async function submit() {
@@ -67,10 +124,16 @@ async function submit() {
 onMounted(async () => {
   await nextTick()
   setTimeout(async () => {
-    await props.engine?.config?.notifyAll?.()
+    await (engine as any)?.config?.notifyAll?.()
     ready.value = true
   }, 0)
 })
+
+onUnmounted(() => {
+  try { deleteEngine(engineId) } catch {}
+})
+
+defineExpose({ engine, submit, getFormData })
 </script>
 
 <style scoped>
