@@ -14,13 +14,43 @@ import fs from 'fs'
  */
 export default defineConfig({
   plugins: [
+    /**
+     * MUST run before Vite's built-in resolver (enforce: 'pre').
+     * This intercepts `../forms/useMeshForm` before Vite resolves it to an
+     * absolute path, rewriting it to the bare specifier `@meshflow/form`
+     * so Rollup externalizes it correctly.
+     */
+    {
+      name: 'remap-meshflow-form',
+      enforce: 'pre',
+      resolveId(id) {
+        if (
+          id === '../forms/useMeshForm' ||
+          id.endsWith('/utils/forms/useMeshForm') ||
+          id.endsWith('\\utils\\forms\\useMeshForm')
+        ) {
+          return { id: '@meshflow/form', external: true }
+        }
+      },
+    },
     vue(),
     dts({
       outDir: 'lib-form-vue',
+      // Strip the utils/meshform-vue/ prefix so declarations land at lib-form-vue/index.d.ts
+      // instead of lib-form-vue/meshform-vue/index.d.ts
+      entryRoot: 'utils/meshform-vue',
       include: [
         'utils/meshform-vue/**/*.ts',
         'utils/meshform-vue/**/*.vue',
       ],
+      // Replace the local relative import path with the published package name
+      // so the generated .d.ts files work for consumers of @meshflow/form-vue
+      beforeWriteFile: (filePath, content) => ({
+        filePath,
+        content: content
+          .replace(/from ['"]\.\.\/forms\/useMeshForm['"]/g, "from '@meshflow/form'")
+          .replace(/from ['"]\.\.\/\.\.\/forms\/useMeshForm['"]/g, "from '@meshflow/form'"),
+      }),
       // Generate both .d.ts (CJS) and .d.mts (ESM)
       copyDtsFiles: false,
       afterBuild: () => {
@@ -58,7 +88,6 @@ export default defineConfig({
        * - vue / vuetify runtime
        * - @jsonforms/* (peer)
        * - @meshflow/core and @meshflow/form (peers)
-       * - The relative path ../forms/useMeshForm (== @meshflow/form in consumer context)
        */
       external: (id) => {
         const peers = [
@@ -67,19 +96,10 @@ export default defineConfig({
           '@meshflow/core', '@meshflow/form',
         ]
         if (peers.some((p) => id === p || id.startsWith(p + '/'))) return true
-        // Catch both the raw relative string and the resolved absolute path
-        if (id.includes('/utils/forms/') || id === '../forms/useMeshForm') return true
         return false
       },
 
       output: {
-        // Remap the relative ../forms/useMeshForm → @meshflow/form in generated bundles
-        paths: (id) => {
-          if (id.includes('/utils/forms/') || id === '../forms/useMeshForm') {
-            return '@meshflow/form'
-          }
-          return id
-        },
         globals: {
           vue: 'Vue',
           vuetify: 'Vuetify',
