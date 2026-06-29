@@ -19,6 +19,7 @@ export interface MeshFieldSchema {
   'x-theme'?: string
   'x-min'?: number
   'x-maxLength'?: number
+  [key: `x-${string}`]: any
 }
 
 export interface MeshObjectSchema {

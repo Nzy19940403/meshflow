@@ -1,6 +1,6 @@
 {
   "name": "@meshflow/form",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Form orchestration adapter for @meshflow/core, providing high-level form logic and schema validation.",
   "main": "./index.js",
   "module": "./index.mjs",
