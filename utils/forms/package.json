@@ -1,6 +1,6 @@
 {
   "name": "@meshflow/form",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Form orchestration adapter for @meshflow/core, providing high-level form logic and schema validation.",
   "main": "./index.js",
   "module": "./index.mjs",
@@ -30,10 +30,10 @@
     "reactive-form"
   ],
   "dependencies": {
-    "@meshflow/core": "^0.8.8"
+    "@meshflow/core": "^1.0.0"
   },
   "peerDependencies": {
-    "@meshflow/core": ">=0.8.8",
+    "@meshflow/core": ">=1.0.0",
     "@jsonforms/core": ">=3.0.0"
   },
   "repository": {

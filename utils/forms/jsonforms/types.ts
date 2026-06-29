@@ -1,7 +1,7 @@
 // Re-export JsonSchema from @jsonforms/core as the authoritative base type.
 export type { JsonSchema, UISchemaElement } from '@jsonforms/core'
 
-export type MeshWidgetType = 'input' | 'number' | 'select' | 'checkbox'
+export type MeshWidgetType = 'input' | 'number' | 'select' | 'checkbox' | (string & {})
 
 export interface MeshFieldSchema {
   type: 'string' | 'number' | 'boolean' | 'integer'
