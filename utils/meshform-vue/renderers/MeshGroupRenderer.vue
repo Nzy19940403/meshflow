@@ -19,19 +19,23 @@
     </div>
   </div>
 
-  <!-- Horizontal layout -->
+  <!-- Horizontal layout — wrap each item in an explicit div so flex props are reliable -->
   <div v-else-if="layout.uischema.type === 'HorizontalLayout'" class="mesh-layout mesh-layout--horizontal">
-    <dispatch-renderer
+    <div
       v-for="(element, index) in layout.uischema.elements"
       :key="`${layout.path}-${index}`"
       class="mesh-layout__item"
-      :schema="layout.schema"
-      :uischema="element"
-      :path="layout.path"
-      :enabled="layout.enabled"
-      :renderers="layout.renderers"
-      :cells="layout.cells"
-    />
+      :style="itemStyle(element)"
+    >
+      <dispatch-renderer
+        :schema="layout.schema"
+        :uischema="element"
+        :path="layout.path"
+        :enabled="layout.enabled"
+        :renderers="layout.renderers"
+        :cells="layout.cells"
+      />
+    </div>
   </div>
 
   <!-- Vertical layout (default) -->
@@ -68,6 +72,18 @@ const layoutClass = computed(() => {
     ? 'mesh-group__body--horizontal'
     : 'mesh-group__body--vertical'
 })
+
+/**
+ * Per-item flex style.
+ * Supports `options.span` (number) on individual UISchema elements to control
+ * relative width. span=1 is the default unit (flex: 1 1 180px).
+ * span=2 → flex: 2 1 360px (twice as wide), span=3 → full-row, etc.
+ */
+function itemStyle(element: any): Record<string, string> {
+  const span: number = element?.options?.span ?? 1
+  const basis = span * 180
+  return { flex: `${span} 1 ${basis}px` }
+}
 </script>
 
 <style scoped>
@@ -105,9 +121,10 @@ const layoutClass = computed(() => {
 }
 
 .mesh-group__body--horizontal {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0 16px;
+  width: 100%;
 }
 
 .mesh-layout--vertical {
@@ -116,14 +133,16 @@ const layoutClass = computed(() => {
   width: 100%;
 }
 
+/* flex-wrap: each item gets flex from itemStyle(), falls back to flex:1 1 180px */
 .mesh-layout--horizontal {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0 16px;
   width: 100%;
 }
 
 .mesh-layout__item {
-  width: 100%;
+  flex: 1 1 180px;
+  min-width: 0;   /* prevent overflow in flex context */
 }
 </style>
