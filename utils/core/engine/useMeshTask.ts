@@ -28,7 +28,7 @@ type MeshTask<NM> = {
 function useMeshTask<P extends MeshPath, NM> (
     config: {
         useGreedy: boolean;
-        NODE_QUOTA_PER_FRAME:number
+        NODE_QUOTA_PER_FRAME:number;
         MAX_CONCURRENT_TASKS: number;
         BACKPRESSURE_LIMIT: number;
     },

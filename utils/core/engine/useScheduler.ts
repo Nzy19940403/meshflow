@@ -370,11 +370,11 @@ export class MeshScheduler<
      * @internal
      * */ 
     public _notifyAll = async () => {
-         const order = this.dependency.GetDependencyOrder();
+        const order = this.dependency.GetDependencyOrder();
         if (!order || order.length === 0) return;
         const roots = order[0];
         try {
-            this._meshTaskSystem.TaskRunner(null, roots,[]);
+           await this._meshTaskSystem.TaskRunner(null, roots,[]);
         } catch (error) {
             this.hooks.callOnError(error);
             throw error;
