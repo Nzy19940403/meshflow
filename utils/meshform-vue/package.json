@@ -1,6 +1,6 @@
 {
   "name": "@meshflow/form-vue",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Vue 3 rendering layer for @meshflow/form — wraps @jsonforms/vue with meshflow reactive bindings and Vuetify components.",
   "main": "./index.js",
   "module": "./index.mjs",
@@ -31,7 +31,7 @@
     "vuetify"
   ],
   "dependencies": {
-    "@meshflow/form": "^0.4.0"
+    "@meshflow/form": "^1.0.1"
   },
   "peerDependencies": {
     "vue": ">=3.0.0",
