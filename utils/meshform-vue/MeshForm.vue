@@ -62,9 +62,7 @@ engine.hooks.onSuccess(() => {
 
 function buildNodeMap(node: any, map: Record<string, any> = {}): Record<string, any> {
   if (!node) return map
-  if (node.type !== 'group') {
-    if (node.path != null && node.path !== '') map[node.path] = node
-  }
+  if (node.path != null && node.path !== '') map[node.path] = node
   for (const child of node.children ?? []) buildNodeMap(child, map)
   return map
 }

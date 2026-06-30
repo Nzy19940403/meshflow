@@ -1,6 +1,6 @@
 <template>
   <!-- Group with title (type: "Group" in uiSchema) -->
-  <div v-if="layout.uischema.type === 'Group'" class="mesh-group">
+  <div v-if="layout.uischema.type === 'Group' && !groupHidden" class="mesh-group">
     <div v-if="groupLabel" class="mesh-group__header">
       <span class="mesh-group__title">{{ groupLabel }}</span>
       <v-divider class="mesh-group__divider" />
@@ -54,15 +54,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { rendererProps, useJsonFormsLayout, DispatchRenderer, type LayoutProps } from '@jsonforms/vue'
+import { MESH_NODE_MAP_KEY } from '../inject-keys'
 
 const props = defineProps({ ...rendererProps() })
 const { layout } = useJsonFormsLayout(props as LayoutProps)
+const nodeMap = inject<any>(MESH_NODE_MAP_KEY)
 
 const groupLabel = computed(() => {
   const uischema = layout.value.uischema as any
   return uischema?.label || uischema?.options?.label || null
+})
+
+// 从 uischema.scope 解析 group 对应的节点路径，e.g. '#/properties/warnings' → 'warnings'
+const groupNode = computed(() => {
+  const scope = (layout.value.uischema as any)?.scope as string | undefined
+  if (!scope) return null
+  const path = scope.replace(/^#\/properties\//, '').replace(/\/properties\//g, '.')
+  const n = nodeMap?.value?.[path]
+  n?.dirtySignal?.value  // 追踪脏信号
+  return n
+})
+
+const groupHidden = computed(() => {
+  groupNode.value?.dirtySignal?.value
+  return groupNode.value?.hidden ?? false
 })
 
 const layoutClass = computed(() => {
