@@ -19,6 +19,7 @@ import {
 
 import MeshControlRenderer from './MeshControlRenderer.vue'
 import MeshGroupRenderer from './MeshGroupRenderer.vue'
+import { markRaw } from 'vue'
 
 // Tester for fields with x-options (custom select via schema extension)
 const hasXOptions = schemaMatches(
@@ -27,15 +28,15 @@ const hasXOptions = schemaMatches(
 
 export const meshRenderers: JsonFormsRendererRegistryEntry[] = [
   // ── Leaf field controls ──────────────────────────────────────────────────
-  { tester: rankWith(3, isStringControl),   renderer: MeshControlRenderer },
-  { tester: rankWith(3, isNumberControl),   renderer: MeshControlRenderer },
-  { tester: rankWith(3, isIntegerControl),  renderer: MeshControlRenderer },
-  { tester: rankWith(3, isBooleanControl),  renderer: MeshControlRenderer },
+  { tester: rankWith(3, isStringControl),   renderer: markRaw(MeshControlRenderer) },
+  { tester: rankWith(3, isNumberControl),   renderer: markRaw(MeshControlRenderer) },
+  { tester: rankWith(3, isIntegerControl),  renderer: markRaw(MeshControlRenderer) },
+  { tester: rankWith(3, isBooleanControl),  renderer: markRaw(MeshControlRenderer) },
   // Select: enum OR x-options (higher priority than plain string)
-  { tester: rankWith(5, or(isEnumControl, hasXOptions)), renderer: MeshControlRenderer },
+  { tester: rankWith(5, or(isEnumControl, hasXOptions)), renderer: markRaw(MeshControlRenderer) },
 
   // ── Layout / Group elements ──────────────────────────────────────────────
-  { tester: rankWith(2, uiTypeIs('VerticalLayout')),   renderer: MeshGroupRenderer },
-  { tester: rankWith(2, uiTypeIs('HorizontalLayout')), renderer: MeshGroupRenderer },
-  { tester: rankWith(2, uiTypeIs('Group')),            renderer: MeshGroupRenderer },
+  { tester: rankWith(2, uiTypeIs('VerticalLayout')),   renderer: markRaw(MeshGroupRenderer) },
+  { tester: rankWith(2, uiTypeIs('HorizontalLayout')), renderer: markRaw(MeshGroupRenderer) },
+  { tester: rankWith(2, uiTypeIs('Group')),            renderer: markRaw(MeshGroupRenderer) },
 ]

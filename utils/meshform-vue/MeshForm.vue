@@ -13,14 +13,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted, nextTick, shallowRef } from 'vue'
 import { JsonForms } from '@jsonforms/vue'
 import { meshRenderers } from './renderers/renderers'
 import { MESH_NODE_MAP_KEY } from './inject-keys'
 import { generateUiSchema } from './generateUiSchema'
 import { useMeshFormVue, deleteEngine } from './useMeshFormVue'
-import type { MeshFormSchema } from '../forms/jsonforms/types'
-import type { FromDescriptor } from '../forms/useMeshForm'
+import type { MeshFormSchema, FromDescriptor } from './useMeshFormVue'
+ 
 
 const props = defineProps<{
   schema: MeshFormSchema
@@ -48,6 +48,8 @@ const engine = useMeshFormVue(engineId, props.schema)
 if (props.rules) {
   engine.define(props.rules)
 }
+
+ 
 
 // Emit @change after every engine computation (initial notifyAll + user input).
 // Registered synchronously so it's in place before the first notifyAll() call.
@@ -94,7 +96,7 @@ if (props.data) {
 // ── Reactive state ────────────────────────────────────────────────────────────
 
 const ready = ref(false)
-const formData = ref({})
+const formData = shallowRef({})
 
 const effectiveUiSchema = computed(() =>
   props.uischema ?? generateUiSchema(props.schema)
@@ -121,16 +123,18 @@ async function submit() {
   emit('submit', getFormData())
 }
 
-onMounted(async () => {
-  await nextTick()
-  setTimeout(async () => {
-    await (engine as any)?.config?.notifyAll?.()
-    ready.value = true
-  }, 0)
+onMounted(() => {
+ 
+ 
+  (engine as any)?.config?.notifyAll?.()
+  
+  ready.value = true
+ 
 })
 
 onUnmounted(() => {
-  try { deleteEngine(engineId) } catch {}
+ 
+  try { deleteEngine(engineId) } catch { }
 })
 
 defineExpose({ engine, submit, getFormData })

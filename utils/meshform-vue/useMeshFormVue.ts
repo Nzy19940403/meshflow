@@ -17,7 +17,7 @@ import {
   type MeshFormSchema,
   type FromDescriptor,
   type MeshGraph,
-} from '../forms/useMeshForm'
+} from '@meshflow/form'
 
 export function useMeshFormVue<M extends Record<string, any> = {}>(
   id: string,
