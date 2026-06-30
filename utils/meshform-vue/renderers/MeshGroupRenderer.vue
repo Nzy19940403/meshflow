@@ -67,20 +67,24 @@ const groupLabel = computed(() => {
   return uischema?.label || uischema?.options?.label || null
 })
 
-// 若指定 options.nodePath，检查该路径下所有直接子节点是否全部 hidden
-// 全 hidden → 整组不渲染（header 也消失），无需在引擎里注册 group-level 规则
-const groupHidden = computed(() => {
+// 第一层：只依赖 nodeMap（schema 层面，极少变化）
+// 找出 nodePath 下的所有直接子节点引用，避免每次 dirtySignal 变化都扫全表
+const groupChildNodes = computed<any[]>(() => {
   const nodePath = (layout.value.uischema as any)?.options?.nodePath as string | undefined
-  if (!nodePath) return false
+  if (!nodePath) return []
   const map = nodeMap?.value ?? {}
   const prefix = nodePath + '.'
-  const children = Object.entries(map).filter(
-    ([p]) => p.startsWith(prefix) && !p.slice(prefix.length).includes('.')
-  )
+  return Object.entries(map)
+    .filter(([p]) => p.startsWith(prefix) && !p.slice(prefix.length).includes('.'))
+    .map(([, n]) => n)
+})
+
+// 第二层：只依赖子节点的 dirtySignal（数据层面，频繁触发但不再扫全表）
+const groupHidden = computed(() => {
+  const children = groupChildNodes.value
   if (!children.length) return false
-  // 追踪每个子节点的 dirtySignal，确保 hidden 变化时重新计算
-  children.forEach(([, n]) => n?.dirtySignal?.value)
-  return children.every(([, n]) => n?.hidden === true)
+  children.forEach(n => n?.dirtySignal?.value)
+  return children.every(n => n?.hidden === true)
 })
 
 const layoutClass = computed(() => {
