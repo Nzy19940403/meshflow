@@ -307,6 +307,11 @@ export class SchemaBucket<P> {
   };
 
   private _currentApi: any = null;
+  private _forceCompute = false;
+
+  public forceCompute() {
+    this._forceCompute = true;
+  }
 
   constructor(baseValue: any, key: string | number | symbol, path: P) {
     this._strategy = new StrategyStore(this._getRulesInternal);
@@ -539,12 +544,12 @@ export class SchemaBucket<P> {
       return this._pendingPromise;
     }
 
-    let shouldSkipCalculate = true;
+    let shouldSkipCalculate = !this._forceCompute;
  
     if (this._depUids.length === 0) {
       shouldSkipCalculate = false; // 没有依赖的节点（比如根节点），通常需要重算或依赖外部直接 set
     } else  {
-       
+      
       // 🌟 O(N) 扁平数组遍历，消灭迭代器
       for (let i = 0; i < this._depUids.length; i++) {
         let uid = this._depUids[i];
@@ -577,6 +582,7 @@ export class SchemaBucket<P> {
     }
 
     if (shouldSkipCalculate && this._useCache) {
+      this._forceCompute = false;
       api.iscache = true;
       return this._cache
     };
@@ -625,6 +631,7 @@ export class SchemaBucket<P> {
   }
 
   private _finalizeSync(res: any, version: number, api: any, curToken: any) {
+    this._forceCompute = false;
     if (curToken !== this._promiseToken || version < this._version) {
       return this._cache;
     }

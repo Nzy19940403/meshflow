@@ -370,6 +370,10 @@ export class MeshScheduler<
      * @internal
      * */ 
     public _notifyAll = async () => {
+        // 🔥 清空所有 bucket 的 L2 缓存，强制全量推演
+        for (let i = 0; i < this._AllBuckets.length; i++) {
+          this._AllBuckets[i].forceCompute();
+        }
         const order = this.dependency.GetDependencyOrder();
         if (!order || order.length === 0) return;
         const roots = order[0];

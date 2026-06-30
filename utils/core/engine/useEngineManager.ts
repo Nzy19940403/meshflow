@@ -464,10 +464,9 @@ const useEngine = <
  * @see useEngine 获取引擎
  */
 const deleteEngine = (id: MeshPath) => {
-  const engine = engineMap.get(id) ;
-       
+  const engine = engineMap.get(id);
+  if (!engine) return;
   engine.dispose();
-
   engineMap.delete(id);
 };
  

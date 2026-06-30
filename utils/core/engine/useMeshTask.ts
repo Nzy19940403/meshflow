@@ -2132,7 +2132,7 @@ function useMeshTask<P extends MeshPath, NM> (
                         }
 
                         if (nextLevel !== Infinity && nextLevel <= maxAffectedLevel) {
- 
+
                                 currentLevel = nextLevel;
 
                                 // 捞弱信号
