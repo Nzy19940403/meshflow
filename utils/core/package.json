@@ -1,6 +1,6 @@
 {
     "name": "@meshflow/core",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A logic orchestration engine utilizing topological scheduling and watermark control to resolve asynchronous race conditions in complex dependency linkages.",
     "main": "./index.js",
     "module": "./index.mjs",
